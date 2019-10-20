@@ -1,6 +1,7 @@
 <img src="Product.png"
      alt="The catmint language logo"
-     style="float: left; margin-right: 10px; width=395; height=165" />
+     style="float: left; margin-right: 10px;"
+     width="50%" height="50%"/>
 # The catmint language
 Starter repo for a low-level/high-level hybrid programming language targetting LLVM, seeking ease-of-use and brevity of Python with C-level control over memory and STL-completeness. 
 
