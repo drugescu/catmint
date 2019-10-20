@@ -1,0 +1,2 @@
+/usr/bin/ar qc libcatmint-ast.a  CMakeFiles/catmint-ast.dir/src/ASTSerialization.o CMakeFiles/catmint-ast.dir/src/ASTVisitor.o
+/usr/bin/ranlib libcatmint-ast.a
