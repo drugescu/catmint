@@ -30,3 +30,15 @@
 *.exe
 *.out
 *.app
+
+# Binaries and cmake files
+catmint-parser
+./catmint-lex/text/*
+*.tab.c
+*.tab.h
+lex.yy.c
+old.y
+catmint-lex/bin/*
+*.cmake
+catmint-ast/CMakeFiles/*
+*.log
