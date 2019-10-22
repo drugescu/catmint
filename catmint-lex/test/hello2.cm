@@ -1,11 +1,14 @@
 # Comment
-class Main
-end
 
-class Point
+
+class Point from IO
+	# Another var region
 	var
-		int32 a
-		float beta
-		string gamma
+	  int32 m = 3
+	  float f
 	end
 end
+
+# 3
+
+

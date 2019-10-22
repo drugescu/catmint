@@ -36,7 +36,8 @@ public:
 
   /// \brief Add expression and take ownership of it
   void addExpression(std::unique_ptr<Expression> E) {
-    expressions.push_back(std::move(E));
+    if (E != nullptr)
+      expressions.push_back(std::move(E));
   }
 
   /// \brief Add expression and take ownership of it

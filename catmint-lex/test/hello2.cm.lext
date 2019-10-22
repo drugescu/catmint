@@ -1,40 +1,54 @@
 {
     "NodeType": "Program",
     "NodeID": 0,
-    "LineNumber": 2,
+    "LineNumber": 1,
     "Classes": [
         {
             "NodeType": "Class",
             "NodeID": 1,
-            "LineNumber": 2,
-            "Name": "Main"
-        },
-        {
-            "NodeType": "Class",
-            "NodeID": 2,
-            "LineNumber": 5,
+            "LineNumber": 4,
             "Name": "Point",
+            "Parent": "IO",
             "Features": [
                 {
                     "NodeType": "Attribute",
-                    "NodeID": 3,
+                    "NodeID": 2,
                     "LineNumber": 7,
-                    "Name": "a",
-                    "Type": "int32"
+                    "Name": "m",
+                    "Type": "int32",
+                    "Initializer": {
+                        "NodeType": "IntegerConstant",
+                        "NodeID": 3,
+                        "LineNumber": 7,
+                        "Value": 3
+                    }
                 },
                 {
                     "NodeType": "Attribute",
                     "NodeID": 4,
                     "LineNumber": 8,
-                    "Name": "beta",
+                    "Name": "f",
                     "Type": "float"
-                },
+                }
+            ]
+        },
+        {
+            "NodeType": "Class",
+            "NodeID": 5,
+            "LineNumber": 0,
+            "Name": "Main",
+            "Features": [
                 {
-                    "NodeType": "Attribute",
-                    "NodeID": 5,
-                    "LineNumber": 9,
-                    "Name": "gamma",
-                    "Type": "string"
+                    "NodeType": "Method",
+                    "NodeID": 6,
+                    "LineNumber": 0,
+                    "Name": "main",
+                    "ReturnType": "Void",
+                    "Body": {
+                        "NodeType": "Block",
+                        "NodeID": 7,
+                        "LineNumber": 1
+                    }
                 }
             ]
         }

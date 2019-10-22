@@ -20,6 +20,7 @@ static int gColumnNumber = 1;
 
 "class" 	{ countColumns(); return KW_CLASS; }
 "from" 		{ countColumns(); return KW_FROM; }
+"inherits"  { countColumns(); return KW_INHERITS;	}
 "constructor"	{ countColumns(); return KW_CONSTRUCTOR; }
 "var"		{ countColumns(); return KW_VAR; }
 "if"		{ countColumns(); return KW_IF; }
