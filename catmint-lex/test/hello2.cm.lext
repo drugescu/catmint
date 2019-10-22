@@ -1,0 +1,42 @@
+{
+    "NodeType": "Program",
+    "NodeID": 0,
+    "LineNumber": 2,
+    "Classes": [
+        {
+            "NodeType": "Class",
+            "NodeID": 1,
+            "LineNumber": 2,
+            "Name": "Main"
+        },
+        {
+            "NodeType": "Class",
+            "NodeID": 2,
+            "LineNumber": 5,
+            "Name": "Point",
+            "Features": [
+                {
+                    "NodeType": "Attribute",
+                    "NodeID": 3,
+                    "LineNumber": 7,
+                    "Name": "a",
+                    "Type": "int32"
+                },
+                {
+                    "NodeType": "Attribute",
+                    "NodeID": 4,
+                    "LineNumber": 8,
+                    "Name": "beta",
+                    "Type": "float"
+                },
+                {
+                    "NodeType": "Attribute",
+                    "NodeID": 5,
+                    "LineNumber": 9,
+                    "Name": "gamma",
+                    "Type": "string"
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,11 @@
+# Comment
+class Main
+end
+
+class Point
+	var
+		int32 a
+		float beta
+		string gamma
+	end
+end

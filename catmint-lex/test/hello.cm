@@ -1,0 +1,32 @@
+class Point from IO
+    var
+	x = 0, y = 0
+    end
+
+    constructor newx=0, newy=0
+	this.x = newx
+	this.y = newy
+        out "Hello world!"
+    end
+
+    operator(=) this, p=Point
+       this.all_match(p)
+    end
+   
+    operator(out) this
+       out "x = ", x, ", y = ", y
+    end
+
+    do_stuff stuff=0
+	if stuff==0
+		out "stuff = 0"
+        else
+		out "stuff is not zero"
+	return 0
+    end
+end
+
+p = Point 1,2
+out p
+out 1.to_s
+p.do_stuff 3
