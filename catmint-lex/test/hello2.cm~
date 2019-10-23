@@ -1,9 +1,0 @@
-# Comment
-class Main
-end
-
-class Point
-	var
-		int32 a
-	end
-end

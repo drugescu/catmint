@@ -29,25 +29,53 @@
                     "LineNumber": 8,
                     "Name": "f",
                     "Type": "float"
+                },
+                {
+                    "NodeType": "Attribute",
+                    "NodeID": 5,
+                    "LineNumber": 9,
+                    "Name": "s",
+                    "Type": "String",
+                    "Initializer": {
+                        "NodeType": "StringConstant",
+                        "NodeID": 6,
+                        "LineNumber": 9,
+                        "Value": "Hello World!"
+                    }
                 }
             ]
         },
         {
             "NodeType": "Class",
-            "NodeID": 5,
+            "NodeID": 7,
             "LineNumber": 0,
             "Name": "Main",
             "Features": [
                 {
                     "NodeType": "Method",
-                    "NodeID": 6,
+                    "NodeID": 8,
                     "LineNumber": 0,
                     "Name": "main",
                     "ReturnType": "Void",
                     "Body": {
                         "NodeType": "Block",
-                        "NodeID": 7,
-                        "LineNumber": 1
+                        "NodeID": 9,
+                        "LineNumber": 1,
+                        "Expressions": [
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 10,
+                                "LineNumber": 14,
+                                "Expressions": [
+                                    {
+                                        "NodeType": "FloatConstant",
+                                        "NodeID": 11,
+                                        "LineNumber": 14,
+                                        "Value": 1.2000000476837159
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 }
             ]

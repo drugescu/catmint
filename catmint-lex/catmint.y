@@ -21,7 +21,7 @@
 	int  yylex ();
 	void yyerror(const char *error) 
 	{
-		std::cout << gInputFileName << " : " << yylloc.first_line << " : " << yylloc.first_column << " " << error << std::endl;
+		std::cout << gInputFileName << " | Line : " << yylloc.first_line << " | Column : " << yylloc.first_column << " | Error: " << error << std::endl;
 	}
 }
 
@@ -30,7 +30,7 @@
 %union {
 	std::string* stringValue;
 	int intValue;
-	float floatValue;
+	double floatValue;
 
 	catmint::Class* catmintClass;
 	std::vector<catmint::Class*>* catmintClasses;
@@ -56,8 +56,9 @@
 %token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ATTRIB
 
 %token <stringValue> IDENTIFIER
-%token <intValue> INTEGER_CONSTANT
+%token <stringValue> STRING_CONSTANT
 %token <floatValue> FLOAT_CONSTANT
+%token <intValue> INTEGER_CONSTANT
 
 %type <expression> expression conditional_expression
 %type <expression> relational_expression additive_expression multiplicative_expression
@@ -260,6 +261,12 @@ unary_expression : basic_expression
 
 basic_expression : INTEGER_CONSTANT {
 		$$ = new catmint::IntConstant(@1.first_line, $1);
+	}
+	| STRING_CONSTANT {
+    $$ = new catmint::StringConstant(@1.first_line, *$1);
+	}
+	| FLOAT_CONSTANT {
+    $$ = new catmint::FloatConstant(@1.first_line, $1);
 	}
 	| IDENTIFIER {
 		$$ = new catmint::Symbol(@1.first_line, *$1);

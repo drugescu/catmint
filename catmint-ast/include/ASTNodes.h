@@ -12,6 +12,7 @@
 #include "FormalParam.h"
 #include "IfStatement.h"
 #include "IntConstant.h"
+#include "FloatConstant.h"
 #include "LocalDefinition.h"
 #include "Method.h"
 #include "NewObject.h"

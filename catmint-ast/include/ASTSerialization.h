@@ -44,6 +44,7 @@ public:
   bool visit(Expression *E) override;
 
   bool visit(IntConstant *IC) override;
+  bool visit(FloatConstant *IF) override;
   bool visit(StringConstant *SC) override;
   bool visit(NullConstant *NC) override;
   bool visit(Symbol *Sym) override;
@@ -103,6 +104,7 @@ private:
 
   void writePair(const Writer::Ch *key, const Writer::Ch *value);
   void writePair(const Writer::Ch *key, int value);
+  void writePair(const Writer::Ch *key, double value);
 };
 
 /// \brief Deserialize an AST from a JSON file
@@ -168,6 +170,7 @@ private:
 
   std::unique_ptr<Expression> parseExpression(rapidjson::Value &tree);
   std::unique_ptr<IntConstant> parseIntConstant(rapidjson::Value &tree);
+  std::unique_ptr<FloatConstant> parseFloatConstant(rapidjson::Value &tree);
   std::unique_ptr<StringConstant> parseStringConstant(rapidjson::Value &tree);
   std::unique_ptr<NullConstant> parseNullConstant(rapidjson::Value &tree);
   std::unique_ptr<Symbol> parseSymbol(rapidjson::Value &tree);

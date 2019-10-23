@@ -36,6 +36,7 @@ public:
   virtual bool visit(Expression *E);
 
   virtual bool visit(IntConstant *IC);
+  virtual bool visit(FloatConstant *IF);
   virtual bool visit(StringConstant *SC);
   virtual bool visit(NullConstant *NC);
   virtual bool visit(Symbol *S);

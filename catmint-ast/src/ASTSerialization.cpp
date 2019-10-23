@@ -43,6 +43,7 @@ const auto AttributeNodeType = "Attribute";
 const auto MethodNodeType = "Method";
 const auto FormalParamNodeType = "FormalParam";
 const auto IntConstantNodeType = "IntegerConstant";
+const auto FloatConstantNodeType = "FloatConstant";
 const auto StringConstantNodeType = "StringConstant";
 const auto NullConstantNodeType = "NullConstant";
 const auto BlockNodeType = "Block";
@@ -85,7 +86,7 @@ struct ASTSerializer::CreateJSONObject {
       : parent(S) {
     parent.writer->StartObject();
     parent.writePair(keys::NodeType, nodeType);
-    parent.writePair(keys::NodeID, parent.newID(Node));
+    parent.writePair(keys::NodeID, (int)parent.newID(Node));
   }
   ~CreateJSONObject() { parent.writer->EndObject(); }
 
@@ -110,6 +111,11 @@ void ASTSerializer::writePair(const Writer::Ch *key, const Writer::Ch *value) {
 void ASTSerializer::writePair(const Writer::Ch *key, int value) {
   writer->Key(key);
   writer->Int(value);
+}
+
+void ASTSerializer::writePair(const Writer::Ch *key, double value) {
+  writer->Key(key);
+  writer->Double(value);
 }
 
 bool ASTSerializer::visit(Program *P) {
@@ -230,6 +236,17 @@ bool ASTSerializer::visit(IntConstant *IC) {
   CreateJSONObject object(*this, keys::IntConstantNodeType, IC);
   writePair(keys::LineNumber, IC->getLineNumber());
   writePair(keys::Value, IC->getValue());
+
+  return true;
+}
+
+bool ASTSerializer::visit(FloatConstant *FC) {
+  assert(isValid() && "Invalid serializer");
+  assert(FC && "Expected non-null float constant");
+
+  CreateJSONObject object(*this, keys::FloatConstantNodeType, FC);
+  writePair(keys::LineNumber, FC->getLineNumber());
+  writePair(keys::Value, FC->getValue());
 
   return true;
 }
@@ -550,7 +567,7 @@ bool ASTSerializer::visit(LocalDefinition *Local) {
   if (auto Scope = Local->getScope()) {
     // TODO: assert(Scope && "Local definition doesn't have scope"); set scope
     // during syntax analysis
-    writePair(keys::Scope, getID(Scope));
+    writePair(keys::Scope, (int)getID(Scope));
   }
 
   if (auto Init = Local->getInit()) {
@@ -780,6 +797,8 @@ ASTDeserializer::parseExpression(rapidjson::Value &tree) {
   auto &nodeType = tree[keys::NodeType];
   if (nodeType == keys::IntConstantNodeType) {
     return parseIntConstant(tree);
+  } else if (nodeType == keys::FloatConstantNodeType) {
+    return parseFloatConstant(tree);
   } else if (nodeType == keys::StringConstantNodeType) {
     return parseStringConstant(tree);
   } else if (nodeType == keys::NullConstantNodeType) {
@@ -848,6 +867,21 @@ ASTDeserializer::parseIntConstant(rapidjson::Value &tree) {
   return createNode<IntConstant>(tree, parseLineNumber(tree),
                                  tree[keys::Value].GetInt());
 }
+
+std::unique_ptr<FloatConstant>
+ASTDeserializer::parseFloatConstant(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::FloatConstantNodeType &&
+         "Expected float constant object");
+
+  assert(tree.HasMember(keys::Value) && "Float constant without value");
+  assert(tree[keys::Value].IsDouble() && "Invalid value for float constant");
+  // TODO: figure out about unsigned etc
+
+  return createNode<FloatConstant>(tree, parseLineNumber(tree),
+                                 tree[keys::Value].GetDouble());
+}
+
 
 std::unique_ptr<StringConstant>
 ASTDeserializer::parseStringConstant(rapidjson::Value &tree) {

@@ -58,6 +58,8 @@ bool ASTVisitor::visit(FormalParam *F) { return true; }
 bool ASTVisitor::visit(Expression *E) {
   if (auto IntCt = dynamic_cast<IntConstant *>(E)) {
     return visit(IntCt);
+  } else if (auto FloatCt = dynamic_cast<FloatConstant *>(E)) {
+    return visit(FloatCt);
   } else if (auto StringCt = dynamic_cast<StringConstant *>(E)) {
     return visit(StringCt);
   } else if (auto NullCt = dynamic_cast<NullConstant *>(E)) {
@@ -95,6 +97,7 @@ bool ASTVisitor::visit(Expression *E) {
 }
 
 bool ASTVisitor::visit(IntConstant *IC) { return true; }
+bool ASTVisitor::visit(FloatConstant *FC) { return true; }
 bool ASTVisitor::visit(StringConstant *SC) { return true; }
 bool ASTVisitor::visit(NullConstant *NC) { return true; }
 bool ASTVisitor::visit(Symbol *S) { return true; }

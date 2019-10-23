@@ -49,10 +49,18 @@ static int gColumnNumber = 1;
 	return INTEGER_CONSTANT; 
 }
 
-[0-9]*(\.[[0-9]]_)? {
+[0-9]*(\.[0-9]+) {
 	countColumns();
 	yylval.floatValue = atof(yytext);
 	return FLOAT_CONSTANT;
+}
+
+["]([^"]|(\\\"))*["] {
+	std::string s = std::string(yytext);
+	s = s.substr(1, s.size() - 2);
+	
+	yylval.stringValue = new std::string(s);
+	return STRING_CONSTANT;
 }
 
 [ \t\r\n]					{ countColumns(); }				

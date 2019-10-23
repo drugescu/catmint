@@ -6,9 +6,9 @@ class Point from IO
 	var
 	  int32 m = 3
 	  float f
+	  String s = "Hello World!"
 	end
 end
 
 # 3
-
-
+1.2
