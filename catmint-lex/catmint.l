@@ -18,21 +18,28 @@ static int gColumnNumber = 1;
 
 %%
 
-"class" 	{ countColumns(); return KW_CLASS; }
-"from" 		{ countColumns(); return KW_FROM; }
-"inherits"  { countColumns(); return KW_INHERITS;	}
+"class" 	    { countColumns(); return KW_CLASS; }
+"from" 		    { countColumns(); return KW_FROM; }
+"self"        { countColumns(); return KW_SELF;	}
+"null"        { countColumns(); return KW_NULL; }
 "constructor"	{ countColumns(); return KW_CONSTRUCTOR; }
-"var"		{ countColumns(); return KW_VAR; }
-"if"		{ countColumns(); return KW_IF; }
-"then"		{ countColumns(); return KW_THEN; }
-"else"		{ countColumns();  return KW_ELSE; }
-"end"		{ countColumns();  return KW_END; }
-"<"			{ countColumns(); return OP_LT;  }
-">"			{ countColumns(); return OP_GT;  }
-"<="			{ countColumns(); return OP_LTE; }
-">="			{ countColumns(); return OP_GTE; }
-"=="			{ countColumns(); return OP_ISE; }
-"="			{ countColumns(); return OP_ATTRIB; }
+"var"		      { countColumns(); return KW_VAR; }
+"if"		      { countColumns(); return KW_IF; }
+"then"		    { countColumns(); return KW_THEN; }
+"else"		    { countColumns();  return KW_ELSE; }
+"end"		      { countColumns();  return KW_END; }
+"<"			      { countColumns(); return OP_LT;  }
+">"			      { countColumns(); return OP_GT;  }
+"<="			    { countColumns(); return OP_LTE; }
+">="			    { countColumns(); return OP_GTE; }
+"=="			    { countColumns(); return OP_ISE; }
+"="			      { countColumns(); return OP_ATTRIB; }
+"+"           { countColumns(); return OP_PLUS; }
+"-"           { countColumns(); return OP_MINUS; }
+"*"           { countColumns(); return OP_MUL; }
+"/"           { countColumns(); return OP_DIV; }
+"("           { countColumns(); return OP_OPAREN; }
+")"           { countColumns(); return OP_CPAREN; }
 
 "#"[^\r\n]*	{}
 

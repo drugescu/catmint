@@ -49,20 +49,24 @@
 
 %start catmint_program
 
-%token KW_CLASS KW_INHERITS KW_FROM KW_END KW_VAR
+%token KW_CLASS KW_SELF KW_FROM KW_END KW_VAR KW_NULL
 %token KW_CONSTRUCTOR
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
 
-%token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ATTRIB
+%token OP_LT OP_GT OP_LTE OP_GTE OP_ISE 
+%token OP_ATTRIB OP_DIV OP_PLUS OP_MINUS OP_MUL
+%token OP_OPAREN OP_CPAREN
 
 %token <stringValue> IDENTIFIER
 %token <stringValue> STRING_CONSTANT
 %token <floatValue> FLOAT_CONSTANT
 %token <intValue> INTEGER_CONSTANT
 
-%type <expression> expression conditional_expression
+// Expressions
+%type <expression> expression conditional_expression value_expression
 %type <expression> relational_expression additive_expression multiplicative_expression
 %type <expression> unary_expression basic_expression
+%type <expression> identifier_expression parenthesis_expression negative_expression constant_expression assignment_expression
 //%type <expressions> arguments
 /*%type <formal> formal
 %type <formals> formals */
@@ -75,6 +79,10 @@
 %type <catmintClass> catmint_class
 %type <catmintClasses> catmint_classes
 %type <stringValue> 		inherits_class
+
+%left '+' '-'
+%left '*' '/'
+%left PREC_NEG
 
 %%
 catmint_program : block catmint_classes block {
@@ -238,9 +246,15 @@ block : expression {
 	}
 	;
 	
-expression : conditional_expression 
+expression : value_expression 
 	;
 
+value_expression
+  : additive_expression
+  | assignment_expression
+  | conditional_expression
+  ;
+  
 conditional_expression : relational_expression
 	;
 
@@ -251,15 +265,68 @@ relational_expression : additive_expression
 	;
 
 additive_expression : multiplicative_expression 
+  | additive_expression OP_PLUS multiplicative_expression {
+		auto type = BinOp::Add;
+		auto lhr  = $1;
+		auto rhr  = $3;
+
+		// addition
+        $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+	}
+	| additive_expression OP_MINUS multiplicative_expression {
+		auto type = BinOp::Sub;
+		auto lhr  = $1;
+		auto rhr  = $3;
+
+		// subtraction
+        $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+    }
+	;
 	;
 
 multiplicative_expression : unary_expression 
 	;
 
 unary_expression : basic_expression 
+	 | multiplicative_expression OP_MUL basic_expression {
+		  auto type = BinOp::Mul;
+		  auto lhr  = $1;
+		  auto rhr  = $3;
+
+		  // multiplication		
+      $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+   }
+	 | multiplicative_expression OP_DIV basic_expression  {
+		  auto type = BinOp::Div;
+		  auto lhr  = $1;
+		  auto rhr  = $3;
+
+		  // division
+      $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+    }
 	;
 
-basic_expression : INTEGER_CONSTANT {
+basic_expression 
+  : identifier_expression
+	| negative_expression
+	| parenthesis_expression
+	;
+
+identifier_expression 
+  : constant_expression
+  | KW_SELF {
+		$$ = new catmint::Symbol(@1.first_line, "self");
+	}
+	| IDENTIFIER {
+		$$ = new catmint::Symbol(@1.first_line, *$1);
+	}
+	;
+
+constant_expression 
+  : KW_NULL {
+		$$ = new catmint::NullConstant(@1.first_line);
+	}
+	| INTEGER_CONSTANT {
 		$$ = new catmint::IntConstant(@1.first_line, $1);
 	}
 	| STRING_CONSTANT {
@@ -268,16 +335,32 @@ basic_expression : INTEGER_CONSTANT {
 	| FLOAT_CONSTANT {
     $$ = new catmint::FloatConstant(@1.first_line, $1);
 	}
-	| IDENTIFIER {
-		$$ = new catmint::Symbol(@1.first_line, *$1);
+	;
+  
+parenthesis_expression : OP_OPAREN value_expression OP_CPAREN {
+		$$ = $2;
 	}
-	//| dispatch_expression
 	;
 	
-/*dispatch_expression : '[' IDENTIFIER ']' {
-		$$ = new catmint::Dispatch(@1.first_line,*$2);
+negative_expression
+	: OP_MINUS basic_expression %prec PREC_NEG {
+		auto type  = UnOp::Minus;
+		auto value = $2;
+
+		$$ = new catmint::UnaryOperator(@1.first_line, type, Expression(value));
 	}
-	; */
+	;
+	
+assignment_expression
+  : IDENTIFIER OP_ATTRIB value_expression {
+	  auto& name  = *$1;
+   	auto  value = $3;
+
+	  // simple assignment
+    $$ = new catmint::Assignment(@1.first_line, name, Expression(value));
+
+	  delete $1;						
+  }
 
 %%
 

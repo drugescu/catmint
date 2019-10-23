@@ -5,10 +5,11 @@ class Point from IO
 	# Another var region
 	var
 	  int32 m = 3
-	  float f
+	  float f = 3.4
 	  String s = "Hello World!"
 	end
 end
 
 # 3
-1.2
+-a*(3/20)+null
+a = 3.0
