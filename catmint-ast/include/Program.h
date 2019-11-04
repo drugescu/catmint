@@ -36,7 +36,7 @@ public:
     for (auto cls : classes) {
       this->classes.emplace_back(std::move(cls));
     }
-    
+
     // If Main doesn't exist as a class, add it
     bool found = false;
     for (auto cls : classes) {
@@ -45,58 +45,143 @@ public:
         std::cout << "Found Main.";
       }
     }
-    
+
     if (found == false) {
       // Generate a new, empty main class with line number 0
       auto feats = new std::vector<Feature *> ();
       auto main = new Class(0, "Main", "", *feats);
-      
+
       this->classes.emplace_back(main);
     }
   }*/
-  
+
   explicit Program(int lineNumber, const std::vector<Class*> &classes = {}, std::unique_ptr<Expression> body1 = nullptr)
     : TreeNode(lineNumber), classes() {
+    // First emplace the classes in the Program
     for (auto cls : classes) {
       this->classes.emplace_back(std::move(cls));
     }
-    
+
     // If Main doesn't exist as a class, add it
     bool found = false;
-    for (auto cls : classes) {
+
+    // Raw pointers, no ownership info required, just have to modify them
+    catmint::Class* found_class = nullptr;
+    catmint::Method* found_method = nullptr;
+
+    // Find main class
+    for (auto& cls : this->classes) {
       if (cls->getName() == "Main") {
         found = true;
-        std::cout << "Found Main.";
+        found_class = cls.get();
+
+        std::cout << "Found Main of type { " << cls->getName() << ", " << typeid(cls).name() << " }" << std::endl;
+
+        break;
       }
     }
-    
-    if (found == false) {
+
+    // If found, insert blocks
+    if (found == true) {
+      // Now add stuff to it - whats before, before the first block, what's after, after the last block
+      // find main, which is by default executed, and add the expressions to it
+      for (auto met = found_class->begin(); met != found_class->end(); met++) {
+        std::cout << "  Class Main has feature : " << (*met)->getName() << std::endl;
+        if ((*met)->getName() == "main") {
+           found_method = dynamic_cast<Method*>(*met);
+           std::cout << "    Class Main has a \"main\" method, here we must insert our stuff." << std::endl;
+        }
+      }
+
+      // If there is a main method, insert into it, if not, create it
+      if (found_method != nullptr) {
+        // Class will have 1 feature, the main method
+        // The main method will have a block of expressions starting with the one given to this constructor
+        //auto feats = new std::vector<Feature *> ();
+        //const auto& formal_parms = new std::vector<FormalParam *> ();
+        auto startingExpr = std::move(body1);
+        auto d = found_method->getBody();
+        std::vector<Expression*> expressions;
+
+        // Place new block // dont forget to separate between before and after
+        if (startingExpr != nullptr)
+          expressions.emplace_back(std::move(startingExpr.get()));
+
+        // Place old block back
+        if (d != nullptr)
+          expressions.emplace_back(std::move(d));
+
+        for (auto c : expressions)
+          std::cout << "Expr : " << c << std::endl;
+
+        // Create a new block, add the received block and the currently existing blocks of expressions to it
+        //   Then assign it to the method
+        auto new_body = new catmint::Block(lineNumber, expressions);
+        std::cout << "New block now contains back: " << new_body->back();
+
+        std::unique_ptr<catmint::Block> new_body_ptr;
+
+        //new_body_ptr.reset(std::move(new_body));
+
+        std::cout << "Long line -----------------------------------------------";
+        std::cout.flush();
+
+        found_method->setBody(std::move(new_body_ptr));
+
+        auto t = found_method->getBody();
+        std::cout << "Inserted a new body. " << t << std::endl;
+        std::cout.flush();
+
+        //found_method->setBody(std::move(new_body_ptr));
+        //found_method->setBody(new std::unique_ptr<Block>(reinterpret_cast<Block>(startingExpr)));
+        // /found_method->setBody(std::move(new_body_ptr));
+
+      }
+      else { // Not found main method of Main class
+        auto feats = new std::vector<Feature *> ();
+        //const auto& formal_parms = new std::vector<FormalParam *> ();
+        const auto& formal_parms = new std::vector<Attribute *> ();
+        auto startingExpr = std::move(body1);
+
+        auto main_method = new Method(0, std::string("main"), std::string("Void"), std::move(startingExpr), *formal_parms);
+        auto main_method_ptr = std::unique_ptr<Feature>(main_method);
+
+        // Place the main_method into the list of features
+        feats->emplace_back(std::move(main_method));
+
+        // Place into main class a new features
+        found_class->addFeature(std::move(main_method_ptr));//std::move(*(feats->back())));
+      }
+
+    }
+    else if (found == false) {
       // Generate a new feature of type method, called main, which is by default executed, and add the expressions to it, line 0 by default
+
+      // Class will have 1 feature, the main method
+      // The main method will have a block of expressions starting with the one given to this constructor
       auto feats = new std::vector<Feature *> ();
-      const auto& formal_parms = new std::vector<FormalParam *> ();
-      auto emptyExpr = new std::unique_ptr<Expression> ();
-      
-      //Method main_method;
-      
-      //if (body1 != nullptr)
-        auto main_method = new Method(0, std::string("main"), std::string("Void"), std::move(body1), *formal_parms);
-      //else
-        //main_method = new Method(0, std::string("main"), std::string("Void"), emptyExpr, *formal_parms);
-    
-      feats->emplace_back(main_method);  
-//      feats->emplace_back(body1);
-  //    feats->emplace_back(body2);
-      
+      //const auto& formal_parms = new std::vector<FormalParam *> ();
+      const auto& formal_parms = new std::vector<Attribute *> ();
+      auto startingExpr = std::move(body1);
+
+      auto main_method = new Method(0, std::string("main"), std::string("Void"), std::move(startingExpr), *formal_parms);
+
+      // Place the main_method into the list of features
+      feats->emplace_back(std::move(main_method));
+
+      // Do also place here variable declaraions FormalParams
+
       // Generate a new, empty main class with line number 0
       auto main = new Class(0, "Main", "", *feats);
-      
+
+      // Place this in the classesl
       this->classes.emplace_back(main);
     }
   }
 
   /// \brief Add a class and take ownership of it - don't add a class that already exist, or merge them - not rgiht now
   void addClass(std::unique_ptr<Class> c) { classes.push_back(std::move(c)); }
-  
+
   /// \brief Add an outlying block of code to the Main class, to the main method, Python-styles
 
   /// @{

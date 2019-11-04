@@ -5,11 +5,13 @@
 
 namespace catmint {
 /// \brief AST node for a formal parameter in a method declaration
-class FormalParam : public TreeNode {
+//class FormalParam : public TreeNode {
+class FormalParam : public Expression {
 public:
   explicit FormalParam(int lineNumber, const std::string &name,
                        const std::string &type)
-      : TreeNode(lineNumber), name(name), type(type) {}
+      //: TreeNode(lineNumber), name(name), type(type) {}
+      : Expression(lineNumber), name(name), type(type) {}
 
   std::string getName() const { return name; }
   std::string getType() const { return type; }

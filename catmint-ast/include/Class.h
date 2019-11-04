@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <algorithm>
 
 #include "Feature.h"
 #include "Symbol.h"
@@ -47,6 +48,27 @@ public:
   /// \brief Add a feature and take ownership of it
   void addFeature(std::unique_ptr<Feature> F) {
     features.push_back(std::move(F));
+  }
+
+  /// \brief Remove a feature by name
+  void removeFeature(std::string name) {
+    /*for (auto& cls : this->features) {
+      if (cls.get()->getName() == name) {
+        this->features.erase(cls.get());
+        break;
+      }
+    }*/
+    this->features.erase(
+      std::remove_if(
+          this->features.begin(),
+          this->features.end(),
+          [name](const std::unique_ptr<Feature> &current_feature) -> bool {
+              // Do "some stuff", then return true if element should be removed.
+              return current_feature.get()->getName() == name;
+          }
+      ),
+      this->features.end()
+    );
   }
 
   /// @{

@@ -17,14 +17,16 @@ class FormalParam;
 
 /// \brief AST node for a method declaration
 class Method : public Feature {
-  typedef std::vector<std::unique_ptr<FormalParam>> FormalParamsType;
+  //typedef std::vector<std::unique_ptr<FormalParam>> FormalParamsType;
+  typedef std::vector<std::unique_ptr<Attribute>> FormalParamsType;
 
   struct iterator
       : public llvm::iterator_adaptor_base<iterator,
                                            FormalParamsType::const_iterator> {
     explicit iterator(FormalParamsType::const_iterator &&wrapped)
         : iterator_adaptor_base(wrapped) {}
-    FormalParam *operator*() const { return I->get(); }
+    //FormalParam *operator*() const { return I->get(); }
+    Attribute *operator*() const { return I->get(); }
   };
 
 public:
@@ -34,7 +36,8 @@ public:
   explicit Method(int lineNumber, const std::string &name,
                   const std::string &returnType,
                   std::unique_ptr<Expression> body = nullptr,
-                  const std::vector<FormalParam *> &formalParameters = {})
+                  //const std::vector<FormalParam *> &formalParameters = {})
+                  const std::vector<Attribute *> &formalParameters = {})
       : Feature(lineNumber, name), returnType(returnType),
         body(std::move(body)), parameters() {
     for (auto formalParameter : formalParameters) {
@@ -43,7 +46,8 @@ public:
   }
 
   /// \brief Add formal parameter and take ownership of it
-  void addParameter(std::unique_ptr<FormalParam> param) {
+  //void addParameter(std::unique_ptr<FormalParam> param) {
+  void addParameter(std::unique_ptr<Attribute> param) {
     parameters.push_back(std::move(param));
   }
 
@@ -59,6 +63,8 @@ public:
   std::string getReturnType() const { return returnType; }
 
   Expression *getBody() const { return body.get(); }
+
+  void setBody(std::unique_ptr<Block> newBody) { body = std::move(newBody); }
 
 private:
   std::string returnType;

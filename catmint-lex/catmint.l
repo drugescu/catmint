@@ -5,7 +5,7 @@
 
 void countColumns();
 
-static int gColumnNumber = 1; 
+static int gColumnNumber = 1;
 
 #define YY_USER_ACTION { \
 		yylloc.first_line = yylloc.last_line = yylineno;\
@@ -23,6 +23,8 @@ static int gColumnNumber = 1;
 "self"        { countColumns(); return KW_SELF;	}
 "null"        { countColumns(); return KW_NULL; }
 "constructor"	{ countColumns(); return KW_CONSTRUCTOR; }
+"constexpr"   { countColumns(); return KW_CONSTEXPR; }
+"def"         { countColumns(); return KW_DEF; }
 "var"		      { countColumns(); return KW_VAR; }
 "if"		      { countColumns(); return KW_IF; }
 "then"		    { countColumns(); return KW_THEN; }
@@ -40,20 +42,21 @@ static int gColumnNumber = 1;
 "/"           { countColumns(); return OP_DIV; }
 "("           { countColumns(); return OP_OPAREN; }
 ")"           { countColumns(); return OP_CPAREN; }
+":"						{ countColumns(); return OP_COLON; }
 
 "#"[^\r\n]*	{}
 
 
 [a-zA-Z]([0-9a-zA-Z_])* {
-	countColumns(); 
+	countColumns();
 	yylval.stringValue = new std::string(yytext);
     return IDENTIFIER;
 }
 
-[0]|([1-9][0-9]*)	{ 
-	countColumns(); 
+[0]|([1-9][0-9]*)	{
+	countColumns();
 	yylval.intValue = atoi(yytext);
-	return INTEGER_CONSTANT; 
+	return INTEGER_CONSTANT;
 }
 
 [0-9]*(\.[0-9]+) {
@@ -65,14 +68,14 @@ static int gColumnNumber = 1;
 ["]([^"]|(\\\"))*["] {
 	std::string s = std::string(yytext);
 	s = s.substr(1, s.size() - 2);
-	
+
 	yylval.stringValue = new std::string(s);
 	return STRING_CONSTANT;
 }
 
-[ \t\r\n]					{ countColumns(); }				
+[ \t\r\n]					{ countColumns(); }
 . {
-	countColumns(); 
+	countColumns();
 	return yytext[0];
 }
 

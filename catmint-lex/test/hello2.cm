@@ -1,15 +1,22 @@
-# Comment
+#1
+#a=1
 
+class Main from IO
+  Int a = a + 3
 
-class Point from IO
-	# Another var region
-	var
-	  int32 m = 3
-	  float f = 3.4
-	  String s = "Hello World!"
-	end
+  def t:
+    Int a = 3
+    b = b - 1 / 2 * 4 + (a)
+  end
+
+  def alpha:
+  end
+
+  def beta:
+  end
 end
 
-# 3
--a*(3/20)+null
-a = 3.0
+t = 2
+#t-1
+#a=2
+#4.03

@@ -17,9 +17,9 @@
 
 	static catmint::Program* gCatmintProgram = nullptr;
 	char* gInputFileName = NULL;
-	
+
 	int  yylex ();
-	void yyerror(const char *error) 
+	void yyerror(const char *error)
 	{
 		std::cout << gInputFileName << " | Line : " << yylloc.first_line << " | Column : " << yylloc.first_column << " | Error: " << error << std::endl;
 	}
@@ -34,17 +34,17 @@
 
 	catmint::Class* catmintClass;
 	std::vector<catmint::Class*>* catmintClasses;
-	
+
 	catmint::Expression* expression;
 	std::vector<catmint::Expression*>* expressions;
-	
+
 	catmint::Feature* feature;
 	std::vector<catmint::Feature*>* features;
 
 	catmint::FormalParam* formal;
-	std::vector<catmint::FormalParam*>* formals;	                 
+	std::vector<catmint::FormalParam*>* formals;
 
-	catmint::Block* block;	
+	catmint::Block* block;
 }
 
 %start catmint_program
@@ -53,9 +53,11 @@
 %token KW_CONSTRUCTOR
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
 
-%token OP_LT OP_GT OP_LTE OP_GTE OP_ISE 
+%token OP_LT OP_GT OP_LTE OP_GTE OP_ISE
 %token OP_ATTRIB OP_DIV OP_PLUS OP_MINUS OP_MUL
-%token OP_OPAREN OP_CPAREN
+%token OP_OPAREN OP_CPAREN OP_COLON
+
+%token KW_CONSTEXPR KW_DEF
 
 %token <stringValue> IDENTIFIER
 %token <stringValue> STRING_CONSTANT
@@ -65,26 +67,26 @@
 // Expressions
 %type <expression> expression conditional_expression value_expression
 %type <expression> relational_expression additive_expression multiplicative_expression
-%type <expression> unary_expression basic_expression
+%type <expression> unary_expression basic_expression local //formal
 %type <expression> identifier_expression parenthesis_expression negative_expression constant_expression assignment_expression
-//%type <expressions> arguments
-/*%type <formal> formal
-%type <formals> formals */
+%type <expressions> locals
 %type <block> block
-/*
-%type <feature> method attribute
-%type <features> features attributes attribute_definitions*/
+
 %type <features> features attributes attribute_definitions
-%type <feature> attribute
+%type <feature> attribute method
 %type <catmintClass> catmint_class
 %type <catmintClasses> catmint_classes
 %type <stringValue> 		inherits_class
+
+//%type <formal> 	formal
+//%type <formals> formals
 
 %left '+' '-'
 %left '*' '/'
 %left PREC_NEG
 
 %%
+// Program can consist of blocks of code and classes
 catmint_program : block catmint_classes block {
     auto b = new catmint::Block(@1.first_line);
 		b->addExpression(Expression($1));
@@ -93,9 +95,9 @@ catmint_program : block catmint_classes block {
 	}
 	;
 
-catmint_classes : catmint_class {	
+catmint_classes : catmint_class {
 		$$ = new std::vector<catmint::Class*>();
-		$$->push_back($1); 
+		$$->push_back($1);
 	}
 	| catmint_classes catmint_class {
 		$$ = $1;
@@ -117,12 +119,13 @@ catmint_class : KW_CLASS IDENTIFIER features KW_END {
 		| KW_CLASS IDENTIFIER inherits_class KW_END {
 		  $$ = new catmint::Class(@1.first_line, *$2, *$3, std::vector<catmint::Feature*>());
 
-		  delete $2; delete $3; 
+		  delete $2; delete $3;
 		}
 		// Empty class
 		| KW_CLASS IDENTIFIER KW_END {
-			std::vector<catmint::Feature*> a;
-			$$ = new catmint::Class(@1.first_line, *$2, "", a);
+			$$ = new catmint::Class(@1.first_line, *$2, "", std::vector<catmint::Feature*>());
+
+			delete $2;
 		}
 		;
 
@@ -138,15 +141,24 @@ inherits_class
 	;
 
 // Class features can be variable declarations or method declarations or accessors
-features : attributes 
+features
+    : %empty {
+		  $$ = new std::vector<catmint::Feature*>();
+	  }
+	  | features method {
+	    $$ = $1;
+	    $$->push_back($2);
+		  //$$->insert($1->end(), $2->begin(), $2->end());
+	  }
 		| features attributes {
-			$1->insert($1->end(), $2->begin(), $2->end());
-			$$ = $1;
+		  $$ = $1;
+			$$->insert($1->end(), $2->begin(), $2->end());
 		}
 		;
 
-attributes : KW_VAR attribute_definitions KW_END {
-				$$ = $2;
+attributes
+			: attribute_definitions {
+				$$ = $1;
 			}
 			;
 
@@ -164,89 +176,118 @@ attribute : IDENTIFIER IDENTIFIER {
 		$$ = new catmint::Attribute(@1.first_line, *$2, *$1);
 	}
 	| IDENTIFIER IDENTIFIER OP_ATTRIB expression {
-		//auto& type  = $1->first;
-		//auto& name  = $1->second;
-		//auto  value = $3;
-
-		// initialized attribute		
+		// initialized attribute
 		$$ = new catmint::Attribute(@1.first_line, *$2, *$1, Expression($4));
 
-		delete $1; delete $2;	
+		delete $1; delete $2;
+	}
+	| IDENTIFIER OP_ATTRIB expression {
+		// initialized attribute but type must be deduced from rhs
+		$$ = new catmint::Attribute(@1.first_line, *$1, std::string("auto"), Expression($3));
+
+		delete $1;
 	}
 	;
-/*
-features : method {
-			$$ = new std::vector<catmint::Feature*>();
-			$$->push_back($1);
+
+method
+  // No return type given, must be deducible, like auto
+	: KW_DEF IDENTIFIER OP_COLON block KW_END {
+    auto& name  	   = *$2;
+    //auto& params 	   = *$4;
+		auto params 	   = new std::vector<catmint::Attribute*>();
+		auto  returnType = std::string("auto");
+		auto  body       = $4;
+
+		// Void method
+		$$ = new catmint::Method(@1.first_line,
+							 name,
+							 returnType,
+	   					 Expression(body),
+							 *params);
+
+		delete $2; //delete $4;
+	}
+	//| KW_DEF IDENTIFIER IDENTIFIER OP_COLON formals block KW_END {
+	/*
+	| KW_DEF IDENTIFIER IDENTIFIER OP_COLON attributes block KW_END {
+    auto& name  	   = *$3;
+    //auto& params 	   = *$5;
+		auto params 	   = new std::vector<catmint::FormalParam*>();
+		auto& returnType = *$2;
+		auto  body       = $5;
+
+		// Void method
+		$$ = new catmint::Method(@1.first_line,
+							 name,
+							 returnType,
+	   					 Expression(body),
+							 *params);
+
+		delete $2; delete $3; //delete $5;
+	} */
+	;
+
+// ------------------------------------------------------------------------------------------------------------------
+//
+// Blocks of expressions and expressions
+//
+// ------------------------------------------------------------------------------------------------------------------
+
+block
+  : block locals {
+	  $$ = $1;
+		if ($$ == nullptr) {
+			$$ = new catmint::Block(@2.first_line);
 		}
-		| features method {
-			$1->push_back($2);
-			$$ = $1;
-		 }
-		| attributes 
-		| features attributes {
-			$1->insert($1->end(), $2->begin(), $2->end());
-			$$ = $1;
-		}
-		;
 
-attributes : KW_VAR attribute_definitions KW_END ';' {
-				$$ = $2;
-			}
-			;
+		$$->addExpressions(*$2);
 
-attribute_definitions : attribute ';' {
-		$$ = new std::vector<catmint::Feature*>();
-		$$->push_back($1);
-	}
-	| attribute_definitions attribute ';' {
-		$$ = $1;
-		$$->push_back($2);
-	}
-	;
-
-attribute : IDENTIFIER IDENTIFIER {
-		$$ = new catmint::Attribute(@1.first_line, *$2, *$1);
-	}
-	;
-
-method : IDENTIFIER formals '-' '>' IDENTIFIER ':' block KW_END ';' {
-		$$ = new catmint::Method(@1.first_line, *$1, *$5, catmint::ExpressionPtr($7), *$2);
-	}	
-	;
-
-formals : %empty {
-		$$ = new std::vector<catmint::FormalParam*>();
-	} 
-	| formal {
-		$$ = new std::vector<catmint::FormalParam*>();
-		$$->push_back($1);
-	}
-	| formals ',' formal {
-		$1->push_back($3);
-		$$ = $1;
-	}
-	;
-
-formal : IDENTIFIER IDENTIFIER {
-		$$ = new catmint::FormalParam(@1.first_line, *$2, *$1);
-	}
-	;*/
-
-block : expression {
-		$$ = new catmint::Block(@1.first_line);
-		$$->addExpression(Expression($1));
+		delete $2;
 	}
 	| block expression {
 		$$ = $1;
+		if ($$ == nullptr) {
+			$$ = new catmint::Block(@2.first_line);
+		}
+
 		$$->addExpression(Expression($2));
 	}
 	| %empty {
-		$$ = nullptr;		
+		$$ = nullptr;
 	}
 	;
-	
-expression : value_expression 
+
+locals
+  : local {
+		$$ = new std::vector<catmint::Expression*>();
+		$$->push_back($1);
+  }
+	| locals local {
+		$$ = $1;
+		$$->push_back($2);
+	}
+
+  ;
+
+local
+  : IDENTIFIER IDENTIFIER {
+			$$ = new catmint::LocalDefinition(@1.first_line, *$2, *$1);
+	}
+	| IDENTIFIER IDENTIFIER OP_ATTRIB expression {
+		// initialized attribute
+		$$ = new catmint::LocalDefinition(@1.first_line, *$2, *$1, Expression($4));
+
+		delete $1; delete $2;
+	}
+	| IDENTIFIER OP_ATTRIB expression {
+		// initialized attribute but type must be deduced from rhs
+		$$ = new catmint::LocalDefinition(@1.first_line, *$1, std::string("auto"), Expression($3));
+
+		delete $1;
+	}
+  ;
+
+expression : value_expression
 	;
 
 value_expression
@@ -254,7 +295,7 @@ value_expression
   | assignment_expression
   | conditional_expression
   ;
-  
+
 conditional_expression : relational_expression
 	;
 
@@ -264,7 +305,7 @@ relational_expression : additive_expression
 	}
 	;
 
-additive_expression : multiplicative_expression 
+additive_expression : multiplicative_expression
   | additive_expression OP_PLUS multiplicative_expression {
 		auto type = BinOp::Add;
 		auto lhr  = $1;
@@ -282,18 +323,17 @@ additive_expression : multiplicative_expression
         $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
     }
 	;
+
+multiplicative_expression : unary_expression
 	;
 
-multiplicative_expression : unary_expression 
-	;
-
-unary_expression : basic_expression 
+unary_expression : basic_expression
 	 | multiplicative_expression OP_MUL basic_expression {
 		  auto type = BinOp::Mul;
 		  auto lhr  = $1;
 		  auto rhr  = $3;
 
-		  // multiplication		
+		  // multiplication
       $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
    }
 	 | multiplicative_expression OP_DIV basic_expression  {
@@ -306,13 +346,13 @@ unary_expression : basic_expression
     }
 	;
 
-basic_expression 
+basic_expression
   : identifier_expression
 	| negative_expression
 	| parenthesis_expression
 	;
 
-identifier_expression 
+identifier_expression
   : constant_expression
   | KW_SELF {
 		$$ = new catmint::Symbol(@1.first_line, "self");
@@ -322,7 +362,7 @@ identifier_expression
 	}
 	;
 
-constant_expression 
+constant_expression
   : KW_NULL {
 		$$ = new catmint::NullConstant(@1.first_line);
 	}
@@ -336,12 +376,12 @@ constant_expression
     $$ = new catmint::FloatConstant(@1.first_line, $1);
 	}
 	;
-  
+
 parenthesis_expression : OP_OPAREN value_expression OP_CPAREN {
 		$$ = $2;
 	}
 	;
-	
+
 negative_expression
 	: OP_MINUS basic_expression %prec PREC_NEG {
 		auto type  = UnOp::Minus;
@@ -350,7 +390,7 @@ negative_expression
 		$$ = new catmint::UnaryOperator(@1.first_line, type, Expression(value));
 	}
 	;
-	
+
 assignment_expression
   : IDENTIFIER OP_ATTRIB value_expression {
 	  auto& name  = *$1;
@@ -359,7 +399,7 @@ assignment_expression
 	  // simple assignment
     $$ = new catmint::Assignment(@1.first_line, name, Expression(value));
 
-	  delete $1;						
+	  delete $1;
   }
 
 %%
@@ -369,12 +409,12 @@ void printUsage() {
 }
 
 int main(int argc, char** argv) {
-	
+
 	if(argc != 3) {
 		printUsage();
 		return 0;
 	}
-	
+
 	gInputFileName = strdup(argv[1]);
 	yyin = fopen(argv[1], "r");
 
@@ -384,7 +424,6 @@ int main(int argc, char** argv) {
 
 	catmint::ASTSerializer serializer(argv[2]);
 	serializer.visit(gCatmintProgram);
-	
+
 	return 0;
 }
-

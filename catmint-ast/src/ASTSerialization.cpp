@@ -757,7 +757,19 @@ std::unique_ptr<Method> ASTDeserializer::parseMethod(rapidjson::Value &tree) {
                                    tree[keys::Name].GetString(), returnType,
                                    std::move(body));
 
-  if (tree.HasMember(keys::FormalParams)) {
+  if (tree.HasMember(keys::AttributeNodeType)) {
+    auto &formalParams = tree[keys::AttributeNodeType];
+    assert(formalParams.IsArray() && "Formal params must be in an array");
+    for (auto b = formalParams.Begin(), e = formalParams.End(); b != e; ++b) {
+      auto &formalParamTree = *b;
+      assert(formalParamTree.IsObject() && "Expected formal param object");
+      //auto formalParamNode = parseFormalParam(formalParamTree);
+      auto formalParamNode = parseAttribute(formalParamTree);
+      assert(formalParamNode && "Expected non-null formal param");
+      method->addParameter(std::move(formalParamNode));
+    }
+  }
+  /*if (tree.HasMember(keys::FormalParams)) {
     auto &formalParams = tree[keys::FormalParams];
     assert(formalParams.IsArray() && "Formal params must be in an array");
     for (auto b = formalParams.Begin(), e = formalParams.End(); b != e; ++b) {
@@ -767,7 +779,7 @@ std::unique_ptr<Method> ASTDeserializer::parseMethod(rapidjson::Value &tree) {
       assert(formalParamNode && "Expected non-null formal param");
       method->addParameter(std::move(formalParamNode));
     }
-  }
+  }*/
 
   return method;
 }
