@@ -29,16 +29,17 @@ Careful design with pointers and templates should be done so as to exclude possi
 # Comment
 
 class Point from IO
-	# Var region
+  # var region
   int32 m = 3
   float f = 3.4
   String s = "Hello World!"
 
   # inferred, auto return type
-	def show Int a, Int b:
-	  a + b
-	end
+  def show Int a, Int b:
+    a + b
+  end
 
+  # empty method
   def t:
   end
 end
@@ -48,7 +49,8 @@ class Line
 
   # Clearly defined int32 return type
   def int32 show_stuff Float a, Float b, Float c
-    a+(b-c)/2
+    # return word need not be explicit
+    a + (b-c) / 2
   end
 end
 
