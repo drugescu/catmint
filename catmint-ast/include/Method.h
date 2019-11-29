@@ -63,6 +63,8 @@ public:
   std::string getReturnType() const { return returnType; }
 
   Expression *getBody() const { return body.get(); }
+  
+  std::unique_ptr<Expression> getBodyFull() { return std::move(body); }
 
   void setBody(std::unique_ptr<Block> newBody) { body = std::move(newBody); }
 

@@ -12,7 +12,30 @@
 #include "TreeNode.h"
 #include "support/iterator.h"
 
+
 namespace catmint {
+
+
+enum exps {
+  INT = 0,
+  FLOAT,
+  STRING,
+  NULLCT,
+  SYMBOL,
+  BLOCK,
+  BINOP,
+  UNARYOP,
+  CCC,
+  SUBSTR,
+  DISP,
+  SDISP,
+  NEW,
+  IF,
+  WHILE,
+  LOCAL,
+  ASSIGN
+};
+
 /// \brief AST node for an entire catmint program
 ///
 /// This should be the root of the AST
@@ -29,6 +52,51 @@ class Program : public TreeNode {
   };
 
 public:
+
+
+
+int type_of_expr(Expression *E) {
+  if (auto IntCt = dynamic_cast<IntConstant *>(E)) {
+    return INT;
+  } else if (auto FloatCt = dynamic_cast<FloatConstant *>(E)) {
+    return FLOAT;
+  } /*else if (auto StringCt = dynamic_cast<StringConstant *>(E)) {
+    return STRING;
+  } */else if (auto NullCt = dynamic_cast<NullConstant *>(E)) {
+    return NULLCT;
+  } else if (auto Sym = dynamic_cast<Symbol *>(E)) {
+    return SYMBOL;
+  } else if (auto Blk = dynamic_cast<Block *>(E)) {
+    return BLOCK;
+  } else if (auto BinOp = dynamic_cast<BinaryOperator *>(E)) {
+    return BINOP;
+  } /*else if (auto UnaryOp = dynamic_cast<UnaryOperator *>(E)) {
+    return UNARYOP;
+  } */ else if (auto C = dynamic_cast<Cast *>(E)) {
+    return CCC;
+  } /*else if (auto Substr = dynamic_cast<Substring *>(E)) {
+    return SUBSTR;
+  } else if (auto Disp = dynamic_cast<Dispatch *>(E)) {
+    return DISP;
+  } else if (auto SDispatch = dynamic_cast<StaticDispatch *>(E)) {
+    return SDISP;
+  } else if (auto New = dynamic_cast<NewObject *>(E)) {
+    return NEW;
+  } else if (auto If = dynamic_cast<IfStatement *>(E)) {
+    return IF;
+  } else if (auto While = dynamic_cast<WhileStatement *>(E)) {
+    return WHILE;
+  }*/ else if (auto Local = dynamic_cast<LocalDefinition *>(E)) {
+    return LOCAL;
+  } else if (auto Assign = dynamic_cast<Assignment *>(E)) {
+    return ASSIGN;
+  }
+
+  return -1;
+}
+
+
+
   /// \brief Create a node for an entire program
   /// \note This takes ownership of \p classes if provided
   /*explicit Program(int lineNumber, const std::vector<Class *> &classes = {})
@@ -99,8 +167,6 @@ public:
         std::cout << "    Attempting insertion in class Main and method \"main\"" << std::endl;
         // Class will have 1 feature, the main method
         // The main method will have a block of expressions starting with the one given to this constructor
-        //auto feats = new std::vector<Feature *> ();
-        //const auto& formal_parms = new std::vector<FormalParam *> ();
         if (body1.get() == nullptr)
           std::cout << "    Starting expression is null!" << std::endl;
         else {
@@ -116,45 +182,54 @@ public:
           std::cout << "    Starting expression is not null!" << std::endl;
         std::cout.flush();
         
-        auto d = dynamic_cast<Method*>(found_method)->getBody();
+        if (found_method->isMethod())
+          std::cout << "    'main' is indeed a method!" << std::endl;
+        else
+          std::cout << "    'main' is AN ATTRIBUTE!" << std::endl;
+
+        /*auto d = std::move(dynamic_cast<Method*>(found_method)->getBody());
         if (d == nullptr)
           std::cout << "    'main' method body is null!" << std::endl;
         else
-          std::cout << "    'main' method body is not null!" << std::endl;
+          std::cout << "    'main' method body is not null!" << std::endl;*/
 
         std::vector<Expression*> expressions;
-
-        // Place new block // dont forget to separate between before and after
-        //if (startingExpr != nullptr)
-        //  expressions.emplace_back(std::move(startingExpr.get()));
-
-        // Place old block back
-        if (d != nullptr)
-          expressions.emplace_back(std::move(d));
+        
+        // So main method has a block inside woohoo, iterate through it and add its expressions to these expression
+        /*auto b = dynamic_cast<Block*>(d);
+        if (b) std::cout << "expression is a block" << std::endl;
+        else std::cout <<"expression is not a block" << std::endl;
+        
+        std::cout << "type of ex is " << type_of_expr(b) << std::endl;
 
         for (auto c : expressions)
-          std::cout << "Expr : " << c << std::endl;
+          std::cout << "Expr : " << c << std::endl;*/
 
         // Create a new block, add the received block and the currently existing blocks of expressions to it
         //   Then assign it to the method
-        auto new_body = new catmint::Block(lineNumber, expressions);
-        std::cout << "New block now contains back: " << new_body->back();
+        // Place new block // dont forget to separate between before and after
+        //auto new_body = new catmint::Block(lineNumber, expressions);
+        auto new_body = new catmint::Block(lineNumber);
+        new_body->addExpression(std::unique_ptr<Expression>(std::move(startingExpr))); // Starting expression added successfully - but empty
+        // worked cuz starting expr is from std::unique_ptr<Expression> body1
+        // Now ad current expression
+        auto body_full = std::move(dynamic_cast<Method*>(found_method)->getBodyFull());
+        new_body->addExpression(std::unique_ptr<Expression>(std::move(body_full)));        
 
-        //std::unique_ptr<Block> new_body_ptr(new catmint::Block(lineNumber, expressions));
-        std::unique_ptr<Block> new_body_ptr;
+        for (auto expr = new_body->begin(); expr != new_body->end(); expr++) {
+          std::cout << "New block now contains : " << type_of_expr(*expr) << "\n";
+        }
+        std::unique_ptr<Block> new_body_ptr(new_body);
 
-        //new_body_ptr.reset(std::move(new_body));
-        new_body_ptr.reset(new_body);
-
-        std::cout << "Long line -----------------------------------------------";
+        std::cout << "Long line -----------------------------------------------\n";
         std::cout.flush();
 
-        //found_method->setBody(std::move(new_body_ptr));
+        dynamic_cast<Method*>(found_method)->setBody(std::move(new_body_ptr));
         //found_method->setBody(new_body);
 
-        auto t = dynamic_cast<Method*>(found_method)->getBody();
-        std::cout << "Inserted a new body. " << t << std::endl;
-        std::cout.flush();
+        //auto t = dynamic_cast<Method*>(found_method)->getBody();
+        //std::cout << "Inserted a new body. " << t << std::endl;
+        //std::cout.flush();
         
 
         //found_method->setBody(std::move(new_body_ptr));

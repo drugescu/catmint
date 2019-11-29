@@ -39,7 +39,7 @@ public:
     if (E != nullptr)
       expressions.push_back(std::move(E));
   }
-
+  
   /// \brief Add expression and take ownership of it
   void addExpressions(std::vector<Expression *> &Es) {
     for (auto &E : Es) {

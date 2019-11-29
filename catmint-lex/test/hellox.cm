@@ -1,3 +1,4 @@
+t = 3
 class Main from IO
   Int a
 
