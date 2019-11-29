@@ -68,8 +68,11 @@ public:
 
 private:
   std::string returnType;
-  std::unique_ptr<Expression> body;
   FormalParamsType parameters;
+  
+public:
+  std::unique_ptr<Expression> body;
+  
 };
 }
 #endif /* METHOD_H_ */

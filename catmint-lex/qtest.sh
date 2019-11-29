@@ -1,5 +1,5 @@
 #!/bin/sh
-rm -f ./test/hello2.cm.lext
-echo Testing basic hello2.cm on parser and AST generation.
-./bin/catmint-parser ./test/hello2.cm ./test/hello2.cm.lext
-cat ./test/hello2.cm.lext
+rm -f ./test/hellox.cm.lext
+echo Testing basic hellox.cm on parser and AST generation.
+./bin/catmint-parser ./test/hellox.cm ./test/hellox.cm.lext
+cat ./test/hellox.cm.lext

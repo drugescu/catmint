@@ -14,6 +14,10 @@ class Main from IO
 
   def beta:
   end
+  
+  def main:
+    k = 1
+  end
 end
 
 t = 2

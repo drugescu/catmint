@@ -1,0 +1,8 @@
+class Main from IO
+  Int a
+
+  def main:
+    t = 1
+    t = 1
+  end
+end

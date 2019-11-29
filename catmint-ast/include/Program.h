@@ -67,8 +67,9 @@ public:
 
     // Raw pointers, no ownership info required, just have to modify them
     catmint::Class* found_class = nullptr;
-    catmint::Method* found_method = nullptr;
-
+    //catmint::Method* found_method = nullptr;
+    catmint::Feature* found_method = nullptr;
+    
     // Find main class
     for (auto& cls : this->classes) {
       if (cls->getName() == "Main") {
@@ -89,23 +90,43 @@ public:
         std::cout << "  Class Main has feature : " << (*met)->getName() << std::endl;
         if ((*met)->getName() == "main") {
            found_method = dynamic_cast<Method*>(*met);
-           std::cout << "    Class Main has a \"main\" method, here we must insert our stuff." << std::endl;
+           std::cout << "    Class Main has a \"main\" method, here we must insert our stuff : " << found_method->getName() << std::endl;
         }
       }
 
       // If there is a main method, insert into it, if not, create it
       if (found_method != nullptr) {
+        std::cout << "    Attempting insertion in class Main and method \"main\"" << std::endl;
         // Class will have 1 feature, the main method
         // The main method will have a block of expressions starting with the one given to this constructor
         //auto feats = new std::vector<Feature *> ();
         //const auto& formal_parms = new std::vector<FormalParam *> ();
+        if (body1.get() == nullptr)
+          std::cout << "    Starting expression is null!" << std::endl;
+        else {
+          std::cout << "    Starting expression is not null!" << std::endl;
+          std::cout << "    Starting expression line number: " << body1.get()->getLineNumber() << std::endl;
+        }
+        std::cout.flush();
+
         auto startingExpr = std::move(body1);
-        auto d = found_method->getBody();
+        if (startingExpr == nullptr)
+          std::cout << "    Starting expression is null!" << std::endl;
+        else
+          std::cout << "    Starting expression is not null!" << std::endl;
+        std::cout.flush();
+        
+        auto d = dynamic_cast<Method*>(found_method)->getBody();
+        if (d == nullptr)
+          std::cout << "    'main' method body is null!" << std::endl;
+        else
+          std::cout << "    'main' method body is not null!" << std::endl;
+
         std::vector<Expression*> expressions;
 
         // Place new block // dont forget to separate between before and after
-        if (startingExpr != nullptr)
-          expressions.emplace_back(std::move(startingExpr.get()));
+        //if (startingExpr != nullptr)
+        //  expressions.emplace_back(std::move(startingExpr.get()));
 
         // Place old block back
         if (d != nullptr)
@@ -119,18 +140,22 @@ public:
         auto new_body = new catmint::Block(lineNumber, expressions);
         std::cout << "New block now contains back: " << new_body->back();
 
-        std::unique_ptr<catmint::Block> new_body_ptr;
+        //std::unique_ptr<Block> new_body_ptr(new catmint::Block(lineNumber, expressions));
+        std::unique_ptr<Block> new_body_ptr;
 
         //new_body_ptr.reset(std::move(new_body));
+        new_body_ptr.reset(new_body);
 
         std::cout << "Long line -----------------------------------------------";
         std::cout.flush();
 
-        found_method->setBody(std::move(new_body_ptr));
+        //found_method->setBody(std::move(new_body_ptr));
+        //found_method->setBody(new_body);
 
-        auto t = found_method->getBody();
+        auto t = dynamic_cast<Method*>(found_method)->getBody();
         std::cout << "Inserted a new body. " << t << std::endl;
         std::cout.flush();
+        
 
         //found_method->setBody(std::move(new_body_ptr));
         //found_method->setBody(new std::unique_ptr<Block>(reinterpret_cast<Block>(startingExpr)));
@@ -138,6 +163,7 @@ public:
 
       }
       else { // Not found main method of Main class
+        // This part works
         auto feats = new std::vector<Feature *> ();
         //const auto& formal_parms = new std::vector<FormalParam *> ();
         const auto& formal_parms = new std::vector<Attribute *> ();
@@ -156,6 +182,7 @@ public:
     }
     else if (found == false) {
       // Generate a new feature of type method, called main, which is by default executed, and add the expressions to it, line 0 by default
+      // This part also works
 
       // Class will have 1 feature, the main method
       // The main method will have a block of expressions starting with the one given to this constructor
