@@ -88,10 +88,14 @@
 %%
 // Program can consist of blocks of code and classes
 catmint_program : block catmint_classes block {
-    auto b = new catmint::Block(@1.first_line);
-		b->addExpression(Expression($1));
-		b->addExpression(Expression($3));
-		gCatmintProgram = new catmint::Program(@1.first_line, *$2, Expression(b));
+    auto base_before = new catmint::Block(@1.first_line);
+		base_before->addExpression(Expression($1));
+
+    auto base_after = new catmint::Block(@1.first_line);
+		base_after->addExpression(Expression($3));
+
+		//gCatmintProgram = new catmint::Program(@1.first_line, *$2, Expression(b));
+		gCatmintProgram = new catmint::Program(@1.first_line, *$2, Expression(base_before), Expression(base_after));
 	}
 	;
 

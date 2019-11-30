@@ -142,7 +142,66 @@
                     "NodeID": 22,
                     "LineNumber": 18,
                     "Name": "main",
-                    "ReturnType": "auto"
+                    "ReturnType": "auto",
+                    "Body": {
+                        "NodeType": "Block",
+                        "NodeID": 23,
+                        "LineNumber": 1,
+                        "Expressions": [
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 24,
+                                "LineNumber": 1
+                            },
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 25,
+                                "LineNumber": 19,
+                                "Expressions": [
+                                    {
+                                        "NodeType": "LocalDefinition",
+                                        "NodeID": 26,
+                                        "LineNumber": 19,
+                                        "Name": "k",
+                                        "Type": "auto",
+                                        "Initializer": {
+                                            "NodeType": "IntegerConstant",
+                                            "NodeID": 27,
+                                            "LineNumber": 19,
+                                            "Value": 1
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 28,
+                                "LineNumber": 1,
+                                "Expressions": [
+                                    {
+                                        "NodeType": "Block",
+                                        "NodeID": 29,
+                                        "LineNumber": 23,
+                                        "Expressions": [
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 30,
+                                                "LineNumber": 23,
+                                                "Name": "t",
+                                                "Type": "auto",
+                                                "Initializer": {
+                                                    "NodeType": "IntegerConstant",
+                                                    "NodeID": 31,
+                                                    "LineNumber": 23,
+                                                    "Value": 2
+                                                }
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
                 }
             ]
         }

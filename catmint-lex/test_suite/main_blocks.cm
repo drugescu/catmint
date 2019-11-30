@@ -1,8 +1,8 @@
-#t = 3
+t = 3
 class Main from IO
   Int a
 
-  def mainO:
+  def main:
     t = 1
     t = 1
   end

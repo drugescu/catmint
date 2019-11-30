@@ -53,8 +53,6 @@ class Program : public TreeNode {
 
 public:
 
-
-
 int type_of_expr(Expression *E) {
   if (auto IntCt = dynamic_cast<IntConstant *>(E)) {
     return INT;
@@ -123,9 +121,9 @@ int type_of_expr(Expression *E) {
     }
   }*/
 
-  explicit Program(int lineNumber, const std::vector<Class*> &classes = {}, std::unique_ptr<Expression> body1 = nullptr)
+  /* Constructor */
+  explicit Program(int lineNumber, const std::vector<Class*> &classes = {}, std::unique_ptr<Expression> body1 = nullptr, std::unique_ptr<Expression> body2 = nullptr)
     : TreeNode(lineNumber), classes() {
-    // First emplace the classes in the Program
     for (auto cls : classes) {
       this->classes.emplace_back(std::move(cls));
     }
@@ -143,9 +141,6 @@ int type_of_expr(Expression *E) {
       if (cls->getName() == "Main") {
         found = true;
         found_class = cls.get();
-
-        std::cout << "Found Main of type { " << cls->getName() << ", " << typeid(cls).name() << " }" << std::endl;
-
         break;
       }
     }
@@ -167,119 +162,118 @@ int type_of_expr(Expression *E) {
         std::cout << "    Attempting insertion in class Main and method \"main\"" << std::endl;
         // Class will have 1 feature, the main method
         // The main method will have a block of expressions starting with the one given to this constructor
-        if (body1.get() == nullptr)
-          std::cout << "    Starting expression is null!" << std::endl;
-        else {
-          std::cout << "    Starting expression is not null!" << std::endl;
-          std::cout << "    Starting expression line number: " << body1.get()->getLineNumber() << std::endl;
-        }
-        std::cout.flush();
 
         auto startingExpr = std::move(body1);
-        if (startingExpr == nullptr)
-          std::cout << "    Starting expression is null!" << std::endl;
-        else
-          std::cout << "    Starting expression is not null!" << std::endl;
-        std::cout.flush();
+        auto endingExpr   = std::move(body2);
         
         if (found_method->isMethod())
           std::cout << "    'main' is indeed a method!" << std::endl;
-        else
-          std::cout << "    'main' is AN ATTRIBUTE!" << std::endl;
-
-        /*auto d = std::move(dynamic_cast<Method*>(found_method)->getBody());
-        if (d == nullptr)
-          std::cout << "    'main' method body is null!" << std::endl;
-        else
-          std::cout << "    'main' method body is not null!" << std::endl;*/
+        else {
+          std::cout << "Error: 'main' of 'Main' is not a method!" << std::endl;
+          exit(1);
+        }
 
         std::vector<Expression*> expressions;
         
-        // So main method has a block inside woohoo, iterate through it and add its expressions to these expression
-        /*auto b = dynamic_cast<Block*>(d);
-        if (b) std::cout << "expression is a block" << std::endl;
-        else std::cout <<"expression is not a block" << std::endl;
-        
-        std::cout << "type of ex is " << type_of_expr(b) << std::endl;
-
-        for (auto c : expressions)
-          std::cout << "Expr : " << c << std::endl;*/
-
         // Create a new block, add the received block and the currently existing blocks of expressions to it
-        //   Then assign it to the method
-        // Place new block // dont forget to separate between before and after
-        //auto new_body = new catmint::Block(lineNumber, expressions);
+        // Place new block
         auto new_body = new catmint::Block(lineNumber);
+
+        // Add pre- and post- block
         new_body->addExpression(std::unique_ptr<Expression>(std::move(startingExpr))); // Starting expression added successfully - but empty
-        // worked cuz starting expr is from std::unique_ptr<Expression> body1
-        // Now ad current expression
+
+        // Current content of main method
         auto body_full = std::move(dynamic_cast<Method*>(found_method)->getBodyFull());
         new_body->addExpression(std::unique_ptr<Expression>(std::move(body_full)));        
-
-        for (auto expr = new_body->begin(); expr != new_body->end(); expr++) {
-          std::cout << "New block now contains : " << type_of_expr(*expr) << "\n";
-        }
-        std::unique_ptr<Block> new_body_ptr(new_body);
-
-        std::cout << "Long line -----------------------------------------------\n";
-        std::cout.flush();
-
-        dynamic_cast<Method*>(found_method)->setBody(std::move(new_body_ptr));
-        //found_method->setBody(new_body);
-
-        //auto t = dynamic_cast<Method*>(found_method)->getBody();
-        //std::cout << "Inserted a new body. " << t << std::endl;
-        //std::cout.flush();
         
+        // Add post block
+        new_body->addExpression(std::unique_ptr<Expression>(std::move(endingExpr))); // Starting expression added successfully - but empty
 
-        //found_method->setBody(std::move(new_body_ptr));
-        //found_method->setBody(new std::unique_ptr<Block>(reinterpret_cast<Block>(startingExpr)));
-        // /found_method->setBody(std::move(new_body_ptr));
-
+        // Replace body of main with the new body
+        std::unique_ptr<Block> new_body_ptr(new_body);
+        dynamic_cast<Method*>(found_method)->setBody(std::move(new_body_ptr));
       }
-      else { // Not found main method of Main class
-        // This part works
+      else { // Not found 'main' method of 'Main' class - must add it
+        std::cout << "[LOG] Not found 'main' method" << std::endl;
+        fflush(stdout);
         auto feats = new std::vector<Feature *> ();
-        //const auto& formal_parms = new std::vector<FormalParam *> ();
         const auto& formal_parms = new std::vector<Attribute *> ();
+        
+        // Get surrounding expressions
         auto startingExpr = std::move(body1);
+        auto endingExpr = std::move(body2);
 
-        auto main_method = new Method(0, std::string("main"), std::string("Void"), std::move(startingExpr), *formal_parms);
+        auto main_method = new Method(0, std::string("main"), std::string("Void"), nullptr, *formal_parms);
         auto main_method_ptr = std::unique_ptr<Feature>(main_method);
+
+        // Also add ending expression
+        auto new_body = new catmint::Block(lineNumber);
+        new_body->addExpression(std::unique_ptr<Expression>(std::move(startingExpr))); // Starting expression added successfully - but empty
+        new_body->addExpression(std::unique_ptr<Expression>(std::move(endingExpr))); // Starting expression added successfully - but empty
+
+        // Now set new body
+        std::unique_ptr<Block> new_body_ptr(new_body);
+        main_method->setBody(std::move(new_body_ptr));
 
         // Place the main_method into the list of features
         feats->emplace_back(std::move(main_method));
 
-        // Place into main class a new features
-        found_class->addFeature(std::move(main_method_ptr));//std::move(*(feats->back())));
+        // Place into main class
+        found_class->addFeature(std::move(main_method_ptr));
       }
 
     }
     else if (found == false) {
       // Generate a new feature of type method, called main, which is by default executed, and add the expressions to it, line 0 by default
-      // This part also works
-
       // Class will have 1 feature, the main method
       // The main method will have a block of expressions starting with the one given to this constructor
+      
+
       auto feats = new std::vector<Feature *> ();
-      //const auto& formal_parms = new std::vector<FormalParam *> ();
       const auto& formal_parms = new std::vector<Attribute *> ();
+      std::cout << "autoed feats and formal_parms." << std::endl;
+      fflush(stdout);
+      
+      // Get surrounding expressions
       auto startingExpr = std::move(body1);
+      auto endingExpr = std::move(body2);
 
-      auto main_method = new Method(0, std::string("main"), std::string("Void"), std::move(startingExpr), *formal_parms);
+      std::cout << "autoed startingExpr and endingExpr." << std::endl;
+      fflush(stdout);
+      auto main_method = new Method(0, std::string("main"), std::string("Void"), nullptr, *formal_parms);
+      std::cout << "autoed main_method." << std::endl;
+      fflush(stdout);
 
+      // Also add ending expression
+      auto starting_body = new catmint::Block(lineNumber);
+      starting_body->addExpression(std::unique_ptr<Expression>(std::move(startingExpr))); // Starting expression added successfully - but empty
+      starting_body->addExpression(std::unique_ptr<Expression>(std::move(endingExpr))); // Starting expression added successfully - but empty
+      std::cout << "autoed starting_body." << std::endl;
+      fflush(stdout);
+
+      // Now set new body
+      std::unique_ptr<Block> starting_body_ptr(starting_body);
+      main_method->setBody(std::move(starting_body_ptr));
+      std::cout << "set body of main method." << std::endl;
+      fflush(stdout);
+      
       // Place the main_method into the list of features
       feats->emplace_back(std::move(main_method));
-
-      // Do also place here variable declaraions FormalParams
+      std::cout << "emplaced main in feats." << std::endl;
+      fflush(stdout);
 
       // Generate a new, empty main class with line number 0
       auto main = new Class(0, "Main", "", *feats);
+      std::cout << "autoed Main class." << std::endl;
+      fflush(stdout);
 
       // Place this in the classesl
       this->classes.emplace_back(main);
+      std::cout << "emplaced new Main class in list of classes." << std::endl;
+      fflush(stdout);
     }
   }
+  
 
   /// \brief Add a class and take ownership of it - don't add a class that already exist, or merge them - not rgiht now
   void addClass(std::unique_ptr<Class> c) { classes.push_back(std::move(c)); }

@@ -1,0 +1,26 @@
+#1
+#a=1
+
+class Main from IO
+  Int a = a + 3
+
+  def t:
+    Int a = 3
+    b = b - 1 / 2 * 4 + (a)
+  end
+
+  def alpha:
+  end
+
+  def beta:
+  end
+  
+  def main:
+    k = 1
+  end
+end
+
+t = 2
+#t-1
+#a=2
+#4.03

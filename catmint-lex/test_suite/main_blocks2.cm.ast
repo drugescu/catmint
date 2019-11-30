@@ -1,0 +1,109 @@
+{
+    "NodeType": "Program",
+    "NodeID": 0,
+    "LineNumber": 1,
+    "Classes": [
+        {
+            "NodeType": "Class",
+            "NodeID": 1,
+            "LineNumber": 2,
+            "Name": "Main",
+            "Parent": "IO",
+            "Features": [
+                {
+                    "NodeType": "Attribute",
+                    "NodeID": 2,
+                    "LineNumber": 3,
+                    "Name": "a",
+                    "Type": "Int"
+                },
+                {
+                    "NodeType": "Method",
+                    "NodeID": 3,
+                    "LineNumber": 5,
+                    "Name": "mainO",
+                    "ReturnType": "auto",
+                    "Body": {
+                        "NodeType": "Block",
+                        "NodeID": 4,
+                        "LineNumber": 6,
+                        "Expressions": [
+                            {
+                                "NodeType": "LocalDefinition",
+                                "NodeID": 5,
+                                "LineNumber": 6,
+                                "Name": "t",
+                                "Type": "auto",
+                                "Initializer": {
+                                    "NodeType": "IntegerConstant",
+                                    "NodeID": 6,
+                                    "LineNumber": 6,
+                                    "Value": 1
+                                }
+                            },
+                            {
+                                "NodeType": "LocalDefinition",
+                                "NodeID": 7,
+                                "LineNumber": 7,
+                                "Name": "t",
+                                "Type": "auto",
+                                "Initializer": {
+                                    "NodeType": "IntegerConstant",
+                                    "NodeID": 8,
+                                    "LineNumber": 7,
+                                    "Value": 1
+                                }
+                            }
+                        ]
+                    }
+                },
+                {
+                    "NodeType": "Method",
+                    "NodeID": 9,
+                    "LineNumber": 0,
+                    "Name": "main",
+                    "ReturnType": "Void",
+                    "Body": {
+                        "NodeType": "Block",
+                        "NodeID": 10,
+                        "LineNumber": 1,
+                        "Expressions": [
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 11,
+                                "LineNumber": 1
+                            },
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 12,
+                                "LineNumber": 1,
+                                "Expressions": [
+                                    {
+                                        "NodeType": "Block",
+                                        "NodeID": 13,
+                                        "LineNumber": 10,
+                                        "Expressions": [
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 14,
+                                                "LineNumber": 10,
+                                                "Name": "s",
+                                                "Type": "auto",
+                                                "Initializer": {
+                                                    "NodeType": "IntegerConstant",
+                                                    "NodeID": 15,
+                                                    "LineNumber": 10,
+                                                    "Value": 2
+                                                }
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ]
+}
