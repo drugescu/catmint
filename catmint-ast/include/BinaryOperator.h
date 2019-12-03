@@ -21,6 +21,9 @@ public:
 
     LessThan,
     LessThanEqual,
+    GreaterThan,
+    GreaterThanEqual,
+    NotEqual,
     Equal,
     FirstComparison = LessThan,
     LastComparison = Equal,

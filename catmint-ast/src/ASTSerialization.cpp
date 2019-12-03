@@ -322,10 +322,16 @@ static std::string getBinOpKindSerialization(BinaryOperator::BinOpKind opKind) {
     return "/";
   case BinaryOperator::LessThan:
     return "<";
+  case BinaryOperator::GreaterThan:
+    return ">";
   case BinaryOperator::LessThanEqual:
     return "<=";
+  case BinaryOperator::GreaterThanEqual:
+    return ">=";
   case BinaryOperator::Equal:
     return "==";
+  case BinaryOperator::NotEqual:
+    return "!=";
   default:
     assert(false && "Unhandled binary operator");
   }

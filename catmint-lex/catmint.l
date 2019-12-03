@@ -27,6 +27,8 @@ static int gColumnNumber = 1;
 "def"         { countColumns(); return KW_DEF; }
 "var"		      { countColumns(); return KW_VAR; }
 "if"		      { countColumns(); return KW_IF; }
+"do"		      { countColumns(); return KW_DO; }
+"while"	      { countColumns(); return KW_WHILE; }
 "then"		    { countColumns(); return KW_THEN; }
 "else"		    { countColumns();  return KW_ELSE; }
 "end"		      { countColumns();  return KW_END; }
@@ -35,6 +37,7 @@ static int gColumnNumber = 1;
 "<="			    { countColumns(); return OP_LTE; }
 ">="			    { countColumns(); return OP_GTE; }
 "=="			    { countColumns(); return OP_ISE; }
+"!="			    { countColumns(); return OP_ISNE; }
 "="			      { countColumns(); return OP_ATTRIB; }
 "+"           { countColumns(); return OP_PLUS; }
 "-"           { countColumns(); return OP_MINUS; }

@@ -49,11 +49,12 @@
 
 %start catmint_program
 
-%token KW_CLASS KW_SELF KW_FROM KW_END KW_VAR KW_NULL
+%token KW_WHILE
+%token KW_CLASS KW_SELF KW_FROM KW_END KW_VAR KW_NULL KW_DO
 %token KW_CONSTRUCTOR
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
 
-%token OP_LT OP_GT OP_LTE OP_GTE OP_ISE
+%token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE
 %token OP_ATTRIB OP_DIV OP_PLUS OP_MINUS OP_MUL
 %token OP_OPAREN OP_CPAREN OP_COLON
 
@@ -65,10 +66,25 @@
 %token <intValue> INTEGER_CONSTANT
 
 // Expressions
-%type <expression> expression conditional_expression value_expression
-%type <expression> relational_expression additive_expression multiplicative_expression
-%type <expression> unary_expression basic_expression local //formal
-%type <expression> identifier_expression parenthesis_expression negative_expression constant_expression assignment_expression
+%type <expression> 
+expression 
+  value_expression
+    additive_expression
+      multiplicative_expression
+        unary_expression
+          basic_expression
+            identifier_expression 
+              constant_expression
+            parenthesis_expression 
+            negative_expression
+    assignment_expression
+    conditional_expression
+      relational_expression
+        // additive_expression
+	void_expression
+	  while_expression
+
+%type <expression> local //formal
 %type <expressions> locals
 %type <block> block
 
@@ -96,6 +112,14 @@ catmint_program : block catmint_classes block {
 
 		//gCatmintProgram = new catmint::Program(@1.first_line, *$2, Expression(b));
 		gCatmintProgram = new catmint::Program(@1.first_line, *$2, Expression(base_before), Expression(base_after));
+	}
+	| block {
+    auto base = new catmint::Block(@1.first_line);
+		base->addExpression(Expression($1));
+
+    auto class_vector = new std::vector<catmint::Class*>();
+		
+    gCatmintProgram = new catmint::Program(@1.first_line, *class_vector, Expression(base), nullptr);
 	}
 	;
 
@@ -292,6 +316,7 @@ local
   ;
 
 expression : value_expression
+  | void_expression	
 	;
 
 value_expression
@@ -306,6 +331,21 @@ conditional_expression : relational_expression
 relational_expression : additive_expression
 	| relational_expression OP_LT additive_expression {
 		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::LessThan, Expression($1), Expression($3));
+	}
+	| relational_expression OP_GT additive_expression {
+		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::GreaterThan, Expression($1), Expression($3));
+	}
+	| relational_expression OP_GTE additive_expression {
+		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::GreaterThanEqual, Expression($1), Expression($3));
+	}
+	| relational_expression OP_LTE additive_expression {
+		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::LessThanEqual, Expression($1), Expression($3));
+	}
+	| relational_expression OP_ISE additive_expression {
+		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::Equal, Expression($1), Expression($3));
+	}
+	| relational_expression OP_ISNE additive_expression {
+		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::NotEqual, Expression($1), Expression($3));
 	}
 	;
 
@@ -405,6 +445,22 @@ assignment_expression
 
 	  delete $1;
   }
+  ;
+
+void_expression
+  : while_expression
+  ;
+  
+while_expression	
+	: KW_WHILE value_expression KW_DO block KW_END {
+		auto cond 		 = $2;
+		auto block_while = $4;
+		
+		$$ = new catmint::WhileStatement(@1.first_line,
+									  Expression(cond),
+									  Expression(block_while));
+    }
+    ;
 
 %%
 
