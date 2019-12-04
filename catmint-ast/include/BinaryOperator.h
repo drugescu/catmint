@@ -14,6 +14,13 @@ public:
   enum BinOpKind {
     Add,
     Sub,
+    Mod,
+    Pow,
+    And,
+    Or,
+    Xor,
+    LShift,
+    RShift,
     Mul,
     Div,
     FirstArithmetic = Add,

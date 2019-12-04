@@ -54,7 +54,7 @@
 %token KW_CONSTRUCTOR
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
 
-%token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE OP_NOT
+%token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE OP_NOT OP_AND OP_OR OP_XOR OP_LSHIFT OP_RSHIFT
 %token OP_ATTRIB OP_DIV OP_PLUS OP_MINUS OP_MUL
 %token OP_OPAREN OP_CPAREN OP_COLON
 
@@ -72,19 +72,24 @@ expression
   value_expression
     additive_expression
       multiplicative_expression
-        unary_expression
-          basic_expression
-            identifier_expression 
-              constant_expression
-            parenthesis_expression 
-            negative_expression
-            if_expression
+        pow_expression
+          logic_expression
+            shift_expression
+              unary_expression
+                basic_expression
+                  identifier_expression 
+                    constant_expression
+                  parenthesis_expression 
+                  negative_expression
+                  if_expression
     conditional_expression
         // additive_expression
+    dispatch_expression
 	void_expression
 	  while_expression
 
-%type <expressions> locals
+//%type <expressions> locals
+%type <expressions> dispatch_arguments
 %type <block> block
 
 %type <features> features attributes attribute_definitions
@@ -97,13 +102,11 @@ expression
 //%type <formals> formals
 
 
-
-%left OP_PLUS OP_MINUS
-%left OP_MUL OP_DIV
+%left OP_MOD OP_PLUS OP_MINUS OP_MUL OP_DIV OP_POW OP_AND OP_OR OP_XOR OP_NOT OP_LSHIFT OP_RHIFT
 %left PREC_NEG
 %nonassoc <operator> PREC_REL
 %left '[' ']' '{' '}' KW_IF KW_WHILE
-%left KW_NOT
+//%left OP_NOT
 
 %%
 // Program can consist of blocks of code and classes
@@ -266,17 +269,7 @@ method
 // ------------------------------------------------------------------------------------------------------------------
 
 block
-  : block locals {
-	  $$ = $1;
-		if ($$ == nullptr) {
-			$$ = new catmint::Block(@2.first_line);
-		}
-
-		$$->addExpressions(*$2);
-
-		delete $2;
-	}
-	| block expression {
+  : block expression {
 		$$ = $1;
 		if ($$ == nullptr) {
 			$$ = new catmint::Block(@2.first_line);
@@ -288,18 +281,6 @@ block
 		$$ = nullptr;
 	}
 	;
-
-locals
-  : local {
-		$$ = new std::vector<catmint::Expression*>();
-		$$->push_back($1);
-  }
-	| locals local {
-		$$ = $1;
-		$$->push_back($2);
-	}
-
-  ;
 
 local
   : IDENTIFIER IDENTIFIER {
@@ -326,6 +307,7 @@ expression
 
 value_expression
   : conditional_expression
+  | local
   | additive_expression
   ;
 
@@ -366,26 +348,111 @@ additive_expression : multiplicative_expression
 
 		// subtraction
         $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
-    }
+  }
+  | additive_expression OP_MOD multiplicative_expression {
+		auto type = BinOp::Mod;
+		auto lhr  = $1;
+		auto rhr  = $3;
+
+		// modulus
+        $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+  }
 	;
 
-multiplicative_expression : unary_expression
-   | multiplicative_expression OP_MUL basic_expression {
-		  auto type = BinOp::Mul;
-		  auto lhr  = $1;
-		  auto rhr  = $3;
+multiplicative_expression 
+  : pow_expression
+  | multiplicative_expression OP_MUL pow_expression {
+    auto type = BinOp::Mul;
+    auto lhr  = $1;
+    auto rhr  = $3;
 
-		  // multiplication
-      $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
-   }
-	 | multiplicative_expression OP_DIV basic_expression  {
-		  auto type = BinOp::Div;
-		  auto lhr  = $1;
-		  auto rhr  = $3;
+    // multiplication
+    $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+  }
+  | multiplicative_expression OP_DIV pow_expression  {
+    auto type = BinOp::Div;
+    auto lhr  = $1;
+    auto rhr  = $3;
 
-		  // division
-      $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
-    }
+    // division
+    $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+  }
+	;
+	
+pow_expression
+  : logic_expression
+  | pow_expression OP_POW basic_expression {
+    auto type = BinOp::Pow;
+    auto lhr  = $1;
+    auto rhr  = $3;
+
+    // power of
+    $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+  }
+  ;
+
+logic_expression
+  : shift_expression
+  | logic_expression OP_XOR basic_expression {
+    auto type = BinOp::Xor;
+    auto lhr  = $1;
+    auto rhr  = $3;
+
+    // power of
+    $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+  }
+  | logic_expression OP_AND basic_expression {
+    auto type = BinOp::And;
+    auto lhr  = $1;
+    auto rhr  = $3;
+
+    // power of
+    $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+  }
+  | logic_expression OP_OR basic_expression {
+    auto type = BinOp::Or;
+    auto lhr  = $1;
+    auto rhr  = $3;
+
+    // power of
+    $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+  }
+  ;
+
+shift_expression
+  : unary_expression
+  | logic_expression OP_LSHIFT basic_expression {
+    auto type = BinOp::LShift;
+    auto lhr  = $1;
+    auto rhr  = $3;
+
+    // power of
+    $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+  }
+  | logic_expression OP_RSHIFT basic_expression {
+    auto type = BinOp::RShift;
+    auto lhr  = $1;
+    auto rhr  = $3;
+
+    // power of
+    $$ = new catmint::BinaryOperator(@1.first_line, type,	Expression(lhr), Expression(rhr));
+  }
+  ;
+
+unary_expression 
+  : basic_expression
+  | OP_NOT basic_expression {
+		// logic negation						
+		$$ = new catmint::UnaryOperator(@1.first_line, UnOp::Not, Expression($2));
+	}
+	;
+
+basic_expression
+  : identifier_expression
+	| negative_expression
+	| parenthesis_expression
+	| if_expression
+	| dispatch_expression
 	;
 
 if_expression
@@ -412,21 +479,33 @@ if_expression
 								   Expression(block_else));
     }
   ;
-    
-unary_expression 
-  : basic_expression
-  | OP_NOT basic_expression {
-		// logic negation						
-		$$ = new catmint::UnaryOperator(@1.first_line, UnOp::Not, Expression($2));
+
+dispatch_expression
+	: IDENTIFIER OP_OPAREN dispatch_arguments OP_CPAREN {
+		auto  obj  = nullptr;		
+		auto& name = *$1;
+		auto& args = *$3;
+
+		// simple dispatch
+		$$ = new catmint::Dispatch(@1.first_line, name, obj, args);
+		
+		delete $1; delete $3;						
 	}
 	;
-
-basic_expression
-  : identifier_expression
-	| negative_expression
-	| parenthesis_expression
-	| if_expression
-	;
+	
+dispatch_arguments
+  : %empty {
+      $$ = new std::vector<catmint::Expression*>();
+  }
+  | value_expression {
+      $$ = new std::vector<catmint::Expression*>();
+      $$->push_back($1);
+  }
+  | dispatch_arguments ',' value_expression {
+      $$ = $1;		
+    $$->push_back($3);
+  }
+  ;
 
 identifier_expression
   : constant_expression
@@ -474,7 +553,7 @@ void_expression
 while_expression
     : KW_WHILE value_expression OP_COLON block KW_END {
 		auto cond 		 = $2;
-		auto block_while = $4;
+		auto block_while = ($4 != nullptr) ? $4 : new catmint::Block(@3.first_line);;
 		
 		$$ = new catmint::WhileStatement(@1.first_line,
 									  Expression(cond),

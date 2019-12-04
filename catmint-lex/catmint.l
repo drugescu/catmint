@@ -43,6 +43,13 @@ static int gColumnNumber = 1;
 "-"           { countColumns(); return OP_MINUS; }
 "*"           { countColumns(); return OP_MUL; }
 "/"           { countColumns(); return OP_DIV; }
+"%"           { countColumns(); return OP_MOD; }
+"**"          { countColumns(); return OP_POW; }
+"^"           { countColumns(); return OP_XOR; }
+"&"           { countColumns(); return OP_AND; }
+"<<"          { countColumns(); return OP_LSHIFT; }
+">>"          { countColumns(); return OP_RSHIFT; }
+"|"           { countColumns(); return OP_OR; }
 "("           { countColumns(); return OP_OPAREN; }
 ")"           { countColumns(); return OP_CPAREN; }
 "!"           { countColumns(); return OP_NOT; }

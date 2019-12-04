@@ -1,0 +1,332 @@
+{
+    "NodeType": "Program",
+    "NodeID": 0,
+    "LineNumber": 1,
+    "Classes": [
+        {
+            "NodeType": "Class",
+            "NodeID": 1,
+            "LineNumber": 0,
+            "Name": "Main",
+            "Features": [
+                {
+                    "NodeType": "Method",
+                    "NodeID": 2,
+                    "LineNumber": 0,
+                    "Name": "main",
+                    "ReturnType": "Void",
+                    "Body": {
+                        "NodeType": "Block",
+                        "NodeID": 3,
+                        "LineNumber": 1,
+                        "Expressions": [
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 4,
+                                "LineNumber": 1,
+                                "Expressions": [
+                                    {
+                                        "NodeType": "Block",
+                                        "NodeID": 5,
+                                        "LineNumber": 1,
+                                        "Expressions": [
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 6,
+                                                "LineNumber": 1,
+                                                "Name": "a",
+                                                "Type": "int",
+                                                "Initializer": {
+                                                    "NodeType": "IntegerConstant",
+                                                    "NodeID": 7,
+                                                    "LineNumber": 1,
+                                                    "Value": 3
+                                                }
+                                            },
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 8,
+                                                "LineNumber": 2,
+                                                "Name": "c",
+                                                "Type": "float"
+                                            },
+                                            {
+                                                "NodeType": "BinaryOperator",
+                                                "NodeID": 9,
+                                                "LineNumber": 3,
+                                                "OperatorKind": "%",
+                                                "LeftHandSide": {
+                                                    "NodeType": "BinaryOperator",
+                                                    "NodeID": 10,
+                                                    "LineNumber": 3,
+                                                    "OperatorKind": "*",
+                                                    "LeftHandSide": {
+                                                        "NodeType": "Dispatch",
+                                                        "NodeID": 11,
+                                                        "LineNumber": 3,
+                                                        "Name": "print",
+                                                        "Arguments": [
+                                                            {
+                                                                "NodeType": "Symbol",
+                                                                "NodeID": 12,
+                                                                "LineNumber": 3,
+                                                                "Name": "a"
+                                                            }
+                                                        ]
+                                                    },
+                                                    "RightHandSide": {
+                                                        "NodeType": "BinaryOperator",
+                                                        "NodeID": 13,
+                                                        "LineNumber": 3,
+                                                        "OperatorKind": "**",
+                                                        "LeftHandSide": {
+                                                            "NodeType": "Dispatch",
+                                                            "NodeID": 14,
+                                                            "LineNumber": 3,
+                                                            "Name": "print",
+                                                            "Arguments": [
+                                                                {
+                                                                    "NodeType": "Symbol",
+                                                                    "NodeID": 15,
+                                                                    "LineNumber": 3,
+                                                                    "Name": "b"
+                                                                }
+                                                            ]
+                                                        },
+                                                        "RightHandSide": {
+                                                            "NodeType": "Dispatch",
+                                                            "NodeID": 16,
+                                                            "LineNumber": 3,
+                                                            "Name": "fib",
+                                                            "Arguments": [
+                                                                {
+                                                                    "NodeType": "IntegerConstant",
+                                                                    "NodeID": 17,
+                                                                    "LineNumber": 3,
+                                                                    "Value": 3
+                                                                }
+                                                            ]
+                                                        }
+                                                    }
+                                                },
+                                                "RightHandSide": {
+                                                    "NodeType": "IntegerConstant",
+                                                    "NodeID": 18,
+                                                    "LineNumber": 3,
+                                                    "Value": 2
+                                                }
+                                            },
+                                            {
+                                                "NodeType": "BinaryOperator",
+                                                "NodeID": 19,
+                                                "LineNumber": 4,
+                                                "OperatorKind": "^",
+                                                "LeftHandSide": {
+                                                    "NodeType": "Symbol",
+                                                    "NodeID": 20,
+                                                    "LineNumber": 4,
+                                                    "Name": "a"
+                                                },
+                                                "RightHandSide": {
+                                                    "NodeType": "Symbol",
+                                                    "NodeID": 21,
+                                                    "LineNumber": 4,
+                                                    "Name": "b"
+                                                }
+                                            },
+                                            {
+                                                "NodeType": "BinaryOperator",
+                                                "NodeID": 22,
+                                                "LineNumber": 5,
+                                                "OperatorKind": "&",
+                                                "LeftHandSide": {
+                                                    "NodeType": "IntegerConstant",
+                                                    "NodeID": 23,
+                                                    "LineNumber": 5,
+                                                    "Value": 3
+                                                },
+                                                "RightHandSide": {
+                                                    "NodeType": "IntegerConstant",
+                                                    "NodeID": 24,
+                                                    "LineNumber": 5,
+                                                    "Value": 2
+                                                }
+                                            },
+                                            {
+                                                "NodeType": "IfStatement",
+                                                "NodeID": 25,
+                                                "LineNumber": 6,
+                                                "Condition": {
+                                                    "NodeType": "BinaryOperator",
+                                                    "NodeID": 26,
+                                                    "LineNumber": 6,
+                                                    "OperatorKind": "&",
+                                                    "LeftHandSide": {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 27,
+                                                        "LineNumber": 6,
+                                                        "Name": "a"
+                                                    },
+                                                    "RightHandSide": {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 28,
+                                                        "LineNumber": 6,
+                                                        "Name": "b"
+                                                    }
+                                                },
+                                                "Then": {
+                                                    "NodeType": "Block",
+                                                    "NodeID": 29,
+                                                    "LineNumber": 7,
+                                                    "Expressions": [
+                                                        {
+                                                            "NodeType": "Dispatch",
+                                                            "NodeID": 30,
+                                                            "LineNumber": 7,
+                                                            "Name": "print",
+                                                            "Arguments": [
+                                                                {
+                                                                    "NodeType": "Symbol",
+                                                                    "NodeID": 31,
+                                                                    "LineNumber": 7,
+                                                                    "Name": "x"
+                                                                }
+                                                            ]
+                                                        }
+                                                    ]
+                                                },
+                                                "Else": {
+                                                    "NodeType": "Block",
+                                                    "NodeID": 32,
+                                                    "LineNumber": 9,
+                                                    "Expressions": [
+                                                        {
+                                                            "NodeType": "Dispatch",
+                                                            "NodeID": 33,
+                                                            "LineNumber": 9,
+                                                            "Name": "print",
+                                                            "Arguments": [
+                                                                {
+                                                                    "NodeType": "Symbol",
+                                                                    "NodeID": 34,
+                                                                    "LineNumber": 9,
+                                                                    "Name": "y"
+                                                                }
+                                                            ]
+                                                        }
+                                                    ]
+                                                }
+                                            },
+                                            {
+                                                "NodeType": "BinaryOperator",
+                                                "NodeID": 35,
+                                                "LineNumber": 11,
+                                                "OperatorKind": "^",
+                                                "LeftHandSide": {
+                                                    "NodeType": "BinaryOperator",
+                                                    "NodeID": 36,
+                                                    "LineNumber": 11,
+                                                    "OperatorKind": "|",
+                                                    "LeftHandSide": {
+                                                        "NodeType": "BinaryOperator",
+                                                        "NodeID": 37,
+                                                        "LineNumber": 11,
+                                                        "OperatorKind": "&",
+                                                        "LeftHandSide": {
+                                                            "NodeType": "Symbol",
+                                                            "NodeID": 38,
+                                                            "LineNumber": 11,
+                                                            "Name": "a"
+                                                        },
+                                                        "RightHandSide": {
+                                                            "NodeType": "Symbol",
+                                                            "NodeID": 39,
+                                                            "LineNumber": 11,
+                                                            "Name": "b"
+                                                        }
+                                                    },
+                                                    "RightHandSide": {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 40,
+                                                        "LineNumber": 11,
+                                                        "Name": "d"
+                                                    }
+                                                },
+                                                "RightHandSide": {
+                                                    "NodeType": "Symbol",
+                                                    "NodeID": 41,
+                                                    "LineNumber": 11,
+                                                    "Name": "c"
+                                                }
+                                            },
+                                            {
+                                                "NodeType": "BinaryOperator",
+                                                "NodeID": 42,
+                                                "LineNumber": 12,
+                                                "OperatorKind": "+",
+                                                "LeftHandSide": {
+                                                    "NodeType": "IntegerConstant",
+                                                    "NodeID": 43,
+                                                    "LineNumber": 12,
+                                                    "Value": 3
+                                                },
+                                                "RightHandSide": {
+                                                    "NodeType": "BinaryOperator",
+                                                    "NodeID": 44,
+                                                    "LineNumber": 12,
+                                                    "OperatorKind": "&",
+                                                    "LeftHandSide": {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 45,
+                                                        "LineNumber": 12,
+                                                        "Name": "a"
+                                                    },
+                                                    "RightHandSide": {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 46,
+                                                        "LineNumber": 12,
+                                                        "Name": "b"
+                                                    }
+                                                }
+                                            },
+                                            {
+                                                "NodeType": "BinaryOperator",
+                                                "NodeID": 47,
+                                                "LineNumber": 13,
+                                                "OperatorKind": "&",
+                                                "LeftHandSide": {
+                                                    "NodeType": "BinaryOperator",
+                                                    "NodeID": 48,
+                                                    "LineNumber": 13,
+                                                    "OperatorKind": "<<",
+                                                    "LeftHandSide": {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 49,
+                                                        "LineNumber": 13,
+                                                        "Name": "a"
+                                                    },
+                                                    "RightHandSide": {
+                                                        "NodeType": "IntegerConstant",
+                                                        "NodeID": 50,
+                                                        "LineNumber": 13,
+                                                        "Value": 3
+                                                    }
+                                                },
+                                                "RightHandSide": {
+                                                    "NodeType": "Symbol",
+                                                    "NodeID": 51,
+                                                    "LineNumber": 13,
+                                                    "Name": "b"
+                                                }
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ]
+}

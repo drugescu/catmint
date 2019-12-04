@@ -38,7 +38,7 @@ do
     fi
   
   else
-    echo "[ [ ${RED}ERROR${NC} ] ] : reference AST output does not exist!"
+    echo "[ ${RED}ERROR${NC} ] : reference AST output does not exist!"
     errors=$((errors+1))
   fi
   # cat $file.ast

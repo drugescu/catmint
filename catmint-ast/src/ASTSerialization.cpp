@@ -320,6 +320,20 @@ static std::string getBinOpKindSerialization(BinaryOperator::BinOpKind opKind) {
     return "*";
   case BinaryOperator::Div:
     return "/";
+  case BinaryOperator::Mod:
+    return "%";
+  case BinaryOperator::Pow:
+    return "**";
+  case BinaryOperator::And:
+    return "&";
+  case BinaryOperator::Or:
+    return "|";    
+  case BinaryOperator::Xor:
+    return "^";    
+  case BinaryOperator::LShift:
+    return "<<";    
+  case BinaryOperator::RShift:
+    return ">>";    
   case BinaryOperator::LessThan:
     return "<";
   case BinaryOperator::GreaterThan:
@@ -557,7 +571,7 @@ bool ASTSerializer::visit(WhileStatement *While) {
 
   writer->Key(keys::Body);
   auto body = While->getBody();
-  assert(body && "While doesn't have body");
+  //assert(body && "While doesn't have body");
   return visit(body);
 }
 
