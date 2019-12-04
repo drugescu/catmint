@@ -1,0 +1,177 @@
+{
+    "NodeType": "Program",
+    "NodeID": 0,
+    "LineNumber": 1,
+    "Classes": [
+        {
+            "NodeType": "Class",
+            "NodeID": 1,
+            "LineNumber": 0,
+            "Name": "Main",
+            "Features": [
+                {
+                    "NodeType": "Method",
+                    "NodeID": 2,
+                    "LineNumber": 0,
+                    "Name": "main",
+                    "ReturnType": "Void",
+                    "Body": {
+                        "NodeType": "Block",
+                        "NodeID": 3,
+                        "LineNumber": 1,
+                        "Expressions": [
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 4,
+                                "LineNumber": 1,
+                                "Expressions": [
+                                    {
+                                        "NodeType": "Block",
+                                        "NodeID": 5,
+                                        "LineNumber": 1,
+                                        "Expressions": [
+                                            {
+                                                "NodeType": "WhileStatement",
+                                                "NodeID": 6,
+                                                "LineNumber": 1,
+                                                "Condition": {
+                                                    "NodeType": "BinaryOperator",
+                                                    "NodeID": 7,
+                                                    "LineNumber": 1,
+                                                    "OperatorKind": ">",
+                                                    "LeftHandSide": {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 8,
+                                                        "LineNumber": 1,
+                                                        "Name": "a"
+                                                    },
+                                                    "RightHandSide": {
+                                                        "NodeType": "IntegerConstant",
+                                                        "NodeID": 9,
+                                                        "LineNumber": 1,
+                                                        "Value": 1
+                                                    }
+                                                },
+                                                "Body": {
+                                                    "NodeType": "Block",
+                                                    "NodeID": 10,
+                                                    "LineNumber": 2,
+                                                    "Expressions": [
+                                                        {
+                                                            "NodeType": "UnaryOperator",
+                                                            "NodeID": 11,
+                                                            "LineNumber": 2,
+                                                            "OperatorKind": "-",
+                                                            "Operand": {
+                                                                "NodeType": "Symbol",
+                                                                "NodeID": 12,
+                                                                "LineNumber": 2,
+                                                                "Name": "a"
+                                                            }
+                                                        },
+                                                        {
+                                                            "NodeType": "UnaryOperator",
+                                                            "NodeID": 13,
+                                                            "LineNumber": 3,
+                                                            "OperatorKind": "!",
+                                                            "Operand": {
+                                                                "NodeType": "Symbol",
+                                                                "NodeID": 14,
+                                                                "LineNumber": 3,
+                                                                "Name": "b"
+                                                            }
+                                                        },
+                                                        {
+                                                            "NodeType": "LocalDefinition",
+                                                            "NodeID": 15,
+                                                            "LineNumber": 4,
+                                                            "Name": "c",
+                                                            "Type": "auto",
+                                                            "Initializer": {
+                                                                "NodeType": "BinaryOperator",
+                                                                "NodeID": 16,
+                                                                "LineNumber": 4,
+                                                                "OperatorKind": "+",
+                                                                "LeftHandSide": {
+                                                                    "NodeType": "UnaryOperator",
+                                                                    "NodeID": 17,
+                                                                    "LineNumber": 4,
+                                                                    "OperatorKind": "!",
+                                                                    "Operand": {
+                                                                        "NodeType": "FloatConstant",
+                                                                        "NodeID": 18,
+                                                                        "LineNumber": 4,
+                                                                        "Value": 1.0
+                                                                    }
+                                                                },
+                                                                "RightHandSide": {
+                                                                    "NodeType": "IntegerConstant",
+                                                                    "NodeID": 19,
+                                                                    "LineNumber": 4,
+                                                                    "Value": 2
+                                                                }
+                                                            }
+                                                        },
+                                                        {
+                                                            "NodeType": "IfStatement",
+                                                            "NodeID": 20,
+                                                            "LineNumber": 5,
+                                                            "Condition": {
+                                                                "NodeType": "BinaryOperator",
+                                                                "NodeID": 21,
+                                                                "LineNumber": 5,
+                                                                "OperatorKind": "!=",
+                                                                "LeftHandSide": {
+                                                                    "NodeType": "Symbol",
+                                                                    "NodeID": 22,
+                                                                    "LineNumber": 5,
+                                                                    "Name": "a"
+                                                                },
+                                                                "RightHandSide": {
+                                                                    "NodeType": "Symbol",
+                                                                    "NodeID": 23,
+                                                                    "LineNumber": 5,
+                                                                    "Name": "b"
+                                                                }
+                                                            },
+                                                            "Then": {
+                                                                "NodeType": "Block",
+                                                                "NodeID": 24,
+                                                                "LineNumber": 6,
+                                                                "Expressions": [
+                                                                    {
+                                                                        "NodeType": "Symbol",
+                                                                        "NodeID": 25,
+                                                                        "LineNumber": 6,
+                                                                        "Name": "c"
+                                                                    }
+                                                                ]
+                                                            },
+                                                            "Else": {
+                                                                "NodeType": "Block",
+                                                                "NodeID": 26,
+                                                                "LineNumber": 8,
+                                                                "Expressions": [
+                                                                    {
+                                                                        "NodeType": "Symbol",
+                                                                        "NodeID": 27,
+                                                                        "LineNumber": 8,
+                                                                        "Name": "d"
+                                                                    }
+                                                                ]
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ]
+}

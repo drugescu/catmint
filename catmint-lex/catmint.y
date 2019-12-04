@@ -388,6 +388,31 @@ multiplicative_expression : unary_expression
     }
 	;
 
+if_expression
+	: 
+	KW_IF value_expression OP_COLON block KW_END {
+		auto cond 		= $2;		
+		auto block_then = ($4 != nullptr) ? $4 : new catmint::Block(@3.first_line); 
+        
+		// if WITHOUT else		
+		$$ = new catmint::IfStatement(@1.first_line,
+								   Expression(cond),
+								   Expression(block_then));
+	}
+	| 
+	KW_IF value_expression OP_COLON block KW_ELSE block KW_END {
+		auto cond	 	= $2;
+		auto block_then = ($4 != nullptr) ? $4 : new catmint::Block(@3.first_line); 		
+		auto block_else = ($6 != nullptr) ? $6 : new catmint::Block(@3.first_line); 		
+        
+		// if WITH else		
+		$$ = new catmint::IfStatement(@1.first_line,
+								   Expression(cond),
+								   Expression(block_then),
+								   Expression(block_else));
+    }
+  ;
+    
 unary_expression 
   : basic_expression
   | OP_NOT basic_expression {
@@ -442,24 +467,12 @@ negative_expression
 	}
 	;
 
-/*assignment_expression
-  : IDENTIFIER OP_ATTRIB value_expression {
-	  auto& name  = *$1;
-   	auto  value = $3;
-
-	  // simple assignment
-    $$ = new catmint::Assignment(@1.first_line, name, Expression(value));
-
-	  delete $1;
-  }
-  ;*/
-
 void_expression
   : while_expression
   ;
   
-while_expression	
-	: KW_WHILE value_expression KW_DO block KW_END {
+while_expression
+    : KW_WHILE value_expression OP_COLON block KW_END {
 		auto cond 		 = $2;
 		auto block_while = $4;
 		
