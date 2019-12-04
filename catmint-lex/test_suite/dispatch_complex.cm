@@ -1,0 +1,4 @@
+int a=3
+print(a,b,c) * print(b)
+a.print(d)
+"alfa".substr(2,3)

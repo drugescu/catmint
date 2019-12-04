@@ -491,6 +491,16 @@ dispatch_expression
 		
 		delete $1; delete $3;						
 	}
+	| basic_expression '.' IDENTIFIER OP_OPAREN dispatch_arguments OP_CPAREN {
+		auto  obj  = $1;
+		auto& name = *$3;
+		auto& args = *$5;
+
+		// dispatch using object		
+		$$ = new catmint::Dispatch(@1.first_line, name, Expression(obj), args);
+
+		delete $3; delete $5;						
+	}
 	;
 	
 dispatch_arguments
