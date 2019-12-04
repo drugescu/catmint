@@ -54,7 +54,7 @@
 %token KW_CONSTRUCTOR
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
 
-%token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE
+%token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE OP_NOT
 %token OP_ATTRIB OP_DIV OP_PLUS OP_MINUS OP_MUL
 %token OP_OPAREN OP_CPAREN OP_COLON
 
@@ -68,6 +68,7 @@
 // Expressions
 %type <expression> 
 expression 
+  local
   value_expression
     additive_expression
       multiplicative_expression
@@ -77,14 +78,12 @@ expression
               constant_expression
             parenthesis_expression 
             negative_expression
-    assignment_expression
+            if_expression
     conditional_expression
-      relational_expression
         // additive_expression
 	void_expression
 	  while_expression
 
-%type <expression> local //formal
 %type <expressions> locals
 %type <block> block
 
@@ -97,9 +96,14 @@ expression
 //%type <formal> 	formal
 //%type <formals> formals
 
-%left '+' '-'
-%left '*' '/'
+
+
+%left OP_PLUS OP_MINUS
+%left OP_MUL OP_DIV
 %left PREC_NEG
+%nonassoc <operator> PREC_REL
+%left '[' ']' '{' '}' KW_IF KW_WHILE
+%left KW_NOT
 
 %%
 // Program can consist of blocks of code and classes
@@ -301,13 +305,13 @@ local
   : IDENTIFIER IDENTIFIER {
 			$$ = new catmint::LocalDefinition(@1.first_line, *$2, *$1);
 	}
-	| IDENTIFIER IDENTIFIER OP_ATTRIB expression {
+	| IDENTIFIER IDENTIFIER OP_ATTRIB value_expression {
 		// initialized attribute
 		$$ = new catmint::LocalDefinition(@1.first_line, *$2, *$1, Expression($4));
 
 		delete $1; delete $2;
 	}
-	| IDENTIFIER OP_ATTRIB expression {
+	| IDENTIFIER OP_ATTRIB value_expression {
 		// initialized attribute but type must be deduced from rhs
 		$$ = new catmint::LocalDefinition(@1.first_line, *$1, std::string("auto"), Expression($3));
 
@@ -315,36 +319,33 @@ local
 	}
   ;
 
-expression : value_expression
+expression 
+  : value_expression
   | void_expression	
 	;
 
 value_expression
-  : additive_expression
-  | assignment_expression
-  | conditional_expression
+  : conditional_expression
+  | additive_expression
   ;
 
-conditional_expression : relational_expression
-	;
-
-relational_expression : additive_expression
-	| relational_expression OP_LT additive_expression {
+conditional_expression 
+  : additive_expression OP_LT additive_expression %prec PREC_REL {
 		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::LessThan, Expression($1), Expression($3));
 	}
-	| relational_expression OP_GT additive_expression {
+	| additive_expression OP_GT additive_expression %prec PREC_REL {
 		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::GreaterThan, Expression($1), Expression($3));
 	}
-	| relational_expression OP_GTE additive_expression {
+	| additive_expression OP_GTE additive_expression %prec PREC_REL {
 		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::GreaterThanEqual, Expression($1), Expression($3));
 	}
-	| relational_expression OP_LTE additive_expression {
+	| additive_expression OP_LTE additive_expression %prec PREC_REL {
 		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::LessThanEqual, Expression($1), Expression($3));
 	}
-	| relational_expression OP_ISE additive_expression {
+	| additive_expression OP_ISE additive_expression %prec PREC_REL {
 		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::Equal, Expression($1), Expression($3));
 	}
-	| relational_expression OP_ISNE additive_expression {
+	| additive_expression OP_ISNE additive_expression %prec PREC_REL {
 		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::NotEqual, Expression($1), Expression($3));
 	}
 	;
@@ -369,10 +370,7 @@ additive_expression : multiplicative_expression
 	;
 
 multiplicative_expression : unary_expression
-	;
-
-unary_expression : basic_expression
-	 | multiplicative_expression OP_MUL basic_expression {
+   | multiplicative_expression OP_MUL basic_expression {
 		  auto type = BinOp::Mul;
 		  auto lhr  = $1;
 		  auto rhr  = $3;
@@ -390,10 +388,19 @@ unary_expression : basic_expression
     }
 	;
 
+unary_expression 
+  : basic_expression
+  | OP_NOT basic_expression {
+		// logic negation						
+		$$ = new catmint::UnaryOperator(@1.first_line, UnOp::Not, Expression($2));
+	}
+	;
+
 basic_expression
   : identifier_expression
 	| negative_expression
 	| parenthesis_expression
+	| if_expression
 	;
 
 identifier_expression
@@ -435,7 +442,7 @@ negative_expression
 	}
 	;
 
-assignment_expression
+/*assignment_expression
   : IDENTIFIER OP_ATTRIB value_expression {
 	  auto& name  = *$1;
    	auto  value = $3;
@@ -445,7 +452,7 @@ assignment_expression
 
 	  delete $1;
   }
-  ;
+  ;*/
 
 void_expression
   : while_expression
