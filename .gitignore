@@ -66,3 +66,6 @@ _deps
 *.includecache
 *.internal
 *.make
+./catmint-lex/CMakeFiles/*
+./catmint-ast/CMakeFiles/*
+*.internal
