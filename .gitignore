@@ -45,6 +45,12 @@ catmint-ast/CMakeFiles/*
 CMakeLists.txt.user
 CMakeCache.txt
 CMakeFiles
+./CMakeFiles
+./CMakeFiles/*
+CXX.includecache
+depend.internal
+depend.make
+CMakeSystem.cmake
 CMakeScripts
 Testing
 Makefile
