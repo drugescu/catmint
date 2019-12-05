@@ -69,3 +69,6 @@ _deps
 ./catmint-lex/CMakeFiles/*
 ./catmint-ast/CMakeFiles/*
 *.internal
+*.md~
+*.~tmp
+.gitignore~

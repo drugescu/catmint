@@ -1,0 +1,78 @@
+{
+    "NodeType": "Program",
+    "NodeID": 0,
+    "LineNumber": 1,
+    "Classes": [
+        {
+            "NodeType": "Class",
+            "NodeID": 1,
+            "LineNumber": 0,
+            "Name": "Main",
+            "Features": [
+                {
+                    "NodeType": "Method",
+                    "NodeID": 2,
+                    "LineNumber": 0,
+                    "Name": "main",
+                    "ReturnType": "Void",
+                    "Body": {
+                        "NodeType": "Block",
+                        "NodeID": 3,
+                        "LineNumber": 1,
+                        "Expressions": [
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 4,
+                                "LineNumber": 1,
+                                "Expressions": [
+                                    {
+                                        "NodeType": "Block",
+                                        "NodeID": 5,
+                                        "LineNumber": 1,
+                                        "Expressions": [
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 6,
+                                                "LineNumber": 1,
+                                                "Name": "module_test",
+                                                "Type": "using"
+                                            },
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 7,
+                                                "LineNumber": 2,
+                                                "Name": "module_test2",
+                                                "Type": "using"
+                                            },
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 8,
+                                                "LineNumber": 4,
+                                                "Name": "a",
+                                                "Type": "int"
+                                            },
+                                            {
+                                                "NodeType": "Dispatch",
+                                                "NodeID": 9,
+                                                "LineNumber": 6,
+                                                "Name": "print",
+                                                "Arguments": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 10,
+                                                        "LineNumber": 6,
+                                                        "Name": "a"
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ]
+}
