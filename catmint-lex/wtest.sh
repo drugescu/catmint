@@ -49,7 +49,7 @@ if [ $errors -ne 0 ]
 then
   echo "[ ${RED}ERROR${NC} ] : $errors/$tests tests have failed!"
 else
-  echo "[ ${GREEN}OK${NC} ] all tests passed."
+  echo "\n[ ${GREEN}OK${NC} ] All $tests tests passed.\n"
 fi
 
 #rm -f ./test/hellox.cm.ast

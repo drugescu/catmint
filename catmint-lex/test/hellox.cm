@@ -1,10 +1,6 @@
-while a > 1:
-  -a
-  !b
-  c = (!1.0+2)
-  if a!=b:
-    c
-  else
-    d
-  end
-end
+using module_test
+using module_test2
+
+int a
+
+print(a)

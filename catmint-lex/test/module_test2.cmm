@@ -1,0 +1,7 @@
+class Line from IO:
+  int x1,x2,y1,y2
+  
+  def int distance:
+    sqrt((x1-x2)**2 + (y1-y2)**2)
+  end
+end

@@ -1,7 +1,10 @@
 
 %code requires {
 	#include <iostream>
+	#include <fstream>
 	#include <string>
+	#include <sstream>
+	#include <regex>
 	#include <vector>
 	#include <ASTNodes.h>
 }
@@ -24,6 +27,9 @@
 		std::cout << gInputFileName << " | Line : " << yylloc.first_line << " | Column : " << yylloc.first_column << " | Error: " << error << std::endl;
 	}
 }
+
+// Verbosity on syntax errors
+%define parse.error verbose
 
 %locations
 
@@ -56,7 +62,7 @@
 
 %token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE OP_NOT OP_AND OP_OR OP_XOR OP_LSHIFT OP_RSHIFT
 %token OP_ATTRIB OP_DIV OP_PLUS OP_MINUS OP_MUL
-%token OP_OPAREN OP_CPAREN OP_COLON
+%token OP_OPAREN OP_CPAREN OP_COLON OP_STATIC_ACCESS
 
 %token KW_CONSTEXPR KW_DEF
 
@@ -501,6 +507,18 @@ dispatch_expression
 
 		delete $3; delete $5;						
 	}
+	| basic_expression OP_STATIC_ACCESS IDENTIFIER '.' IDENTIFIER OP_OPAREN dispatch_arguments OP_CPAREN {
+		auto  obj  = $1;
+		auto& type = *$3;
+		auto& name = *$5;
+		auto& args = *$7;
+
+		// static dispatch
+		$$ = new catmint::StaticDispatch(@1.first_line, Expression(obj), type, name, args);
+
+		delete $3; delete $5; delete $7;										
+	}
+
 	;
 	
 dispatch_arguments
@@ -585,7 +603,51 @@ int main(int argc, char** argv) {
 	}
 
 	gInputFileName = strdup(argv[1]);
-	yyin = fopen(argv[1], "r");
+	
+	/* Preprocess file for module inclusion */
+	
+	std::ifstream in;
+	std::string target = "target.~tmp";
+	std::ofstream out(target, std::ofstream::out | std::ofstream::trunc);
+	
+	// Open and read initial file
+	std::stringstream buffer;	
+	std::ifstream initial;
+	initial.open(gInputFileName);
+	buffer << initial.rdbuf();
+	initial.close();
+	
+	// Try to match module constructions
+	try {
+	  std::regex re("using (.*)");
+	  std::string text = buffer.str();
+	  std::smatch match;
+	  std::string result = "";
+	  std::sregex_iterator next(text.begin(), text.end(), re);
+	  std::sregex_iterator end;
+	  
+	  while (next != end) {
+	    std::smatch match = *next;
+	    std::cout << "Found module inclusion: " <<match.str() << "\n";
+	    next++;
+	  }
+	}
+	catch (std::regex_error& e) {
+	  std::cout << "Syntax error in regular expression." << std::endl;
+	}
+
+  // Now open the modules
+  // Now open the original file
+	in.open(gInputFileName);
+	std::stringstream Sbuffer;	
+	Sbuffer << in.rdbuf();
+	in.close();
+	out << Sbuffer.str() << "\n";
+	out.close();
+	
+	/* Open actual merged file */
+	//yyin = fopen(argv[1], "r");
+	yyin = fopen("target.~tmp", "r");
 
 	if(yyparse()) {
 		return 1;

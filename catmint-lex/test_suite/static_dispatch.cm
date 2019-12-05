@@ -1,0 +1,3 @@
+"alfa".substr(2,3)
+"hello_world"::String.print(left)
+Program::run.execute(( "string" * 2), 3)
