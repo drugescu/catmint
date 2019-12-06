@@ -1,5 +1,6 @@
-class Point from IO:
-  int x,y
+class Point from IO
+  int x = 0
+  int y = 0
   
   def int distance:
     sqrt(x**2 + y**2)

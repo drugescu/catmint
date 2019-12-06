@@ -249,11 +249,11 @@ method
 		delete $2; //delete $4;
 	}
 	//| KW_DEF IDENTIFIER IDENTIFIER OP_COLON formals block KW_END {
-	/*
-	| KW_DEF IDENTIFIER IDENTIFIER OP_COLON attributes block KW_END {
+	
+	| KW_DEF IDENTIFIER IDENTIFIER OP_COLON block KW_END {
     auto& name  	   = *$3;
     //auto& params 	   = *$5;
-		auto params 	   = new std::vector<catmint::FormalParam*>();
+		auto params 	   = new std::vector<catmint::Attribute*>();
 		auto& returnType = *$2;
 		auto  body       = $5;
 
@@ -265,7 +265,7 @@ method
 							 *params);
 
 		delete $2; delete $3; //delete $5;
-	} */
+	}
 	;
 
 // ------------------------------------------------------------------------------------------------------------------
@@ -604,8 +604,7 @@ int main(int argc, char** argv) {
 
 	gInputFileName = strdup(argv[1]);
 	
-	/* Preprocess file for module inclusion */
-	
+	// Preprocess file for module inclusion
 	std::ifstream in;
 	std::string target = "target.~tmp";
 	std::ofstream out(target, std::ofstream::out | std::ofstream::trunc);
@@ -617,31 +616,59 @@ int main(int argc, char** argv) {
 	buffer << initial.rdbuf();
 	initial.close();
 	
+	// Vector of modules
+	std::vector<std::string> matches;
+	
 	// Try to match module constructions
-	try {
+  std::string result = "";
+	try 
+	{
 	  std::regex re("using (.*)");
 	  std::string text = buffer.str();
 	  std::smatch match;
-	  std::string result = "";
 	  std::sregex_iterator next(text.begin(), text.end(), re);
 	  std::sregex_iterator end;
 	  
 	  while (next != end) {
 	    std::smatch match = *next;
-	    std::cout << "Found module inclusion: " <<match.str() << "\n";
+	    std::cout << "Found module inclusion: " << match.str() << "\n";
+	    matches.insert(matches.end(), match.str());
 	    next++;
 	  }
+	  
+    // Now eliminate module inclusions
+    result = regex_replace(buffer.str(), re, "");
 	}
 	catch (std::regex_error& e) {
 	  std::cout << "Syntax error in regular expression." << std::endl;
 	}
 
-  // Now open the modules
-  // Now open the original file
-	in.open(gInputFileName);
+  // Now open each module and add it to the buffer
 	std::stringstream Sbuffer;	
-	Sbuffer << in.rdbuf();
-	in.close();
+
+  for(auto inclusion : matches) {
+    auto module_name = inclusion.substr(strlen("using "), strlen(inclusion.c_str()));
+    std::cout << "[ LOG ] Opening and adding module << " << module_name << " >>" << std::endl;
+	  //in.open(module_name.c_str());
+	  //in.open(module_name.c_str());
+	  std::string full_path_to_module = "./test/" + module_name + ".cmm";
+	  in.open(full_path_to_module.c_str());
+	  if (in.fail()) {
+	    std::cout << "[ ERROR ] Could not find module!" <<std::endl;
+	    fflush(stdout);
+	    exit(1);
+	  }
+	  
+	  Sbuffer << in.rdbuf();
+	  Sbuffer << "\n"; // Add a newline
+	  in.close();
+  }
+  
+  // Now add the original file
+	//in.open(gInputFileName);
+	//Sbuffer << in.rdbuf();
+	Sbuffer << result;
+	//in.close();
 	out << Sbuffer.str() << "\n";
 	out.close();
 	

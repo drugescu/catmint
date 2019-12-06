@@ -72,3 +72,4 @@ _deps
 *.md~
 *.~tmp
 .gitignore~
+*.cmm~
