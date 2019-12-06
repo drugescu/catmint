@@ -12,6 +12,12 @@
 #include "TreeNode.h"
 #include "support/iterator.h"
 
+// Forward declarations of classes
+#include "StringConstant.h"
+#include "UnaryOperator.h"
+#include "Substring.h"
+#include "StaticDispatch.h"
+#include "WhileStatement.h"
 
 namespace catmint {
 
@@ -39,6 +45,7 @@ enum exps {
 /// \brief AST node for an entire catmint program
 ///
 /// This should be the root of the AST
+
 class Program : public TreeNode {
   typedef std::vector<std::unique_ptr<Class>> ClassesType;
   typedef std::unique_ptr<Expression> ExprType;
@@ -53,14 +60,15 @@ class Program : public TreeNode {
 
 public:
 
+
 int type_of_expr(Expression *E) {
   if (auto IntCt = dynamic_cast<IntConstant *>(E)) {
     return INT;
   } else if (auto FloatCt = dynamic_cast<FloatConstant *>(E)) {
     return FLOAT;
-  } /*else if (auto StringCt = dynamic_cast<StringConstant *>(E)) {
+  } else if (auto StringCt = dynamic_cast<StringConstant *>(E)) {
     return STRING;
-  } */else if (auto NullCt = dynamic_cast<NullConstant *>(E)) {
+  } else if (auto NullCt = dynamic_cast<NullConstant *>(E)) {
     return NULLCT;
   } else if (auto Sym = dynamic_cast<Symbol *>(E)) {
     return SYMBOL;
@@ -68,11 +76,11 @@ int type_of_expr(Expression *E) {
     return BLOCK;
   } else if (auto BinOp = dynamic_cast<BinaryOperator *>(E)) {
     return BINOP;
-  } /*else if (auto UnaryOp = dynamic_cast<UnaryOperator *>(E)) {
+  } else if (auto UnaryOp = dynamic_cast<UnaryOperator *>(E)) {
     return UNARYOP;
-  } */ else if (auto C = dynamic_cast<Cast *>(E)) {
+  }  else if (auto C = dynamic_cast<Cast *>(E)) {
     return CCC;
-  } /*else if (auto Substr = dynamic_cast<Substring *>(E)) {
+  } else if (auto Substr = dynamic_cast<Substring *>(E)) {
     return SUBSTR;
   } else if (auto Disp = dynamic_cast<Dispatch *>(E)) {
     return DISP;
@@ -84,7 +92,7 @@ int type_of_expr(Expression *E) {
     return IF;
   } else if (auto While = dynamic_cast<WhileStatement *>(E)) {
     return WHILE;
-  }*/ else if (auto Local = dynamic_cast<LocalDefinition *>(E)) {
+  } else if (auto Local = dynamic_cast<LocalDefinition *>(E)) {
     return LOCAL;
   } else if (auto Assign = dynamic_cast<Assignment *>(E)) {
     return ASSIGN;
@@ -97,30 +105,6 @@ int type_of_expr(Expression *E) {
 
   /// \brief Create a node for an entire program
   /// \note This takes ownership of \p classes if provided
-  /*explicit Program(int lineNumber, const std::vector<Class *> &classes = {})
-      : TreeNode(lineNumber), classes() {
-    for (auto cls : classes) {
-      this->classes.emplace_back(std::move(cls));
-    }
-
-    // If Main doesn't exist as a class, add it
-    bool found = false;
-    for (auto cls : classes) {
-      if (cls->getName() == "Main") {
-        found = true;
-        std::cout << "Found Main.";
-      }
-    }
-
-    if (found == false) {
-      // Generate a new, empty main class with line number 0
-      auto feats = new std::vector<Feature *> ();
-      auto main = new Class(0, "Main", "", *feats);
-
-      this->classes.emplace_back(main);
-    }
-  }*/
-
   /* Constructor */
   explicit Program(int lineNumber, const std::vector<Class*> &classes = {}, std::unique_ptr<Expression> body1 = nullptr, std::unique_ptr<Expression> body2 = nullptr)
     : TreeNode(lineNumber), classes() {
@@ -195,7 +179,7 @@ int type_of_expr(Expression *E) {
         dynamic_cast<Method*>(found_method)->setBody(std::move(new_body_ptr));
       }
       else { // Not found 'main' method of 'Main' class - must add it
-        std::cout << "[ LOG ] 'main' method of Main class does not exist, generting it from your code." << std::endl;
+        std::cout << "[ LOG ] 'main' method of 'Main' class does not exist, generating it from your code." << std::endl;
         fflush(stdout);
         auto feats = new std::vector<Feature *> ();
         const auto& formal_parms = new std::vector<Attribute *> ();
@@ -229,50 +213,35 @@ int type_of_expr(Expression *E) {
       // Class will have 1 feature, the main method
       // The main method will have a block of expressions starting with the one given to this constructor
 
-      std::cout << "[ LOG ] Main.main class and method do not exist, generating them from your code." << std::endl;
+      std::cout << "[ LOG ] 'Main.main' class and method do not exist, generating them from your code." << std::endl;
 
       auto feats = new std::vector<Feature *> ();
       const auto& formal_parms = new std::vector<Attribute *> ();
-      //std::cout << "autoed feats and formal_parms." << std::endl;
-      //fflush(stdout);
       
       // Get surrounding expressions
       auto startingExpr = std::move(body1);
       auto endingExpr = std::move(body2);
 
-      //std::cout << "autoed startingExpr and endingExpr." << std::endl;
-      //fflush(stdout);
+      // Generate empty method body
       auto main_method = new Method(0, std::string("main"), std::string("Void"), nullptr, *formal_parms);
-      //std::cout << "autoed main_method." << std::endl;
-      //fflush(stdout);
 
       // Also add ending expression
       auto starting_body = new catmint::Block(lineNumber);
       starting_body->addExpression(std::unique_ptr<Expression>(std::move(startingExpr))); // Starting expression added successfully - but empty
       starting_body->addExpression(std::unique_ptr<Expression>(std::move(endingExpr))); // Starting expression added successfully - but empty
-      //std::cout << "autoed starting_body." << std::endl;
-      //fflush(stdout);
 
       // Now set new body
       std::unique_ptr<Block> starting_body_ptr(starting_body);
       main_method->setBody(std::move(starting_body_ptr));
-      //std::cout << "set body of main method." << std::endl;
-      //fflush(stdout);
       
       // Place the main_method into the list of features
       feats->emplace_back(std::move(main_method));
-      //std::cout << "emplaced main in feats." << std::endl;
-      //fflush(stdout);
 
       // Generate a new, empty main class with line number 0
       auto main = new Class(0, "Main", "", *feats);
-      //std::cout << "autoed Main class." << std::endl;
-      //fflush(stdout);
 
-      // Place this in the classesl
+      // Place Main class in the classes list
       this->classes.emplace_back(main);
-      //std::cout << "emplaced new Main class in list of classes." << std::endl;
-      //fflush(stdout);
     }
   }
   
