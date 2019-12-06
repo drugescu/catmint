@@ -6,91 +6,91 @@
         {
             "NodeType": "Class",
             "NodeID": 1,
-            "LineNumber": 1,
+            "LineNumber": 2,
             "Name": "Point",
             "Parent": "IO",
             "Features": [
                 {
                     "NodeType": "Attribute",
                     "NodeID": 2,
-                    "LineNumber": 2,
+                    "LineNumber": 3,
                     "Name": "x",
                     "Type": "int",
                     "Initializer": {
                         "NodeType": "IntegerConstant",
                         "NodeID": 3,
-                        "LineNumber": 2,
+                        "LineNumber": 3,
                         "Value": 0
                     }
                 },
                 {
                     "NodeType": "Attribute",
                     "NodeID": 4,
-                    "LineNumber": 3,
+                    "LineNumber": 4,
                     "Name": "y",
                     "Type": "int",
                     "Initializer": {
                         "NodeType": "IntegerConstant",
                         "NodeID": 5,
-                        "LineNumber": 3,
+                        "LineNumber": 4,
                         "Value": 0
                     }
                 },
                 {
                     "NodeType": "Method",
                     "NodeID": 6,
-                    "LineNumber": 5,
+                    "LineNumber": 6,
                     "Name": "distance",
                     "ReturnType": "int",
                     "Body": {
                         "NodeType": "Block",
                         "NodeID": 7,
-                        "LineNumber": 6,
+                        "LineNumber": 7,
                         "Expressions": [
                             {
                                 "NodeType": "Dispatch",
                                 "NodeID": 8,
-                                "LineNumber": 6,
+                                "LineNumber": 7,
                                 "Name": "sqrt",
                                 "Arguments": [
                                     {
                                         "NodeType": "BinaryOperator",
                                         "NodeID": 9,
-                                        "LineNumber": 6,
+                                        "LineNumber": 7,
                                         "OperatorKind": "+",
                                         "LeftHandSide": {
                                             "NodeType": "BinaryOperator",
                                             "NodeID": 10,
-                                            "LineNumber": 6,
+                                            "LineNumber": 7,
                                             "OperatorKind": "**",
                                             "LeftHandSide": {
                                                 "NodeType": "Symbol",
                                                 "NodeID": 11,
-                                                "LineNumber": 6,
+                                                "LineNumber": 7,
                                                 "Name": "x"
                                             },
                                             "RightHandSide": {
                                                 "NodeType": "IntegerConstant",
                                                 "NodeID": 12,
-                                                "LineNumber": 6,
+                                                "LineNumber": 7,
                                                 "Value": 2
                                             }
                                         },
                                         "RightHandSide": {
                                             "NodeType": "BinaryOperator",
                                             "NodeID": 13,
-                                            "LineNumber": 6,
+                                            "LineNumber": 7,
                                             "OperatorKind": "**",
                                             "LeftHandSide": {
                                                 "NodeType": "Symbol",
                                                 "NodeID": 14,
-                                                "LineNumber": 6,
+                                                "LineNumber": 7,
                                                 "Name": "y"
                                             },
                                             "RightHandSide": {
                                                 "NodeType": "IntegerConstant",
                                                 "NodeID": 15,
-                                                "LineNumber": 6,
+                                                "LineNumber": 7,
                                                 "Value": 2
                                             }
                                         }
@@ -105,117 +105,117 @@
         {
             "NodeType": "Class",
             "NodeID": 16,
-            "LineNumber": 10,
+            "LineNumber": 12,
             "Name": "Line",
             "Parent": "IO",
             "Features": [
                 {
                     "NodeType": "Attribute",
                     "NodeID": 17,
-                    "LineNumber": 11,
+                    "LineNumber": 13,
                     "Name": "x1",
                     "Type": "int"
                 },
                 {
                     "NodeType": "Attribute",
                     "NodeID": 18,
-                    "LineNumber": 12,
+                    "LineNumber": 14,
                     "Name": "x2",
                     "Type": "int"
                 },
                 {
                     "NodeType": "Attribute",
                     "NodeID": 19,
-                    "LineNumber": 13,
+                    "LineNumber": 15,
                     "Name": "y1",
                     "Type": "int"
                 },
                 {
                     "NodeType": "Attribute",
                     "NodeID": 20,
-                    "LineNumber": 14,
+                    "LineNumber": 16,
                     "Name": "y2",
                     "Type": "int"
                 },
                 {
                     "NodeType": "Method",
                     "NodeID": 21,
-                    "LineNumber": 16,
+                    "LineNumber": 18,
                     "Name": "distance",
                     "ReturnType": "auto",
                     "Body": {
                         "NodeType": "Block",
                         "NodeID": 22,
-                        "LineNumber": 17,
+                        "LineNumber": 19,
                         "Expressions": [
                             {
                                 "NodeType": "Dispatch",
                                 "NodeID": 23,
-                                "LineNumber": 17,
+                                "LineNumber": 19,
                                 "Name": "sqrt",
                                 "Arguments": [
                                     {
                                         "NodeType": "BinaryOperator",
                                         "NodeID": 24,
-                                        "LineNumber": 17,
+                                        "LineNumber": 19,
                                         "OperatorKind": "+",
                                         "LeftHandSide": {
                                             "NodeType": "BinaryOperator",
                                             "NodeID": 25,
-                                            "LineNumber": 17,
+                                            "LineNumber": 19,
                                             "OperatorKind": "**",
                                             "LeftHandSide": {
                                                 "NodeType": "BinaryOperator",
                                                 "NodeID": 26,
-                                                "LineNumber": 17,
+                                                "LineNumber": 19,
                                                 "OperatorKind": "-",
                                                 "LeftHandSide": {
                                                     "NodeType": "Symbol",
                                                     "NodeID": 27,
-                                                    "LineNumber": 17,
+                                                    "LineNumber": 19,
                                                     "Name": "x1"
                                                 },
                                                 "RightHandSide": {
                                                     "NodeType": "Symbol",
                                                     "NodeID": 28,
-                                                    "LineNumber": 17,
+                                                    "LineNumber": 19,
                                                     "Name": "x2"
                                                 }
                                             },
                                             "RightHandSide": {
                                                 "NodeType": "IntegerConstant",
                                                 "NodeID": 29,
-                                                "LineNumber": 17,
+                                                "LineNumber": 19,
                                                 "Value": 2
                                             }
                                         },
                                         "RightHandSide": {
                                             "NodeType": "BinaryOperator",
                                             "NodeID": 30,
-                                            "LineNumber": 17,
+                                            "LineNumber": 19,
                                             "OperatorKind": "**",
                                             "LeftHandSide": {
                                                 "NodeType": "BinaryOperator",
                                                 "NodeID": 31,
-                                                "LineNumber": 17,
+                                                "LineNumber": 19,
                                                 "OperatorKind": "-",
                                                 "LeftHandSide": {
                                                     "NodeType": "Symbol",
                                                     "NodeID": 32,
-                                                    "LineNumber": 17,
+                                                    "LineNumber": 19,
                                                     "Name": "y1"
                                                 },
                                                 "RightHandSide": {
                                                     "NodeType": "Symbol",
                                                     "NodeID": 33,
-                                                    "LineNumber": 17,
+                                                    "LineNumber": 19,
                                                     "Name": "y2"
                                                 }
                                             },
                                             "RightHandSide": {
                                                 "NodeType": "IntegerConstant",
                                                 "NodeID": 34,
-                                                "LineNumber": 17,
+                                                "LineNumber": 19,
                                                 "Value": 2
                                             }
                                         }

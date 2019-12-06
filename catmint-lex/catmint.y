@@ -623,7 +623,7 @@ int main(int argc, char** argv) {
   std::string result = "";
 	try 
 	{
-	  std::regex re("using (.*)");
+	  std::regex re("using (.*)\n");
 	  std::string text = buffer.str();
 	  std::smatch match;
 	  std::sregex_iterator next(text.begin(), text.end(), re);
@@ -631,8 +631,10 @@ int main(int argc, char** argv) {
 	  
 	  while (next != end) {
 	    std::smatch match = *next;
-	    std::cout << "Found module inclusion: " << match.str() << "\n";
-	    matches.insert(matches.end(), match.str());
+	    std::string match_string = match.str();
+	    match_string = match_string.substr(0, strlen(match.str().c_str()) - 1);
+	    std::cout << "Found module inclusion: " << match_string << "\n";
+	    matches.insert(matches.end(), match_string);
 	    next++;
 	  }
 	  
@@ -648,17 +650,24 @@ int main(int argc, char** argv) {
 
   for(auto inclusion : matches) {
     auto module_name = inclusion.substr(strlen("using "), strlen(inclusion.c_str()));
-    std::cout << "[ LOG ] Opening and adding module << " << module_name << " >>" << std::endl;
 	  //in.open(module_name.c_str());
 	  //in.open(module_name.c_str());
-	  std::string full_path_to_module = "./test/" + module_name + ".cmm";
+	  std::string full_path_to_module = module_name + ".cmm";
+	  std::string full_path_to_module2 = "./test/" + module_name + ".cmm";
+    std::cout << "[ LOG ] Opening and adding module << " << full_path_to_module << " >>" << std::endl;
 	  in.open(full_path_to_module.c_str());
+	  
+	  // Test alternate paths
 	  if (in.fail()) {
-	    std::cout << "[ ERROR ] Could not find module!" <<std::endl;
-	    fflush(stdout);
-	    exit(1);
+  	  in.open(full_path_to_module2.c_str());
+	    if (in.fail()) {
+	      std::cout << "[ ERROR ] Could not find module!" <<std::endl;
+	      fflush(stdout);
+	      exit(1);
+	    }
 	  }
 	  
+	  Sbuffer << "# Included from module << " << full_path_to_module << " >> \n"; // Add a newline
 	  Sbuffer << in.rdbuf();
 	  Sbuffer << "\n"; // Add a newline
 	  in.close();
@@ -669,7 +678,7 @@ int main(int argc, char** argv) {
 	//Sbuffer << in.rdbuf();
 	Sbuffer << result;
 	//in.close();
-	out << Sbuffer.str() << "\n";
+	out << Sbuffer.str();
 	out.close();
 	
 	/* Open actual merged file */

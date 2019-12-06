@@ -150,26 +150,27 @@ int type_of_expr(Expression *E) {
       // Now add stuff to it - whats before, before the first block, what's after, after the last block
       // find main, which is by default executed, and add the expressions to it
       for (auto met = found_class->begin(); met != found_class->end(); met++) {
-        std::cout << "  Class Main has feature : " << (*met)->getName() << std::endl;
+        //std::cout << "  Class Main has feature : " << (*met)->getName() << std::endl;
         if ((*met)->getName() == "main") {
            found_method = dynamic_cast<Method*>(*met);
-           std::cout << "    Class Main has a \"main\" method, here we must insert our stuff : " << found_method->getName() << std::endl;
+           //std::cout << "    Class Main has a \"main\" method, here we must insert our stuff : " << found_method->getName() << std::endl;
         }
       }
 
       // If there is a main method, insert into it, if not, create it
       if (found_method != nullptr) {
-        std::cout << "    Attempting insertion in class Main and method \"main\"" << std::endl;
+        std::cout << "[ LOG ] Inserting your out-of-class code into Main.main" << std::endl;
         // Class will have 1 feature, the main method
         // The main method will have a block of expressions starting with the one given to this constructor
 
         auto startingExpr = std::move(body1);
         auto endingExpr   = std::move(body2);
         
-        if (found_method->isMethod())
-          std::cout << "    'main' is indeed a method!" << std::endl;
+        if (found_method->isMethod()) {
+          //std::cout << "    'main' is indeed a method!" << std::endl;
+        }
         else {
-          std::cout << "Error: 'main' of 'Main' is not a method!" << std::endl;
+          std::cout << "[ Error ] 'main' of 'Main' is not a method!" << std::endl;
           exit(1);
         }
 
@@ -194,7 +195,7 @@ int type_of_expr(Expression *E) {
         dynamic_cast<Method*>(found_method)->setBody(std::move(new_body_ptr));
       }
       else { // Not found 'main' method of 'Main' class - must add it
-        std::cout << "[LOG] Not found 'main' method" << std::endl;
+        std::cout << "[ LOG ] 'main' method of Main class does not exist, generting it from your code." << std::endl;
         fflush(stdout);
         auto feats = new std::vector<Feature *> ();
         const auto& formal_parms = new std::vector<Attribute *> ();
@@ -227,50 +228,51 @@ int type_of_expr(Expression *E) {
       // Generate a new feature of type method, called main, which is by default executed, and add the expressions to it, line 0 by default
       // Class will have 1 feature, the main method
       // The main method will have a block of expressions starting with the one given to this constructor
-      
+
+      std::cout << "[ LOG ] Main.main class and method do not exist, generating them from your code." << std::endl;
 
       auto feats = new std::vector<Feature *> ();
       const auto& formal_parms = new std::vector<Attribute *> ();
-      std::cout << "autoed feats and formal_parms." << std::endl;
-      fflush(stdout);
+      //std::cout << "autoed feats and formal_parms." << std::endl;
+      //fflush(stdout);
       
       // Get surrounding expressions
       auto startingExpr = std::move(body1);
       auto endingExpr = std::move(body2);
 
-      std::cout << "autoed startingExpr and endingExpr." << std::endl;
-      fflush(stdout);
+      //std::cout << "autoed startingExpr and endingExpr." << std::endl;
+      //fflush(stdout);
       auto main_method = new Method(0, std::string("main"), std::string("Void"), nullptr, *formal_parms);
-      std::cout << "autoed main_method." << std::endl;
-      fflush(stdout);
+      //std::cout << "autoed main_method." << std::endl;
+      //fflush(stdout);
 
       // Also add ending expression
       auto starting_body = new catmint::Block(lineNumber);
       starting_body->addExpression(std::unique_ptr<Expression>(std::move(startingExpr))); // Starting expression added successfully - but empty
       starting_body->addExpression(std::unique_ptr<Expression>(std::move(endingExpr))); // Starting expression added successfully - but empty
-      std::cout << "autoed starting_body." << std::endl;
-      fflush(stdout);
+      //std::cout << "autoed starting_body." << std::endl;
+      //fflush(stdout);
 
       // Now set new body
       std::unique_ptr<Block> starting_body_ptr(starting_body);
       main_method->setBody(std::move(starting_body_ptr));
-      std::cout << "set body of main method." << std::endl;
-      fflush(stdout);
+      //std::cout << "set body of main method." << std::endl;
+      //fflush(stdout);
       
       // Place the main_method into the list of features
       feats->emplace_back(std::move(main_method));
-      std::cout << "emplaced main in feats." << std::endl;
-      fflush(stdout);
+      //std::cout << "emplaced main in feats." << std::endl;
+      //fflush(stdout);
 
       // Generate a new, empty main class with line number 0
       auto main = new Class(0, "Main", "", *feats);
-      std::cout << "autoed Main class." << std::endl;
-      fflush(stdout);
+      //std::cout << "autoed Main class." << std::endl;
+      //fflush(stdout);
 
       // Place this in the classesl
       this->classes.emplace_back(main);
-      std::cout << "emplaced new Main class in list of classes." << std::endl;
-      fflush(stdout);
+      //std::cout << "emplaced new Main class in list of classes." << std::endl;
+      //fflush(stdout);
     }
   }
   
