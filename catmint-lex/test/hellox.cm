@@ -1,3 +1,4 @@
-int a,b
-
-print(a)
+int a
+int b, x
+float d, e, f, g, h, i, j, k
+d = 3

@@ -74,8 +74,9 @@
 // Expressions
 %type <expression> 
 expression 
-  local
   value_expression
+    local
+      local_expr
     additive_expression
       multiplicative_expression
         pow_expression
@@ -95,6 +96,7 @@ expression
 	  while_expression
 
 //%type <expressions> locals
+%type <expression> id_list
 %type <expressions> dispatch_arguments
 %type <block> block
 
@@ -216,13 +218,13 @@ attribute_definitions : attribute {
 attribute : IDENTIFIER IDENTIFIER {
 		$$ = new catmint::Attribute(@1.first_line, *$2, *$1);
 	}
-	| IDENTIFIER IDENTIFIER OP_ATTRIB expression {
+	| IDENTIFIER IDENTIFIER OP_ATTRIB value_expression {
 		// initialized attribute
 		$$ = new catmint::Attribute(@1.first_line, *$2, *$1, Expression($4));
 
 		delete $1; delete $2;
 	}
-	| IDENTIFIER OP_ATTRIB expression {
+	| IDENTIFIER OP_ATTRIB value_expression {
 		// initialized attribute but type must be deduced from rhs
 		$$ = new catmint::Attribute(@1.first_line, *$1, std::string("auto"), Expression($3));
 
@@ -289,21 +291,67 @@ block
 	;
 
 local
-  : IDENTIFIER IDENTIFIER {
-			$$ = new catmint::LocalDefinition(@1.first_line, *$2, *$1);
+  : local_expr
+  ;
+  
+local_expr
+  :
+  IDENTIFIER IDENTIFIER {
+      $$ = new catmint::Block(@1.first_line);
+      auto base = new catmint::LocalDefinition(@1.first_line, *$2, *$1);
+	    //$$ = new catmint::LocalDefinition(@1.first_line,*$2, *$1);
+      dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
+      //dynamic_cast<catmint::Block*>($$)->addExpression(new catmint::LocalDefinition(@1.first_line, *$2, *$1));
+	}
+	|
+	IDENTIFIER IDENTIFIER id_list {
+	      $$ = new catmint::Block(@1.first_line);
+        auto base = new catmint::LocalDefinition(@1.first_line, *$2, *$1);
+
+        dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
+        dynamic_cast<catmint::Block*>($$)->addExpression(Expression($3));
+        //$$->addExpression(Expression($4));
 	}
 	| IDENTIFIER IDENTIFIER OP_ATTRIB value_expression {
 		// initialized attribute
-		$$ = new catmint::LocalDefinition(@1.first_line, *$2, *$1, Expression($4));
-
-		delete $1; delete $2;
+    $$ = new catmint::Block(@1.first_line);
+    auto base = new catmint::LocalDefinition(@1.first_line, *$2, *$1, Expression($4));
+    dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
+		//delete $1; delete $2;
 	}
 	| IDENTIFIER OP_ATTRIB value_expression {
 		// initialized attribute but type must be deduced from rhs
-		$$ = new catmint::LocalDefinition(@1.first_line, *$1, std::string("auto"), Expression($3));
-
-		delete $1;
+    $$ = new catmint::Block(@1.first_line);
+    auto base = new catmint::LocalDefinition(@1.first_line, *$1, std::string("auto"), Expression($3));
+    dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
+		//$$ = new catmint::LocalDefinition(@1.first_line, *$1, std::string("auto"), Expression($3));
+		//delete $1;
 	}
+  ;
+  
+id_list 
+  : ',' IDENTIFIER {
+    //$$ = new std::vector<std::string>();
+    //$$->push_back($2->c_str());
+    //$$ = new catmint::LocalDefinition(@1.first_line, "infer", *$2);
+    $$ = new catmint::Block(@1.first_line);
+    auto base = new catmint::LocalDefinition(@1.first_line, "infer", *$2);
+    dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
+  }
+  | ',' IDENTIFIER id_list {
+    $$ = $3;
+    auto base = new catmint::LocalDefinition(@1.first_line, "infer", *$2);
+    dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
+    //$$ = new catmint::Block(@1.first_line);
+    //auto base = new catmint::LocalDefinition(@1.first_line, "infer", *$2);
+
+    //dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
+    //dynamic_cast<catmint::Block*>($$)->addExpression(Expression($3));
+    //new catmint::LocalDefinition(@1.first_line, "infer", *$2);
+    //$$ = $3;
+    //$3->push_back($2->c_str());
+  }
+  // add initializers here as well
   ;
 
 expression 
@@ -518,7 +566,6 @@ dispatch_expression
 
 		delete $3; delete $5; delete $7;										
 	}
-
 	;
 	
 dispatch_arguments
