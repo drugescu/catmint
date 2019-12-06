@@ -1,0 +1,6 @@
+using module_test
+using module_test2
+
+int a
+
+print(a)
