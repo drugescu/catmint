@@ -15,6 +15,7 @@ const auto NodeID = "NodeID";
 const auto LineNumber = "LineNumber";
 const auto Classes = "Classes";
 const auto Name = "Name";
+const auto NameList = "NameList";
 const auto ClassParent = "Parent";
 const auto Features = "Features";
 const auto Type = "Type";
@@ -575,13 +576,15 @@ bool ASTSerializer::visit(WhileStatement *While) {
   return visit(body);
 }
 
+/* Modified visitation to generate list of names */
 bool ASTSerializer::visit(LocalDefinition *Local) {
   assert(isValid() && "Invalid serializer");
   assert(Local && "Expected non-null local definition");
 
   CreateJSONObject object(*this, keys::LocalDefinitionNodeType, Local);
   writePair(keys::LineNumber, Local->getLineNumber());
-  writePair(keys::Name, Local->getName());
+
+  //writePair(keys::Name, Local->getName());
   writePair(keys::Type, Local->getType());
 
   if (auto Scope = Local->getScope()) {
@@ -597,6 +600,15 @@ bool ASTSerializer::visit(LocalDefinition *Local) {
     }
   }
 
+  /* Name becomes array*/
+  writer->Key(keys::NameList);
+  CreateJSONArray names(*this);
+  for (auto VarName : Local->getName()) {
+    CreateJSONObject object(*this, keys::SymbolNodeType, Local);
+    writePair(keys::LineNumber, Local->getLineNumber());
+    writePair(keys::Name, VarName);
+  }
+  
   return true;
 }
 
@@ -1252,6 +1264,7 @@ ASTDeserializer::parseWhileStatement(rapidjson::Value &tree) {
                                     std::move(cond), std::move(body));
 }
 
+/* Change deserializer to write vector of strings as names */
 std::unique_ptr<LocalDefinition>
 ASTDeserializer::parseLocalDefinition(rapidjson::Value &tree) {
   assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
@@ -1263,9 +1276,29 @@ ASTDeserializer::parseLocalDefinition(rapidjson::Value &tree) {
 
   assert(tree.HasMember(keys::Type) && "Local definition without type");
   assert(tree[keys::Type].IsString() && "Invalid type for local definition");
+  
+  std::vector<std::string> name_list;
+  
+  // If there is an array with a name list
+  if (tree.HasMember(keys::NameList)) {
+    assert(tree[keys::NameList].IsArray() && "Arguments not in array");
 
+    auto &args = tree[keys::NameList];
+    for (auto b = args.Begin(), e = args.End(); b != e; ++b) {
+      auto &argTree = *b;
+      assert(argTree.IsObject() && "Expected argument object");
+      auto argNode = parseSymbol(argTree);
+      assert(argNode && "Expected non-null expression node");
+      name_list.push_back((argNode.get()->getName()));
+    }
+  }
+  
+  /*for (int i = 0; i < tree[keys::NameList].Size(); i++)
+    name_list.push_back(tree[keys::Name][i].GetString());*/
+    
   auto localDef = createNode<LocalDefinition>(tree, parseLineNumber(tree),
-                                              tree[keys::Name].GetString(),
+//                                              tree[keys::Name].GetString(),
+                                              name_list,
                                               tree[keys::Type].GetString());
 
   // TODO: handle scope

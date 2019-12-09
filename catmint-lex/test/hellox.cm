@@ -1,4 +1,5 @@
-int a
-int b, x
-float d, e, f, g, h, i, j, k
-d = 3
+int a, b
+a::b.c(1)
+#int b, x
+#float d, e, f, g, h, i, j, k
+#d = 3
