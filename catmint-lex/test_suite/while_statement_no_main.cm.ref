@@ -61,7 +61,6 @@
                                                             "NodeType": "LocalDefinition",
                                                             "NodeID": 11,
                                                             "LineNumber": 2,
-                                                            "Name": "a",
                                                             "Type": "auto",
                                                             "Initializer": {
                                                                 "NodeType": "BinaryOperator",
@@ -80,7 +79,15 @@
                                                                     "LineNumber": 2,
                                                                     "Value": 1
                                                                 }
-                                                            }
+                                                            },
+                                                            "NameList": [
+                                                                {
+                                                                    "NodeType": "Symbol",
+                                                                    "NodeID": 15,
+                                                                    "LineNumber": 2,
+                                                                    "Name": "a"
+                                                                }
+                                                            ]
                                                         }
                                                     ]
                                                 }

@@ -1,4 +1,6 @@
-int a, b
+int a, b, c
+float d = 1
+d = 1
 a::b.c(1)
 #int b, x
 #float d, e, f, g, h, i, j, k

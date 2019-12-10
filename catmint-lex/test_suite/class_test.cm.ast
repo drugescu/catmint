@@ -134,14 +134,21 @@
                                                 "NodeType": "LocalDefinition",
                                                 "NodeID": 22,
                                                 "LineNumber": 13,
-                                                "Name": "a",
                                                 "Type": "auto",
                                                 "Initializer": {
                                                     "NodeType": "FloatConstant",
                                                     "NodeID": 23,
                                                     "LineNumber": 13,
                                                     "Value": 3.0
-                                                }
+                                                },
+                                                "NameList": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 24,
+                                                        "LineNumber": 13,
+                                                        "Name": "a"
+                                                    }
+                                                ]
                                             }
                                         ]
                                     }

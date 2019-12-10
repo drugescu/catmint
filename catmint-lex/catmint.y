@@ -298,16 +298,14 @@ local
 local_expr
   :
   IDENTIFIER IDENTIFIER {
-    $$ = new catmint::Block(@1.first_line);
     auto ld_name = new std::vector<std::string>();
     ld_name->push_back(*$2);
     auto ld_type = *$1;
     auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type);
-    dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
+    $$ = base;
 	}
 	|
 	IDENTIFIER IDENTIFIER id_list {
-    $$ = new catmint::Block(@1.first_line);
     auto ld_name = new std::vector<std::string>();
     auto ld_type = *$1;
     ld_name->push_back(*$2);
@@ -315,51 +313,34 @@ local_expr
       ld_name->push_back(n);
     auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type);
 
-    dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
-    //dynamic_cast<catmint::Block*>($$)->addExpression(Expression($3));
-	}
-  /*IDENTIFIER IDENTIFIER {
-    $$ = new catmint::Block(@1.first_line);
-    auto ld_name = new std::vector<std::string>();
-    ld_name->push_back(*$2);
-    auto ld_type = *$1;
-    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type);
-    dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
-	}
-	|
-	IDENTIFIER IDENTIFIER id_list {
-    $$ = new catmint::Block(@1.first_line);
-    auto ld_name = new std::vector<std::string>();
-    auto ld_type = *$1;
-    ld_name->push_back(*$2);
-    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type);
+    $$ = base;
 
-    dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
-    dynamic_cast<catmint::Block*>($$)->addExpression(Expression($3));
 	}
 	| IDENTIFIER IDENTIFIER OP_ATTRIB value_expression {
 		// initialized attribute
-    $$ = new catmint::Block(@1.first_line);
     auto ld_name = new std::vector<std::string>();
     auto ld_type = *$1;
     ld_name->push_back(*$2);
     auto init = Expression($4);
     auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type, std::move(init));
     
-    dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
+    $$ = base;
+
 		delete $1; delete $2;
 	}
 	| IDENTIFIER OP_ATTRIB value_expression {
 		// initialized attribute but type must be deduced from rhs
-    $$ = new catmint::Block(@1.first_line);
+    //$$ = new catmint::Block(@1.first_line);
     auto ld_name = new std::vector<std::string>();
     ld_name->push_back(*$1);
     auto init = Expression($3);
-    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("auto"), Expression($3));
+    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("auto"), std::move(init));
     
-    dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
+    //dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
+    $$ = base;
+
 		delete $1;
-	}*/
+	}
   ;
   
 id_list 

@@ -34,41 +34,48 @@
                                                 "NodeType": "LocalDefinition",
                                                 "NodeID": 6,
                                                 "LineNumber": 1,
-                                                "Name": "a",
                                                 "Type": "int",
                                                 "Initializer": {
                                                     "NodeType": "IntegerConstant",
                                                     "NodeID": 7,
                                                     "LineNumber": 1,
                                                     "Value": 3
-                                                }
+                                                },
+                                                "NameList": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 8,
+                                                        "LineNumber": 1,
+                                                        "Name": "a"
+                                                    }
+                                                ]
                                             },
                                             {
                                                 "NodeType": "BinaryOperator",
-                                                "NodeID": 8,
+                                                "NodeID": 9,
                                                 "LineNumber": 2,
                                                 "OperatorKind": "*",
                                                 "LeftHandSide": {
                                                     "NodeType": "Dispatch",
-                                                    "NodeID": 9,
+                                                    "NodeID": 10,
                                                     "LineNumber": 2,
                                                     "Name": "print",
                                                     "Arguments": [
                                                         {
                                                             "NodeType": "Symbol",
-                                                            "NodeID": 10,
+                                                            "NodeID": 11,
                                                             "LineNumber": 2,
                                                             "Name": "a"
                                                         },
                                                         {
                                                             "NodeType": "Symbol",
-                                                            "NodeID": 11,
+                                                            "NodeID": 12,
                                                             "LineNumber": 2,
                                                             "Name": "b"
                                                         },
                                                         {
                                                             "NodeType": "Symbol",
-                                                            "NodeID": 12,
+                                                            "NodeID": 13,
                                                             "LineNumber": 2,
                                                             "Name": "c"
                                                         }
@@ -76,13 +83,13 @@
                                                 },
                                                 "RightHandSide": {
                                                     "NodeType": "Dispatch",
-                                                    "NodeID": 13,
+                                                    "NodeID": 14,
                                                     "LineNumber": 2,
                                                     "Name": "print",
                                                     "Arguments": [
                                                         {
                                                             "NodeType": "Symbol",
-                                                            "NodeID": 14,
+                                                            "NodeID": 15,
                                                             "LineNumber": 2,
                                                             "Name": "b"
                                                         }
@@ -91,19 +98,19 @@
                                             },
                                             {
                                                 "NodeType": "Dispatch",
-                                                "NodeID": 15,
+                                                "NodeID": 16,
                                                 "LineNumber": 3,
                                                 "Name": "print",
                                                 "Object": {
                                                     "NodeType": "Symbol",
-                                                    "NodeID": 16,
+                                                    "NodeID": 17,
                                                     "LineNumber": 3,
                                                     "Name": "a"
                                                 },
                                                 "Arguments": [
                                                     {
                                                         "NodeType": "Symbol",
-                                                        "NodeID": 17,
+                                                        "NodeID": 18,
                                                         "LineNumber": 3,
                                                         "Name": "d"
                                                     }
@@ -111,25 +118,25 @@
                                             },
                                             {
                                                 "NodeType": "Dispatch",
-                                                "NodeID": 18,
+                                                "NodeID": 19,
                                                 "LineNumber": 4,
                                                 "Name": "substr",
                                                 "Object": {
                                                     "NodeType": "StringConstant",
-                                                    "NodeID": 19,
+                                                    "NodeID": 20,
                                                     "LineNumber": 4,
                                                     "Value": "alfa"
                                                 },
                                                 "Arguments": [
                                                     {
                                                         "NodeType": "IntegerConstant",
-                                                        "NodeID": 20,
+                                                        "NodeID": 21,
                                                         "LineNumber": 4,
                                                         "Value": 2
                                                     },
                                                     {
                                                         "NodeType": "IntegerConstant",
-                                                        "NodeID": 21,
+                                                        "NodeID": 22,
                                                         "LineNumber": 4,
                                                         "Value": 3
                                                     }

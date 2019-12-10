@@ -85,7 +85,6 @@
                                                             "NodeType": "LocalDefinition",
                                                             "NodeID": 15,
                                                             "LineNumber": 4,
-                                                            "Name": "c",
                                                             "Type": "auto",
                                                             "Initializer": {
                                                                 "NodeType": "BinaryOperator",
@@ -110,38 +109,46 @@
                                                                     "LineNumber": 4,
                                                                     "Value": 2
                                                                 }
-                                                            }
+                                                            },
+                                                            "NameList": [
+                                                                {
+                                                                    "NodeType": "Symbol",
+                                                                    "NodeID": 20,
+                                                                    "LineNumber": 4,
+                                                                    "Name": "c"
+                                                                }
+                                                            ]
                                                         },
                                                         {
                                                             "NodeType": "IfStatement",
-                                                            "NodeID": 20,
+                                                            "NodeID": 21,
                                                             "LineNumber": 5,
                                                             "Condition": {
                                                                 "NodeType": "BinaryOperator",
-                                                                "NodeID": 21,
+                                                                "NodeID": 22,
                                                                 "LineNumber": 5,
                                                                 "OperatorKind": "!=",
                                                                 "LeftHandSide": {
                                                                     "NodeType": "Symbol",
-                                                                    "NodeID": 22,
+                                                                    "NodeID": 23,
                                                                     "LineNumber": 5,
                                                                     "Name": "a"
                                                                 },
                                                                 "RightHandSide": {
                                                                     "NodeType": "Symbol",
-                                                                    "NodeID": 23,
+                                                                    "NodeID": 24,
                                                                     "LineNumber": 5,
                                                                     "Name": "b"
                                                                 }
                                                             },
                                                             "Then": {
                                                                 "NodeType": "Block",
-                                                                "NodeID": 24,
+                                                                "NodeID": 25,
                                                                 "LineNumber": 6,
                                                                 "Expressions": [
                                                                     {
                                                                         "NodeType": "Symbol",
-                                                                        "NodeID": 25,
+                                                                        "NodeID": 26,
                                                                         "LineNumber": 6,
                                                                         "Name": "c"
                                                                     }
@@ -149,12 +156,12 @@
                                                             },
                                                             "Else": {
                                                                 "NodeType": "Block",
-                                                                "NodeID": 26,
+                                                                "NodeID": 27,
                                                                 "LineNumber": 8,
                                                                 "Expressions": [
                                                                     {
                                                                         "NodeType": "Symbol",
-                                                                        "NodeID": 27,
+                                                                        "NodeID": 28,
                                                                         "LineNumber": 8,
                                                                         "Name": "d"
                                                                     }

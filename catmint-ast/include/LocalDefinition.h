@@ -24,10 +24,10 @@ public:
                            Expression *scope = nullptr)
       : Expression(lineNumber), name(name), type(type), scope(scope),
         init(std::move(init)) { 
-          std::cout<<"Generated LocalDefinition.\n"; 
-          for (auto n : name) {
-            std::cout << "Name " << n << "\n";
-          }
+          //std::cout<<"Generated LocalDefinition.\n"; 
+          //for (auto n : name) {
+            //std::cout << "Name " << n << "\n";
+          //}
         }
 
   /// \brief Set the scope of the local variable

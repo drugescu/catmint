@@ -42,14 +42,21 @@
                                                 "NodeType": "LocalDefinition",
                                                 "NodeID": 7,
                                                 "LineNumber": 1,
-                                                "Name": "t",
                                                 "Type": "auto",
                                                 "Initializer": {
                                                     "NodeType": "IntegerConstant",
                                                     "NodeID": 8,
                                                     "LineNumber": 1,
                                                     "Value": 3
-                                                }
+                                                },
+                                                "NameList": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 9,
+                                                        "LineNumber": 1,
+                                                        "Name": "t"
+                                                    }
+                                                ]
                                             }
                                         ]
                                     }
@@ -57,59 +64,80 @@
                             },
                             {
                                 "NodeType": "Block",
-                                "NodeID": 9,
+                                "NodeID": 10,
                                 "LineNumber": 6,
                                 "Expressions": [
                                     {
                                         "NodeType": "LocalDefinition",
-                                        "NodeID": 10,
+                                        "NodeID": 11,
                                         "LineNumber": 6,
-                                        "Name": "t",
                                         "Type": "auto",
                                         "Initializer": {
                                             "NodeType": "IntegerConstant",
-                                            "NodeID": 11,
+                                            "NodeID": 12,
                                             "LineNumber": 6,
                                             "Value": 1
-                                        }
+                                        },
+                                        "NameList": [
+                                            {
+                                                "NodeType": "Symbol",
+                                                "NodeID": 13,
+                                                "LineNumber": 6,
+                                                "Name": "t"
+                                            }
+                                        ]
                                     },
                                     {
                                         "NodeType": "LocalDefinition",
-                                        "NodeID": 12,
+                                        "NodeID": 14,
                                         "LineNumber": 7,
-                                        "Name": "t",
                                         "Type": "auto",
                                         "Initializer": {
                                             "NodeType": "IntegerConstant",
-                                            "NodeID": 13,
+                                            "NodeID": 15,
                                             "LineNumber": 7,
                                             "Value": 1
-                                        }
+                                        },
+                                        "NameList": [
+                                            {
+                                                "NodeType": "Symbol",
+                                                "NodeID": 16,
+                                                "LineNumber": 7,
+                                                "Name": "t"
+                                            }
+                                        ]
                                     }
                                 ]
                             },
                             {
                                 "NodeType": "Block",
-                                "NodeID": 14,
+                                "NodeID": 17,
                                 "LineNumber": 1,
                                 "Expressions": [
                                     {
                                         "NodeType": "Block",
-                                        "NodeID": 15,
+                                        "NodeID": 18,
                                         "LineNumber": 10,
                                         "Expressions": [
                                             {
                                                 "NodeType": "LocalDefinition",
-                                                "NodeID": 16,
+                                                "NodeID": 19,
                                                 "LineNumber": 10,
-                                                "Name": "s",
                                                 "Type": "auto",
                                                 "Initializer": {
                                                     "NodeType": "IntegerConstant",
-                                                    "NodeID": 17,
+                                                    "NodeID": 20,
                                                     "LineNumber": 10,
                                                     "Value": 2
-                                                }
+                                                },
+                                                "NameList": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 21,
+                                                        "LineNumber": 10,
+                                                        "Name": "s"
+                                                    }
+                                                ]
                                             }
                                         ]
                                     }

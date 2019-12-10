@@ -263,18 +263,25 @@
                                                 "NodeType": "LocalDefinition",
                                                 "NodeID": 41,
                                                 "LineNumber": 24,
-                                                "Name": "a",
-                                                "Type": "int"
+                                                "Type": "int",
+                                                "NameList": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 42,
+                                                        "LineNumber": 24,
+                                                        "Name": "a"
+                                                    }
+                                                ]
                                             },
                                             {
                                                 "NodeType": "Dispatch",
-                                                "NodeID": 42,
+                                                "NodeID": 43,
                                                 "LineNumber": 26,
                                                 "Name": "print",
                                                 "Arguments": [
                                                     {
                                                         "NodeType": "Symbol",
-                                                        "NodeID": 43,
+                                                        "NodeID": 44,
                                                         "LineNumber": 26,
                                                         "Name": "a"
                                                     }

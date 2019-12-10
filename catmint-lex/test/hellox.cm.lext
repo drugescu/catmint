@@ -31,134 +31,89 @@
                                         "LineNumber": 1,
                                         "Expressions": [
                                             {
-                                                "NodeType": "Block",
+                                                "NodeType": "LocalDefinition",
                                                 "NodeID": 6,
                                                 "LineNumber": 1,
-                                                "Expressions": [
+                                                "Type": "int",
+                                                "NameList": [
                                                     {
-                                                        "NodeType": "LocalDefinition",
+                                                        "NodeType": "Symbol",
                                                         "NodeID": 7,
                                                         "LineNumber": 1,
-                                                        "Name": "a",
-                                                        "Type": "int"
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "NodeType": "Block",
-                                                "NodeID": 8,
-                                                "LineNumber": 2,
-                                                "Expressions": [
+                                                        "Name": "a"
+                                                    },
                                                     {
-                                                        "NodeType": "LocalDefinition",
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 8,
+                                                        "LineNumber": 1,
+                                                        "Name": "c"
+                                                    },
+                                                    {
+                                                        "NodeType": "Symbol",
                                                         "NodeID": 9,
-                                                        "LineNumber": 2,
-                                                        "Name": "b",
-                                                        "Type": "int"
-                                                    },
-                                                    {
-                                                        "NodeType": "Block",
-                                                        "NodeID": 10,
-                                                        "LineNumber": 2,
-                                                        "Expressions": [
-                                                            {
-                                                                "NodeType": "LocalDefinition",
-                                                                "NodeID": 11,
-                                                                "LineNumber": 2,
-                                                                "Name": "infer",
-                                                                "Type": "x"
-                                                            }
-                                                        ]
+                                                        "LineNumber": 1,
+                                                        "Name": "b"
                                                     }
                                                 ]
                                             },
                                             {
-                                                "NodeType": "Block",
-                                                "NodeID": 12,
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 10,
+                                                "LineNumber": 2,
+                                                "Type": "float",
+                                                "Initializer": {
+                                                    "NodeType": "IntegerConstant",
+                                                    "NodeID": 11,
+                                                    "LineNumber": 2,
+                                                    "Value": 1
+                                                },
+                                                "NameList": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 12,
+                                                        "LineNumber": 2,
+                                                        "Name": "d"
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 13,
                                                 "LineNumber": 3,
-                                                "Expressions": [
+                                                "Type": "auto",
+                                                "Initializer": {
+                                                    "NodeType": "IntegerConstant",
+                                                    "NodeID": 14,
+                                                    "LineNumber": 3,
+                                                    "Value": 1
+                                                },
+                                                "NameList": [
                                                     {
-                                                        "NodeType": "LocalDefinition",
-                                                        "NodeID": 13,
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 15,
                                                         "LineNumber": 3,
-                                                        "Name": "d",
-                                                        "Type": "float"
-                                                    },
-                                                    {
-                                                        "NodeType": "Block",
-                                                        "NodeID": 14,
-                                                        "LineNumber": 3,
-                                                        "Expressions": [
-                                                            {
-                                                                "NodeType": "LocalDefinition",
-                                                                "NodeID": 15,
-                                                                "LineNumber": 3,
-                                                                "Name": "infer",
-                                                                "Type": "k"
-                                                            },
-                                                            {
-                                                                "NodeType": "LocalDefinition",
-                                                                "NodeID": 16,
-                                                                "LineNumber": 3,
-                                                                "Name": "infer",
-                                                                "Type": "j"
-                                                            },
-                                                            {
-                                                                "NodeType": "LocalDefinition",
-                                                                "NodeID": 17,
-                                                                "LineNumber": 3,
-                                                                "Name": "infer",
-                                                                "Type": "i"
-                                                            },
-                                                            {
-                                                                "NodeType": "LocalDefinition",
-                                                                "NodeID": 18,
-                                                                "LineNumber": 3,
-                                                                "Name": "infer",
-                                                                "Type": "h"
-                                                            },
-                                                            {
-                                                                "NodeType": "LocalDefinition",
-                                                                "NodeID": 19,
-                                                                "LineNumber": 3,
-                                                                "Name": "infer",
-                                                                "Type": "g"
-                                                            },
-                                                            {
-                                                                "NodeType": "LocalDefinition",
-                                                                "NodeID": 20,
-                                                                "LineNumber": 3,
-                                                                "Name": "infer",
-                                                                "Type": "f"
-                                                            },
-                                                            {
-                                                                "NodeType": "LocalDefinition",
-                                                                "NodeID": 21,
-                                                                "LineNumber": 3,
-                                                                "Name": "infer",
-                                                                "Type": "e"
-                                                            }
-                                                        ]
+                                                        "Name": "d"
                                                     }
                                                 ]
                                             },
                                             {
-                                                "NodeType": "Block",
-                                                "NodeID": 22,
+                                                "NodeType": "StaticDispatch",
+                                                "NodeID": 16,
                                                 "LineNumber": 4,
-                                                "Expressions": [
+                                                "Type": "b",
+                                                "Name": "c",
+                                                "Object": {
+                                                    "NodeType": "Symbol",
+                                                    "NodeID": 17,
+                                                    "LineNumber": 4,
+                                                    "Name": "a"
+                                                },
+                                                "Arguments": [
                                                     {
-                                                        "NodeType": "LocalDefinition",
-                                                        "NodeID": 23,
+                                                        "NodeType": "IntegerConstant",
+                                                        "NodeID": 18,
                                                         "LineNumber": 4,
-                                                        "Name": "d",
-                                                        "Type": "auto",
-                                                        "Initializer": {
-                                                            "NodeType": "IntegerConstant",
-                                                            "NodeID": 24,
-                                                            "LineNumber": 4,
-                                                            "Value": 3
-                                                        }
+                                                        "Value": 1
                                                     }
                                                 ]
                                             }
