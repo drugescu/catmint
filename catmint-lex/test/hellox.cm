@@ -6,5 +6,10 @@ a.get(3)
 a[b[3]] = 3
 a.set(a.get(b.get(3)), 3)
 
+# The next two lines should produce the same AST
 a = []
+_uuid_generic_0001_list a
+
+# The next two lines should produce the same AST
 b = {}
+_uuid_generic_0002_dictionary b

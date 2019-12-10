@@ -167,13 +167,13 @@
                                             {
                                                 "NodeType": "LocalDefinition",
                                                 "NodeID": 26,
-                                                "LineNumber": 9,
+                                                "LineNumber": 10,
                                                 "Type": "_uuid_generic_0001_list",
                                                 "NameList": [
                                                     {
                                                         "NodeType": "Symbol",
                                                         "NodeID": 27,
-                                                        "LineNumber": 9,
+                                                        "LineNumber": 10,
                                                         "Name": "a"
                                                     }
                                                 ]
@@ -181,13 +181,41 @@
                                             {
                                                 "NodeType": "LocalDefinition",
                                                 "NodeID": 28,
-                                                "LineNumber": 10,
-                                                "Type": "_uuid_generic_0002_dictionary",
+                                                "LineNumber": 11,
+                                                "Type": "_uuid_generic_0001_list",
                                                 "NameList": [
                                                     {
                                                         "NodeType": "Symbol",
                                                         "NodeID": 29,
-                                                        "LineNumber": 10,
+                                                        "LineNumber": 11,
+                                                        "Name": "a"
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 30,
+                                                "LineNumber": 14,
+                                                "Type": "_uuid_generic_0002_dictionary",
+                                                "NameList": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 31,
+                                                        "LineNumber": 14,
+                                                        "Name": "b"
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 32,
+                                                "LineNumber": 15,
+                                                "Type": "_uuid_generic_0002_dictionary",
+                                                "NameList": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 33,
+                                                        "LineNumber": 15,
                                                         "Name": "b"
                                                     }
                                                 ]
