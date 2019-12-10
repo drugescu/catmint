@@ -91,6 +91,7 @@ expression
                   negative_expression
                   if_expression
     conditional_expression
+    vector_access
         // additive_expression
     dispatch_expression
 	void_expression
@@ -297,6 +298,7 @@ local
   
 local_expr
   :
+  // Int a
   IDENTIFIER IDENTIFIER {
     auto ld_name = new std::vector<std::string>();
     ld_name->push_back(*$2);
@@ -305,6 +307,7 @@ local_expr
     $$ = base;
 	}
 	|
+	// Int a, b, c
 	IDENTIFIER IDENTIFIER id_list {
     auto ld_name = new std::vector<std::string>();
     auto ld_type = *$1;
@@ -316,6 +319,7 @@ local_expr
     $$ = base;
 
 	}
+	// Int a = 3
 	| IDENTIFIER IDENTIFIER OP_ATTRIB value_expression {
 		// initialized attribute
     auto ld_name = new std::vector<std::string>();
@@ -328,6 +332,7 @@ local_expr
 
 		delete $1; delete $2;
 	}
+	// a = 3
 	| IDENTIFIER OP_ATTRIB value_expression {
 		// initialized attribute but type must be deduced from rhs
     //$$ = new catmint::Block(@1.first_line);
@@ -341,7 +346,40 @@ local_expr
 
 		delete $1;
 	}
-  ;
+	// a[3] = 3
+	| vector_access OP_ATTRIB value_expression {
+		auto name     = std::string("set");
+		auto value    = $3;
+		auto dispatch = static_cast<catmint::Dispatch*>($1);
+		
+		// special case: a get operation on a Vector is actually
+		// a set operation
+		dispatch->setName(name);
+		dispatch->addArgument(Expression(value));
+
+		$$ = dispatch;
+	}
+	// a = []
+	| IDENTIFIER OP_ATTRIB '[' ']' {
+	
+	  auto ld_name = new std::vector<std::string>();
+    ld_name->push_back(*$1);
+    auto ld_type = std::string("_uuid_generic_0001_list");
+    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type);
+    $$ = base;
+	
+	}
+	// a = {}
+	| IDENTIFIER OP_ATTRIB '{' '}' {
+	
+	  auto ld_name = new std::vector<std::string>();
+    ld_name->push_back(*$1);
+    auto ld_type = std::string("_uuid_generic_0002_dictionary");
+    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type);
+    $$ = base;
+	
+	}
+	;
   
 id_list 
 : ',' IDENTIFIER {
@@ -524,6 +562,7 @@ basic_expression
 	| parenthesis_expression
 	| if_expression
 	| dispatch_expression
+	| vector_access
 	;
 
 if_expression
@@ -653,7 +692,27 @@ while_expression
     }
     ;
 
+vector_access 
+	: basic_expression '[' additive_expression ']' {
+		auto obj   = $1;
+		auto name  = std::string("get");
+		auto args  = std::vector<catmint::Expression*>{$3};
+		
+		// get access for an elementh from a Vector
+		$$ = new catmint::Dispatch(@1.first_line,
+								name,
+								Expression(obj),
+								args);
+	}
+	;
+
 %%
+
+// ----------------------------------------------------------------------------
+//
+// Main processing
+//
+// ----------------------------------------------------------------------------
 
 void printUsage() {
 	std::cout << "Usage: ./catmint-parser <inputFile> <outputFile>" << std::endl;
