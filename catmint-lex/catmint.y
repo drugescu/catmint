@@ -78,6 +78,7 @@ expression
   value_expression
     local
       local_expr
+    return_expression
     additive_expression
       multiplicative_expression
         pow_expression
@@ -367,7 +368,7 @@ local_expr
 		auto var_access_name = dynamic_cast<catmint::Symbol*>(var_access->getObject())->getName();
     ld_name->push_back(var_access_name);
     
-    // Don't forget to record edges... as a hack, record them as names with a uuid prepended!
+    // Don't forget to record edges... as a hack, record them as names with a uuid prepended!l
 
     auto init = Expression($3);
     auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("auto"), std::move(init));

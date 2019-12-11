@@ -27,16 +27,21 @@ do
   # Test if reference file exists
   if [ -f "$file.ref" ]; then
   
-    DIFF=$(diff $file.ast $file.ref)
-    if [ "$DIFF" ]
-    then
-      echo "[ ${RED}ERROR${NC} ] : unexpected AST output! Consult << $file.errlog.txt >>"
-      errors=$((errors+1))
-      echo "$DIFF" > $file.errlog.txt
+    # Test if the parsing has been made
+    if [ -f "$file.ast" ]; then
+      DIFF=$(diff $file.ast $file.ref)
+      if [ "$DIFF" ]
+      then
+        echo "[ ${RED}ERROR${NC} ] : unexpected AST output! Consult << $file.errlog.txt >>"
+        errors=$((errors+1))
+        echo "$DIFF" > $file.errlog.txt
+      else
+        printf "[ ${GREEN}OK${NC} ] Output matches reference output.\n"
+      fi
     else
-      printf "[ ${GREEN}OK${NC} ] Output matches reference output.\n"
+      echo "[ ${RED}ERROR${NC} ] : parsed AST output does not exist!"
+      errors=$((errors+1))
     fi
-  
   else
     echo "[ ${RED}ERROR${NC} ] : reference AST output does not exist!"
     errors=$((errors+1))
