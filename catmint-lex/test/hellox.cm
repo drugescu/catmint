@@ -7,8 +7,8 @@
 #a.set(a.get(b.get(3)), 3)
 
 # The next two lines should produce the same AST
-a = []
-_uuid_generic_0001_list a
+#a = []
+#_uuid_generic_0001_list a
 
 # The next two lines should produce the same AST
 #b = {}
@@ -21,3 +21,22 @@ _uuid_generic_0001_list a
 # The next two lines should produce the same AST
 #new_dict = { 'a' : 30, 'b' : 50 }
 #'a' + "b"
+
+# Test for
+#for a in b:
+#  t = t + 1
+#end
+
+#for int a in b:
+#  q
+#end
+
+#for a = 0 in b:
+#  q
+#end
+
+#for a in b.size():
+#  q
+#end
+
+# container can be a dispatch, or a symbol

@@ -27,6 +27,8 @@ static int gColumnNumber = 1;
 "def"         { countColumns(); return KW_DEF; }
 "var"		      { countColumns(); return KW_VAR; }
 "if"		      { countColumns(); return KW_IF; }
+"for"		      { countColumns(); return KW_FOR; }
+"in"		      { countColumns(); return KW_IN; }
 "do"		      { countColumns(); return KW_DO; }
 "while"	      { countColumns(); return KW_WHILE; }
 "then"		    { countColumns(); return KW_THEN; }

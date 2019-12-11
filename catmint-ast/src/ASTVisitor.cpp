@@ -76,6 +76,8 @@ bool ASTVisitor::visit(Expression *E) {
     return visit(C);
   } else if (auto Substr = dynamic_cast<Substring *>(E)) {
     return visit(Substr);
+  } else if (auto Slice = dynamic_cast<Slicevector *>(E)) {
+    return visit(Slice);
   } else if (auto Disp = dynamic_cast<Dispatch *>(E)) {
     return visit(Disp);
   } else if (auto SDispatch = dynamic_cast<StaticDispatch *>(E)) {
@@ -86,6 +88,8 @@ bool ASTVisitor::visit(Expression *E) {
     return visit(If);
   } else if (auto While = dynamic_cast<WhileStatement *>(E)) {
     return visit(While);
+  } else if (auto For = dynamic_cast<ForStatement *>(E)) {
+    return visit(For);
   } else if (auto Local = dynamic_cast<LocalDefinition *>(E)) {
     return visit(Local);
   } else if (auto Assign = dynamic_cast<Assignment *>(E)) {
@@ -124,6 +128,10 @@ bool ASTVisitor::visit(Cast *C) { return visit(C->getExpressionToCast()); }
 
 bool ASTVisitor::visit(Substring *S) {
   return visit(S->getString()) && visit(S->getStart()) && visit(S->getEnd());
+}
+
+bool ASTVisitor::visit(Slicevector *S) {
+  return visit(S->getObject()) && visit(S->getStart()) && visit(S->getEnd());
 }
 
 bool ASTVisitor::visit(Dispatch *D) {
@@ -169,6 +177,18 @@ bool ASTVisitor::visit(WhileStatement *While) {
   }
 
   return visit(While->getBody());
+}
+
+bool ASTVisitor::visit(ForStatement *For) {
+  if (!visit(For->getIter())) {
+    return false;
+  }
+
+  if (!visit(For->getCont())) {
+    return false;
+  }
+
+  return visit(For->getBody());
 }
 
 bool ASTVisitor::visit(LocalDefinition *Local) {

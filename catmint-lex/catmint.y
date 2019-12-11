@@ -56,8 +56,8 @@
 
 %start catmint_program
 
-%token KW_WHILE
-%token KW_CLASS KW_SELF KW_FROM KW_END KW_VAR KW_NULL KW_DO
+%token KW_WHILE KW_FOR
+%token KW_CLASS KW_SELF KW_FROM KW_END KW_VAR KW_NULL KW_DO KW_IN
 %token KW_CONSTRUCTOR
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
 
@@ -87,19 +87,25 @@ expression
                 basic_expression
                   identifier_expression 
                     constant_expression
-                  parenthesis_expression 
+                    lvalue_identifier_expression
+                    rvalue_identifier_expression
+                      vector_var_access
+                      parenthesis_expression 
                   negative_expression
                   if_expression
     conditional_expression
     vector_access
+    //substring_expression
+
         // additive_expression
     dispatch_expression
 	void_expression
 	  while_expression
+	  for_expression
 
 //%type <expressions> locals
 %type <vecstr> id_list
-%type <expressions> dispatch_arguments
+%type <expressions> dispatch_arguments vector_arguments
 %type <block> block
 
 %type <features> features attributes attribute_definitions
@@ -111,11 +117,16 @@ expression
 //%type <formal> 	formal
 //%type <formals> formals
 
-
-%left OP_MOD OP_PLUS OP_MINUS OP_MUL OP_DIV OP_POW OP_AND OP_OR OP_XOR OP_NOT OP_LSHIFT OP_RHIFT
+// Precedence increases downward
+//%right '[' ']'
+%left OP_MOD OP_PLUS OP_MINUS 
+%left OP_MUL OP_DIV OP_POW OP_AND OP_OR OP_XOR OP_LSHIFT OP_RHIFT
+%right OP_NOT
 %left PREC_NEG
 %nonassoc <operator> PREC_REL
-%left '[' ']' '{' '}' KW_IF KW_WHILE
+%left '[' ']'
+%left OP_ATTRIB
+//%left '[' ']' '{' '}' KW_IF KW_WHILE
 //%left OP_NOT
 
 %%
@@ -300,6 +311,8 @@ local_expr
   :
   // Int a
   IDENTIFIER IDENTIFIER {
+	  std::cout << "local: ID ID\n";
+	  fflush(stdout);
     auto ld_name = new std::vector<std::string>();
     ld_name->push_back(*$2);
     auto ld_type = *$1;
@@ -309,6 +322,8 @@ local_expr
 	|
 	// Int a, b, c
 	IDENTIFIER IDENTIFIER id_list {
+	  std::cout << "local: ID ID id_list\n";
+	  fflush(stdout);
     auto ld_name = new std::vector<std::string>();
     auto ld_type = *$1;
     ld_name->push_back(*$2);
@@ -321,6 +336,8 @@ local_expr
 	}
 	// Int a = 3
 	| IDENTIFIER IDENTIFIER OP_ATTRIB value_expression {
+	  std::cout << "local: ID ID = value_expression\n";
+	  fflush(stdout);
 		// initialized attribute
     auto ld_name = new std::vector<std::string>();
     auto ld_type = *$1;
@@ -333,34 +350,48 @@ local_expr
 		delete $1; delete $2;
 	}
 	// a = 3
+	| vector_var_access OP_ATTRIB value_expression {
+	  std::cout << "vector var access\n";
+	  fflush(stdout);
+
+	  /* construct a LocalDefinition from a slicevector */
+		// Get vector_var_access Slicevector object
+		auto args = std::vector<catmint::Expression *>{ $3 };
+
+								    
+		auto ld_name = new std::vector<std::string>();
+		//std::cout << "-- LocalDefinition : " << *$1 << std::endl;
+		
+		// Ugly hack - should add name to Slicevector
+		auto var_access = dynamic_cast<catmint::Slicevector*>($1);
+		auto var_access_name = dynamic_cast<catmint::Symbol*>(var_access->getObject())->getName();
+    ld_name->push_back(var_access_name);
+    
+    // Don't forget to record edges... as a hack, record them as names with a uuid prepended!
+
+    auto init = Expression($3);
+    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("auto"), std::move(init));
+    
+    $$ = base;
+
+			
+		//$$ = dispatch;
+	}
 	| IDENTIFIER OP_ATTRIB value_expression {
 		// initialized attribute but type must be deduced from rhs
-    //$$ = new catmint::Block(@1.first_line);
     auto ld_name = new std::vector<std::string>();
+		std::cout << "-- LocalDefinition : " << *$1 << std::endl;
     ld_name->push_back(*$1);
     auto init = Expression($3);
     auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("auto"), std::move(init));
     
-    //dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
     $$ = base;
 
 		delete $1;
 	}
 	// a[3] = 3
-	| vector_access OP_ATTRIB value_expression {
-		auto name     = std::string("set");
-		auto value    = $3;
-		auto dispatch = static_cast<catmint::Dispatch*>($1);
-		
-		// special case: a get operation on a Vector is actually
-		// a set operation
-		dispatch->setName(name);
-		dispatch->addArgument(Expression(value));
-
-		$$ = dispatch;
-	}
-	// a = [0, 1, b]
-	| IDENTIFIER OP_ATTRIB '[' dispatch_arguments ']' {
+	// a = [0, 1, b] // must also add a[1] = [0,1,b]
+	/*| IDENTIFIER OP_ATTRIB '[' dispatch_arguments ']' {
 	
 	  // Set name
 	  auto ld_name = new std::vector<std::string>();
@@ -401,7 +432,7 @@ local_expr
     auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type);
     $$ = base;
 	
-	}
+	}*/
 	;
 
 id_list 
@@ -413,33 +444,20 @@ id_list
     $$ = $3;
     $$->push_back(*$2);
   }
-  /*: ',' IDENTIFIER {
-    $$ = new catmint::Block(@1.first_line);
-    auto ld_name = new std::vector<std::string>();
-    ld_name->push_back(*$2);
-    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("infer"), nullptr);
-
-    dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
-  }
-  | ',' IDENTIFIER id_list {
-    $$ = $3;
-    auto ld_name = new std::vector<std::string>();
-    ld_name->push_back(*$2);
-    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("infer"));
-
-    dynamic_cast<catmint::Block*>($$)->addExpression(Expression(base));
-  }*/
-  // add initializers here as well
   ;
 
 expression 
-  : value_expression
-  | void_expression	
+// Ambiguity problem lies here
+// lvalue = value_expression
+// value_expression
+  : local
+  | value_expression
+  | void_expression
 	;
 
 value_expression
   : conditional_expression
-  | local
+  //| local
   | additive_expression
   ;
 
@@ -585,7 +603,6 @@ basic_expression
 	| parenthesis_expression
 	| if_expression
 	| dispatch_expression
-	| vector_access
 	;
 
 if_expression
@@ -666,8 +683,29 @@ identifier_expression
   | KW_SELF {
 		$$ = new catmint::Symbol(@1.first_line, "self");
 	}
-	| IDENTIFIER {
+	| rvalue_identifier_expression
+	;
+
+rvalue_identifier_expression
+	// Break this into new lvalue identifier_expression and Add dispatch symbol from class
+	: IDENTIFIER {
 		$$ = new catmint::Symbol(@1.first_line, *$1);
+	}
+	| vector_access {
+	  std::cout<<"vector access from rvalue_identifier_expression\n";
+	  fflush(stdout);
+  	$$ = $1;
+	}
+	;
+
+// Used in for - change this significantly
+lvalue_identifier_expression
+	// Break this into new lvalue identifier_expression and Add dispatch symbol from class
+	: IDENTIFIER {
+		$$ = new catmint::Symbol(@1.first_line, *$1);
+	}
+	| vector_var_access {
+  	$$ = $1;
 	}
 	;
 
@@ -702,33 +740,244 @@ negative_expression
 
 void_expression
   : while_expression
+  | for_expression
   ;
   
 while_expression
     : KW_WHILE value_expression OP_COLON block KW_END {
 		auto cond 		 = $2;
-		auto block_while = ($4 != nullptr) ? $4 : new catmint::Block(@3.first_line);;
+		auto block_while = ($4 != nullptr) ? $4 : new catmint::Block(@4.first_line);
 		
 		$$ = new catmint::WhileStatement(@1.first_line,
 									  Expression(cond),
 									  Expression(block_while));
     }
     ;
+    
+    
+for_expression
+    // Define the variable
+    // for int iter in container:
+    // for auto iter in container: should also be allowed, as deduction!
+    // for iter = 0 in container:
+    :/* KW_FOR local KW_IN value_expression OP_COLON block KW_END {
+		auto iterator	 = $2;
+		auto container = $4;
+		auto block_for = ($6 != nullptr) ? $6 : new catmint::Block(@6.first_line);
+		
+		$$ = new catmint::ForStatement(@1.first_line,
+									  Expression(iterator),
+									  Expression(container),
+									  Expression(block_for));
+    }
+    // for iter in container: perhaps only leave this ?
+    |*/ KW_FOR rvalue_identifier_expression KW_IN value_expression OP_COLON block KW_END {
+		auto iter   	 = $2;
+		auto cont      = $4;
+		auto block_for = ($6 != nullptr) ? $6 : new catmint::Block(@6.first_line);
+		
+		$$ = new catmint::ForStatement(@1.first_line,
+									  Expression(iter),
+									  //Expression(new catmint::Symbol(@1.first_line, *$2)),
+									  //nullptr,
+									  Expression(cont),
+									  Expression(block_for));
+    }
+    ;
 
-vector_access 
-	: basic_expression '[' additive_expression ']' {
+// there should be 3 types of vector access
+// global declarative lvalue
+// two types of rvalue
+//    one that needs an object -- basically the same as the above but without allowing attribution and onverted to a dispatch and a set....
+//    one that doesnt --
+vector_access  // More precisely rvalue ... and let arguments be longer --<< this should be for "for" and others, needs an object, disallow dispatch here
+	: /*dispatch_expression '[' vector_arguments ']' 
+	|*/ rvalue_identifier_expression '[' vector_arguments ']' {
+	  std::cout << "rvalue vector_access\n";
+    fflush(stdout);
 		auto obj   = $1;
 		auto name  = std::string("get");
-		auto args  = std::vector<catmint::Expression*>{$3};
+		//auto args  = std::vector<catmint::Expression*>{$3};
+		auto args  = *$3;
 		
-		// get access for an elementh from a Vector
-		$$ = new catmint::Dispatch(@1.first_line,
+		// Crude checks here
+    if (args.size() == 0) {
+      // we have a vector [:] which means all
+		  auto  start  = new catmint::StringConstant(@1.first_line,  "0"); // Make more checks here!
+		  auto  stop   = new catmint::StringConstant(@1.first_line, "-1");
+		  auto  step   = new catmint::StringConstant(@1.first_line,  "1");
+
+		  // special syntax for String: access a substring
+		  auto slice = new catmint::Slicevector(@1.first_line,
+								   Expression(obj),
+								   Expression(start),
+								   Expression(step),								   
+								   Expression(stop));	
+
+      $$ = new catmint::Dispatch(@1.first_line,
 								name,
 								Expression(obj),
-								args);
+								args);		
+    } 
+    else if (args.size() == 1) {
+      // a[1] - get element 1 in vector
+      // we have a vector [:] which means all
+		  auto  start  = args[0]; // Make more checks here!
+		  auto  stop   = args[0];
+		  auto  step   = new catmint::StringConstant(@1.first_line,  "1");
+
+		  // special syntax for String: access a substring
+		  auto slice = new catmint::Slicevector(@1.first_line,
+								   Expression(obj),
+								   Expression(start),
+								   Expression(step),								   
+								   Expression(stop));	
+
+      $$ = new catmint::Dispatch(@1.first_line,
+								name,
+								Expression(obj),
+								args);		
+    }
+    else if (args.size() == 2) {
+      // a[begin:stop:step]
+		  auto  start  = args[0]; // Make more checks here!
+		  auto  stop   = args[1];
+		  auto  step   = new catmint::StringConstant(@1.first_line,  "1");
+
+		  // special syntax for String: access a substring
+		  auto slice = new catmint::Slicevector(@1.first_line,
+								   Expression(obj),
+								   Expression(start),
+								   Expression(step),								   
+								   Expression(stop));	
+	  
+      $$ = new catmint::Dispatch(@1.first_line,
+								name,
+								Expression(obj),
+								args);		
+    }
+    else if (args.size() == 3) {
+      // a[begin:stop:step]
+		  auto  start  = args[0]; // Make more checks here!
+		  auto  stop   = args[1];
+		  auto  step   = args[2];
+
+		  // special syntax for String: access a substring
+		  auto slice = new catmint::Slicevector(@1.first_line,
+								   Expression(obj),
+								   Expression(start),
+								   Expression(step),								   
+								   Expression(stop));	
+
+      $$ = new catmint::Dispatch(@1.first_line,
+								name,
+								Expression(obj),
+								args);		
+		}
+		
+		
+		// get access for an elementh from a Vector
+		//$$ = new catmint::Dispatch(@1.first_line,
+		//						name,
+	//							Expression(obj),
+//								args);
 	}
 	;
 
+vector_arguments
+  : %empty {
+      $$ = new std::vector<catmint::Expression*>();
+  }
+  | OP_COLON {
+      $$ = new std::vector<catmint::Expression*>();
+  }
+  | value_expression {
+    std::cout<<"vector_arguments" << std::endl;
+    fflush(stdout);
+  
+      $$ = new std::vector<catmint::Expression*>();
+      $$->push_back($1);
+  }
+  | vector_arguments OP_COLON value_expression  {
+    $$ = $1;		
+    $$->push_back($3);
+  }
+  ;
+  
+vector_var_access 
+  //: lvalue_identifier_expression '[' vector_arguments ']' {
+  : IDENTIFIER '[' vector_arguments ']' {  
+    std::cout<<"good, l_value vector_var_access" << std::endl;
+    fflush(stdout);
+     // Should at some point allow class member acces! maybe in identifier expr allow a "dispatch"
+		auto  obj    =  new catmint::Symbol(@1.first_line, *$1); // $1
+		auto& args   = *$3;
+
+    // Crude checks here
+    if (args.size() == 0) {
+      // we have a vector [:] which means all
+		  auto  start  = new catmint::StringConstant(@1.first_line,  "0"); // Make more checks here!
+		  auto  stop   = new catmint::StringConstant(@1.first_line, "-1");
+		  auto  step   = new catmint::StringConstant(@1.first_line,  "1");
+
+		  // special syntax for String: access a substring
+		  $$ = new catmint::Slicevector(@1.first_line,
+								   Expression(obj),
+								   Expression(start),
+								   Expression(step),								   
+								   Expression(stop));	
+    } 
+    else if (args.size() == 1) {
+      // a[1] - get element 1 in vector
+      // we have a vector [:] which means all
+		  auto  start  = args[0]; // Make more checks here!
+		  auto  stop   = args[0];
+		  auto  step   = new catmint::StringConstant(@1.first_line,  "1");
+
+		  // special syntax for String: access a substring
+		  $$ = new catmint::Slicevector(@1.first_line,
+								   Expression(obj),
+								   Expression(start),
+								   Expression(step),								   
+								   Expression(stop));	
+    }
+    else if (args.size() == 2) {
+      // a[begin:stop:step]
+		  auto  start  = args[0]; // Make more checks here!
+		  auto  stop   = args[1];
+		  auto  step   = new catmint::StringConstant(@1.first_line,  "1");
+
+		  // special syntax for String: access a substring
+		  $$ = new catmint::Slicevector(@1.first_line,
+								   Expression(obj),
+								   Expression(start),
+								   Expression(step),								   
+								   Expression(stop));	
+	  
+    }
+    else if (args.size() == 3) {
+      // a[begin:stop:step]
+		  auto  start  = args[0]; // Make more checks here!
+		  auto  stop   = args[1];
+		  auto  step   = args[2];
+
+		  // special syntax for String: access a substring
+		  $$ = new catmint::Slicevector(@1.first_line,
+								   Expression(obj),
+								   Expression(start),
+								   Expression(step),								   
+								   Expression(stop));	
+	  
+    }
+    else {
+      std::cout << "[ ERROR ] : Line " << @1.first_line << " : Too many rguments in container access." << std::endl;
+  	  fflush(stdout);
+      exit(1);
+    }
+		delete $3;
+  }
+  ;
+	
 %%
 
 // ----------------------------------------------------------------------------
@@ -796,8 +1045,6 @@ int main(int argc, char** argv) {
 
   for(auto inclusion : matches) {
     auto module_name = inclusion.substr(strlen("using "), strlen(inclusion.c_str()));
-	  //in.open(module_name.c_str());
-	  //in.open(module_name.c_str());
 	  std::string full_path_to_module = module_name + ".cmm";
 	  std::string full_path_to_module2 = "./test/" + module_name + ".cmm";
     std::cout << "[ LOG ] Opening and adding module << " << full_path_to_module << " >>" << std::endl;
@@ -820,15 +1067,11 @@ int main(int argc, char** argv) {
   }
   
   // Now add the original file
-	//in.open(gInputFileName);
-	//Sbuffer << in.rdbuf();
 	Sbuffer << result;
-	//in.close();
 	out << Sbuffer.str();
 	out.close();
 	
 	/* Open actual merged file */
-	//yyin = fopen(argv[1], "r");
 	yyin = fopen("target.~tmp", "r");
 
 	if(yyparse()) {

@@ -21,8 +21,10 @@
 #include "StaticDispatch.h"
 #include "StringConstant.h"
 #include "Substring.h"
+#include "Slicevector.h"
 #include "Symbol.h"
 #include "UnaryOperator.h"
 #include "WhileStatement.h"
+#include "ForStatement.h"
 
 #endif /* ASTNODES_H */

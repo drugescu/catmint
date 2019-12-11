@@ -1,0 +1,199 @@
+{
+    "NodeType": "Program",
+    "NodeID": 0,
+    "LineNumber": 1,
+    "Classes": [
+        {
+            "NodeType": "Class",
+            "NodeID": 1,
+            "LineNumber": 0,
+            "Name": "Main",
+            "Features": [
+                {
+                    "NodeType": "Method",
+                    "NodeID": 2,
+                    "LineNumber": 0,
+                    "Name": "main",
+                    "ReturnType": "Void",
+                    "Body": {
+                        "NodeType": "Block",
+                        "NodeID": 3,
+                        "LineNumber": 1,
+                        "Expressions": [
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 4,
+                                "LineNumber": 1,
+                                "Expressions": [
+                                    {
+                                        "NodeType": "Block",
+                                        "NodeID": 5,
+                                        "LineNumber": 24,
+                                        "Expressions": [
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 6,
+                                                "LineNumber": 24,
+                                                "Type": "auto",
+                                                "Initializer": {
+                                                    "NodeType": "IntegerConstant",
+                                                    "NodeID": 7,
+                                                    "LineNumber": 24,
+                                                    "Value": 1
+                                                },
+                                                "NameList": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 8,
+                                                        "LineNumber": 24,
+                                                        "Name": "a"
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 9,
+                                                "LineNumber": 25,
+                                                "Type": "auto",
+                                                "Initializer": {
+                                                    "NodeType": "IntegerConstant",
+                                                    "NodeID": 10,
+                                                    "LineNumber": 25,
+                                                    "Value": 1
+                                                },
+                                                "NameList": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 11,
+                                                        "LineNumber": 25,
+                                                        "Name": "a"
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "NodeType": "ForStatement",
+                                                "NodeID": 12,
+                                                "LineNumber": 28,
+                                                "Iterator": {
+                                                    "NodeType": "Symbol",
+                                                    "NodeID": 13,
+                                                    "LineNumber": 28,
+                                                    "Name": "a"
+                                                },
+                                                "Container": {
+                                                    "NodeType": "Symbol",
+                                                    "NodeID": 14,
+                                                    "LineNumber": 28,
+                                                    "Name": "b"
+                                                },
+                                                "Body": {
+                                                    "NodeType": "Block",
+                                                    "NodeID": 15,
+                                                    "LineNumber": 28
+                                                }
+                                            },
+                                            {
+                                                "NodeType": "ForStatement",
+                                                "NodeID": 16,
+                                                "LineNumber": 31,
+                                                "Iterator": {
+                                                    "NodeType": "Dispatch",
+                                                    "NodeID": 17,
+                                                    "LineNumber": 31,
+                                                    "Name": "get",
+                                                    "Object": {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 18,
+                                                        "LineNumber": 31,
+                                                        "Name": "a"
+                                                    },
+                                                    "Arguments": [
+                                                        {
+                                                            "NodeType": "IntegerConstant",
+                                                            "NodeID": 19,
+                                                            "LineNumber": 31,
+                                                            "Value": 1
+                                                        }
+                                                    ]
+                                                },
+                                                "Container": {
+                                                    "NodeType": "Symbol",
+                                                    "NodeID": 20,
+                                                    "LineNumber": 31,
+                                                    "Name": "b"
+                                                },
+                                                "Body": {
+                                                    "NodeType": "Block",
+                                                    "NodeID": 21,
+                                                    "LineNumber": 31
+                                                }
+                                            },
+                                            {
+                                                "NodeType": "ForStatement",
+                                                "NodeID": 22,
+                                                "LineNumber": 37,
+                                                "Iterator": {
+                                                    "NodeType": "Dispatch",
+                                                    "NodeID": 23,
+                                                    "LineNumber": 37,
+                                                    "Name": "get",
+                                                    "Object": {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 24,
+                                                        "LineNumber": 37,
+                                                        "Name": "a"
+                                                    },
+                                                    "Arguments": [
+                                                        {
+                                                            "NodeType": "Dispatch",
+                                                            "NodeID": 25,
+                                                            "LineNumber": 37,
+                                                            "Name": "get",
+                                                            "Object": {
+                                                                "NodeType": "Symbol",
+                                                                "NodeID": 26,
+                                                                "LineNumber": 37,
+                                                                "Name": "b"
+                                                            },
+                                                            "Arguments": [
+                                                                {
+                                                                    "NodeType": "Dispatch",
+                                                                    "NodeID": 27,
+                                                                    "LineNumber": 37,
+                                                                    "Name": "alpha",
+                                                                    "Arguments": [
+                                                                        {
+                                                                            "NodeType": "IntegerConstant",
+                                                                            "NodeID": 28,
+                                                                            "LineNumber": 37,
+                                                                            "Value": 2
+                                                                        }
+                                                                    ]
+                                                                }
+                                                            ]
+                                                        }
+                                                    ]
+                                                },
+                                                "Container": {
+                                                    "NodeType": "Symbol",
+                                                    "NodeID": 29,
+                                                    "LineNumber": 37,
+                                                    "Name": "b"
+                                                },
+                                                "Body": {
+                                                    "NodeType": "Block",
+                                                    "NodeID": 30,
+                                                    "LineNumber": 37
+                                                }
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ]
+}

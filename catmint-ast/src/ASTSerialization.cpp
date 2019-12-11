@@ -32,11 +32,14 @@ const auto Operand = "Operand";
 const auto Object = "Object";
 const auto Start = "Start";
 const auto End = "End";
+const auto Step = "Step";
 const auto Arguments = "Arguments";
 const auto Condition = "Condition";
 const auto Then = "Then";
 const auto Else = "Else";
 const auto Scope = "Scope";
+const auto Iterator = "Iterator";
+const auto Container = "Container";
 
 const auto ProgramNodeType = "Program";
 const auto ClassNodeType = "Class";
@@ -53,11 +56,13 @@ const auto BinaryOperatorNodeType = "BinaryOperator";
 const auto UnaryOperatorNodeType = "UnaryOperator";
 const auto CastNodeType = "Cast";
 const auto SubstringNodeType = "Substring";
+const auto SlicevectorNodeType = "Slicevector";
 const auto DispatchNodeType = "Dispatch";
 const auto StaticDispatchNodeType = "StaticDispatch";
 const auto NewObjectNodeType = "NewObject";
 const auto IfStatementNodeType = "IfStatement";
 const auto WhileStatementNodeType = "WhileStatement";
+const auto ForStatementNodeType = "ForStatement";
 const auto LocalDefinitionNodeType = "LocalDefinition";
 const auto SymbolNodeType = "Symbol";
 }
@@ -452,6 +457,47 @@ bool ASTSerializer::visit(Substring *S) {
   return true;
 }
 
+bool ASTSerializer::visit(Slicevector *S) {
+  assert(isValid() && "Invalid serializer");
+  assert(S && "Expected non-null substring operator");
+
+  CreateJSONObject slicevectorObject(*this, keys::SlicevectorNodeType, S);
+  writePair(keys::LineNumber, S->getLineNumber());
+
+  if (auto strObject = S->getObject()) {
+    writer->Key(keys::Object);
+    assert(strObject && "Slicevector operator doesn't have a vector object");
+    if (!visit(strObject)) {
+      return false;
+    }
+  }
+
+  writer->Key(keys::Start);
+  auto start = S->getStart();
+  assert(start && "Slicevector operator doesn't have start index");
+  if (!visit(start)) {
+    return false;
+  }
+
+  writer->Key(keys::Step);
+  auto step = S->getStep();
+  assert(step && "Slicevector operator doesn't have step index");
+  if (!visit(step)) {
+    return false;
+  }
+
+  writer->Key(keys::End);
+  auto end = S->getEnd();
+  assert(end && "Slicevector operator doesn't have end index");
+  if (!visit(end)) {
+    return false;
+  }
+
+
+  return true;
+}
+
+
 bool ASTSerializer::visit(Dispatch *D) {
   assert(isValid() && "Invalid serializer");
   assert(D && "Expected non-null dispatch");
@@ -558,7 +604,7 @@ bool ASTSerializer::visit(IfStatement *If) {
 
 bool ASTSerializer::visit(WhileStatement *While) {
   assert(isValid() && "Invalid serializer");
-  assert(While && "Expected non-null while statement");
+  assert(While && "Expected non-null while statement"); // this should be removed and allowed!
 
   CreateJSONObject whileObject(*this, keys::WhileStatementNodeType, While);
   writePair(keys::LineNumber, While->getLineNumber());
@@ -574,6 +620,36 @@ bool ASTSerializer::visit(WhileStatement *While) {
   auto body = While->getBody();
   //assert(body && "While doesn't have body");
   return visit(body);
+}
+
+/* New statement - For - similar to ifs and whiles */
+bool ASTSerializer::visit(ForStatement *For) {
+  assert(isValid() && "Invalid serializer");
+  assert(For && "Expected non-null for statement"); // this should be removed!
+  
+  CreateJSONObject forObject(*this, keys::ForStatementNodeType, For);
+  writePair(keys::LineNumber, For->getLineNumber());
+  
+  writer->Key(keys::Iterator);
+  auto iter = For->getIter();
+  assert(iter && "For doesn't have iterator initializer");
+  if (!visit(iter)) {
+    return false;
+  }
+
+  writer->Key(keys::Container);
+  auto cont = For->getCont();
+  assert(cont && "For doesn't have container expression");
+  if (!visit(cont)) {
+    return false;
+  }
+  
+  writer->Key(keys::Body);
+  auto body = For->getBody();
+
+  // Complete this
+  return visit(body);
+
 }
 
 /* Modified visitation to generate list of names */
@@ -604,6 +680,7 @@ bool ASTSerializer::visit(LocalDefinition *Local) {
   writer->Key(keys::NameList);
   CreateJSONArray names(*this);
   for (auto VarName : Local->getName()) {
+    // Change this to visit(symbol) ?
     CreateJSONObject object(*this, keys::SymbolNodeType, Local);
     writePair(keys::LineNumber, Local->getLineNumber());
     writePair(keys::Name, VarName);

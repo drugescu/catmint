@@ -47,11 +47,13 @@ public:
   virtual bool visit(UnaryOperator *UO);
   virtual bool visit(Cast *C);
   virtual bool visit(Substring *S);       /// Default order: string, start, end
+  virtual bool visit(Slicevector *S);       /// Default order: string, start, end
   virtual bool visit(Dispatch *D);        /// Default order: args, object
   virtual bool visit(StaticDispatch *SD); /// Default order: args, object
   virtual bool visit(NewObject *NO);
   virtual bool visit(IfStatement *If); /// Default order: condition, then, else
   virtual bool visit(WhileStatement *While);  /// Default order: condition, body
+  virtual bool visit(ForStatement *For);  /// Default order: ID of iterator, container, body
   virtual bool visit(LocalDefinition *Local); /// \note Does not visit scope!
 };
 } /* namespace catmint */

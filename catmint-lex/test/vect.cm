@@ -1,0 +1,38 @@
+#a = 3
+#a[3:6:3] = 2
+#a[1] = 1
+#a[1:2] = alpha(z)
+#a[:] = 0
+#a[:] = b.a(1)[1]
+#a = b[1:2]
+#int a = 3
+#a[1] = b[0]
+#a[1:2] = b[0]
+#a = b[2:3]
+#
+#a[:] = b.a(1)[a[1]]
+#a[:] = 0
+#a[:] = b.a()[b.a()[1]]
+#a[:] = list(a)[list(b)[10]]
+#a[:] = a.b()[:]
+#a[:] = a[:]
+
+#for a[:] in b:
+#  a
+#end
+
+a[1:2] = 1
+a = 1
+#a[1:2:3] = ( a[:] = 3 )
+
+for a in b:
+end
+
+for a[1] in b:
+end
+
+#for a.s()[1] in b:
+#end
+
+for a[b[alpha(2)]] in b:
+end

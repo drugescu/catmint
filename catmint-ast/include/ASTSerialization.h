@@ -55,12 +55,14 @@ public:
   bool visit(UnaryOperator *UO) override;
   bool visit(Cast *C) override;
   bool visit(Substring *S) override;
+  bool visit(Slicevector *S) override;
   bool visit(Dispatch *D) override;
   bool visit(StaticDispatch *SD) override;
   bool visit(NewObject *NO) override;
   bool visit(IfStatement *If) override;
   bool visit(WhileStatement *While) override;
-  bool visit(LocalDefinition *Local) override;
+  bool visit(ForStatement *For) override; // Pay attention here, new one
+  bool visit(LocalDefinition *Local) override; // Also here, changed
   /// @}
 
 private:
@@ -179,12 +181,14 @@ private:
   std::unique_ptr<UnaryOperator> parseUnaryOp(rapidjson::Value &tree);
   std::unique_ptr<Cast> parseCast(rapidjson::Value &tree);
   std::unique_ptr<Substring> parseSubstring(rapidjson::Value &tree);
+  std::unique_ptr<Slicevector> parseSlicevector(rapidjson::Value &tree);
   std::unique_ptr<Dispatch> parseDispatch(rapidjson::Value &tree);
   std::unique_ptr<StaticDispatch> parseStaticDispatch(rapidjson::Value &tree);
   std::unique_ptr<NewObject> parseNewObject(rapidjson::Value &tree);
   std::unique_ptr<IfStatement> parseIfStatement(rapidjson::Value &tree);
   std::unique_ptr<WhileStatement> parseWhileStatement(rapidjson::Value &tree);
-  std::unique_ptr<LocalDefinition> parseLocalDefinition(rapidjson::Value &tree);
+  std::unique_ptr<ForStatement> parseForStatement(rapidjson::Value &tree); // Pay attention here in deserialization
+  std::unique_ptr<LocalDefinition> parseLocalDefinition(rapidjson::Value &tree); // Also changed, pay attention
   std::unique_ptr<Assignment> parseAssignment(rapidjson::Value &tree);
   /// @}
 };
