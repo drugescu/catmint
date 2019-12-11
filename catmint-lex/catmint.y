@@ -359,28 +359,51 @@ local_expr
 
 		$$ = dispatch;
 	}
-	// a = []
-	| IDENTIFIER OP_ATTRIB '[' ']' {
+	// a = [0, 1, b]
+	| IDENTIFIER OP_ATTRIB '[' dispatch_arguments ']' {
 	
+	  // Set name
 	  auto ld_name = new std::vector<std::string>();
     ld_name->push_back(*$1);
-    auto ld_type = std::string("_uuid_generic_0001_list");
-    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type);
-    $$ = base;
-	
+
+    // Set partial type
+    auto ld_type = std::string("_uuid_generic_0001_list");  // Semantic analyzer will add complete type
+
+    // Get initializers
+    auto& args = *$4;
+      
+    //this should be a dispatch with list.insert!
+    auto obj = new catmint::Symbol(@1.first_line, *$1);
+		//auto  obj  = $1;
+
+		// Dispatch on list with .insert method
+	  auto init = Expression(new catmint::Dispatch(@1.first_line, std::string("insert"), Expression(obj), args));
+      
+    // Create argument list expression
+   // auto init = Expression($3);
+    
+    // Create actual local definition
+		if (args.size() != 0)
+      $$ = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type, std::move(init)); 
+		else
+		  $$ = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type); 
+
+    //$$ = base;
 	}
 	// a = {}
 	| IDENTIFIER OP_ATTRIB '{' '}' {
 	
 	  auto ld_name = new std::vector<std::string>();
     ld_name->push_back(*$1);
-    auto ld_type = std::string("_uuid_generic_0002_dictionary");
+    
+   
+    auto ld_type = std::string("_uuid_generic_0002_dictionary"); // Semantic analyzer will add complete type
     auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type);
     $$ = base;
 	
 	}
 	;
-  
+
 id_list 
 : ',' IDENTIFIER {
     $$ = new std::vector<std::string>();
@@ -592,7 +615,7 @@ if_expression
 
 dispatch_expression
 	: IDENTIFIER OP_OPAREN dispatch_arguments OP_CPAREN {
-		auto  obj  = nullptr;		
+		auto  obj  = nullptr;		// Will be main or any parent like obj
 		auto& name = *$1;
 		auto& args = *$3;
 

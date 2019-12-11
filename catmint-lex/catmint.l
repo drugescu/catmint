@@ -85,6 +85,15 @@ static int gColumnNumber = 1;
 	return STRING_CONSTANT;
 }
 
+[']([^']|(\\\'))*['] {
+	std::string s = std::string(yytext);
+	s = s.substr(1, s.size() - 2);
+
+	yylval.stringValue = new std::string(s);
+	return STRING_CONSTANT;
+}
+
+
 [ \t\r\n]					{ countColumns(); }
 . {
 	countColumns();
