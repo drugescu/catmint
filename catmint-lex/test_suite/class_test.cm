@@ -9,5 +9,5 @@ class Point from IO
 end
 
 # 3
--a*(3/20)+null
+print (-a*(3/20)+null)
 a = 3.0

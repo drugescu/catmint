@@ -1,14 +1,14 @@
 int a=3
 float c
-print(a) * print(b) ** fib(3) % 2
-a ^ b
-3 & 2
+return print(a) * print(b) ** fib(3) % 2
+return a ^ b
+return 3 & 2
 if (a & b):
   print(x)
 else
   print(y)
 end
-a & b | d ^ c
-3 + a & b
-a << 3 & b
-#print(c)
+return a & b | d ^ c
+return 3 + a & b
+return a << 3 & b
+print(c)

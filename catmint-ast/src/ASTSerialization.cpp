@@ -65,6 +65,7 @@ const auto WhileStatementNodeType = "WhileStatement";
 const auto ForStatementNodeType = "ForStatement";
 const auto LocalDefinitionNodeType = "LocalDefinition";
 const auto SymbolNodeType = "Symbol";
+const auto ReturnNodeType = "Return";
 }
 
 ASTSerializer::ASTSerializer(const std::string &filename)
@@ -571,6 +572,23 @@ bool ASTSerializer::visit(NewObject *NO) {
   return true;
 }
 
+bool ASTSerializer::visit(ReturnExpression *R) {
+  assert(isValid() && "Invalid serializer");
+  assert(R && "Expected non-null return expression");
+  
+  CreateJSONObject returnObject(*this, keys::ReturnNodeType, R);
+  writePair(keys::LineNumber, R->getLineNumber());
+  
+  writer->Key(keys::Object);  
+  auto retExpr = R->getRet();
+  assert(retExpr && "Return doesn't have return object");
+  if (!visit(retExpr)) {
+    return false;
+  }
+  
+  return true;
+}
+
 bool ASTSerializer::visit(IfStatement *If) {
   assert(isValid() && "Invalid serializer");
   assert(If && "Expected non-null if statement");
@@ -698,6 +716,12 @@ bool ASTSerializer::visit(Symbol *Sym) {
   writePair(keys::Name, Sym->getName());
   return true;
 }
+
+// ----------------------------------------------------------------------------
+//
+// Deserialization - as of yet incomplete for Slicevector, ReturnExpression, For
+//
+// ----------------------------------------------------------------------------
 
 ASTDeserializer::ASTDeserializer(const std::string &filename)
     : inputFile(std::fopen(filename.c_str(), "r")) {
@@ -950,9 +974,16 @@ ASTDeserializer::parseExpression(rapidjson::Value &tree) {
     return parseLocalDefinition(tree);
   } else if (nodeType == keys::AssignmentNodeType) {
     return parseAssignment(tree);
-  }
+  } /*else if (nodeType == keys::ForStatementNodeType) {
+    return parseForStatement(tree);
+  } else if (nodeType == keys::ReturnNodeType) {
+    return parseReturn(tree);
+  } else if (nodeType == keys::SlicevectorNodeType) {
+    return parseSlicevector(tree);
+  } */
+  // Add for, return, slicevector
 
-  assert(false && "Unknown expression kind");
+  assert(false && "Unknown expression kind, or unimplemented (for, return, slicevector)");
   return nullptr;
 }
 
@@ -997,7 +1028,6 @@ ASTDeserializer::parseFloatConstant(rapidjson::Value &tree) {
 
   assert(tree.HasMember(keys::Value) && "Float constant without value");
   assert(tree[keys::Value].IsDouble() && "Invalid value for float constant");
-  // TODO: figure out about unsigned etc
 
   return createNode<FloatConstant>(tree, parseLineNumber(tree),
                                  tree[keys::Value].GetDouble());
@@ -1194,6 +1224,7 @@ ASTDeserializer::parseSubstring(rapidjson::Value &tree) {
                                std::move(end));
 }
 
+// Modified!
 std::unique_ptr<Dispatch>
 ASTDeserializer::parseDispatch(rapidjson::Value &tree) {
   assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
@@ -1342,6 +1373,7 @@ ASTDeserializer::parseWhileStatement(rapidjson::Value &tree) {
 }
 
 /* Change deserializer to write vector of strings as names */
+// Modified - will not work for now
 std::unique_ptr<LocalDefinition>
 ASTDeserializer::parseLocalDefinition(rapidjson::Value &tree) {
   assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&

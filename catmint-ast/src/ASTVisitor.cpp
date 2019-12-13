@@ -94,6 +94,8 @@ bool ASTVisitor::visit(Expression *E) {
     return visit(Local);
   } else if (auto Assign = dynamic_cast<Assignment *>(E)) {
     return visit(Assign);
+  } else if (auto Ret = dynamic_cast<ReturnExpression *>(E)) {
+    return visit(Ret);
   }
 
   assert(false && "Unknown expression kind");
@@ -197,4 +199,8 @@ bool ASTVisitor::visit(LocalDefinition *Local) {
   }
 
   return true;
+}
+
+bool ASTVisitor::visit(ReturnExpression *Ret) {
+  return visit(Ret->getRet());
 }

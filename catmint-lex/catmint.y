@@ -56,7 +56,7 @@
 
 %start catmint_program
 
-%token KW_WHILE KW_FOR
+%token KW_WHILE KW_FOR KW_RETURN
 %token KW_CLASS KW_SELF KW_FROM KW_END KW_VAR KW_NULL KW_DO KW_IN
 %token KW_CONSTRUCTOR
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
@@ -86,25 +86,22 @@ expression
             shift_expression
               unary_expression
                 basic_expression
+                  parenthesis_expression 
                   identifier_expression 
                     constant_expression
                     lvalue_identifier_expression
-                    rvalue_identifier_expression
                       vector_var_access
-                      parenthesis_expression 
+                    rvalue_identifier_expression
+                      vector_access
                   negative_expression
                   if_expression
     conditional_expression
-    vector_access
-    //substring_expression
-
-        // additive_expression
     dispatch_expression
 	void_expression
 	  while_expression
 	  for_expression
+	    for_iterator_expression
 
-//%type <expressions> locals
 %type <vecstr> id_list
 %type <expressions> dispatch_arguments vector_arguments
 %type <block> block
@@ -114,9 +111,6 @@ expression
 %type <catmintClass> catmint_class
 %type <catmintClasses> catmint_classes
 %type <stringValue> 		inherits_class
-
-//%type <formal> 	formal
-//%type <formals> formals
 
 // Precedence increases downward
 //%right '[' ']'
@@ -131,6 +125,7 @@ expression
 //%left OP_NOT
 
 %%
+
 // Program can consist of blocks of code and classes
 catmint_program : block catmint_classes block {
     auto base_before = new catmint::Block(@1.first_line);
@@ -357,21 +352,29 @@ local_expr
 
 	  /* construct a LocalDefinition from a slicevector */
 		// Get vector_var_access Slicevector object
-		auto args = std::vector<catmint::Expression *>{ $3 };
-
-								    
 		auto ld_name = new std::vector<std::string>();
-		//std::cout << "-- LocalDefinition : " << *$1 << std::endl;
 		
 		// Ugly hack - should add name to Slicevector
 		auto var_access = dynamic_cast<catmint::Slicevector*>($1);
 		auto var_access_name = dynamic_cast<catmint::Symbol*>(var_access->getObject())->getName();
     ld_name->push_back(var_access_name);
     
-    // Don't forget to record edges... as a hack, record them as names with a uuid prepended!l
-
-    auto init = Expression($3);
-    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("auto"), std::move(init));
+    // Don't forget to record edges...
+    auto base_init = Expression($3);
+    
+    // Construct a new init that contains a dispatch of type set on the object, if need be
+    // So basically have a local definition with a set as initializer
+		auto args = std::vector<catmint::Expression *>();
+		//catmint::TreeNode* copy_val = ($3)->clone();
+		//args.push_back(dynamic_cast<catmint::Expression *>(copy_val));
+    auto dispatch_init = Expression(new catmint::Dispatch(@1.first_line, std::string("set"), Expression(var_access), args));
+    
+    // Add both expressions to it
+    auto new_block = new catmint::Block(@1.first_line);
+    new_block->addExpression(std::move(base_init)); // std::move here
+    new_block->addExpression(std::move(dispatch_init));
+    
+    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("auto_vect"), Expression(new_block));
     
     $$ = base;
 
@@ -448,17 +451,24 @@ id_list
   ;
 
 expression 
-// Ambiguity problem lies here
-// lvalue = value_expression
-// value_expression
+// Ambiguity should have been solves
   : local
-  | value_expression
+  | return_expression//value_expression
+  | dispatch_expression
   | void_expression
+  | if_expression
 	;
 
+return_expression
+  :
+  KW_RETURN value_expression {
+    // Create a new AST node type of type returnexpression
+    $$ = new catmint::ReturnExpression(@1.first_line, Expression($2));
+  }
+  ;
+  
 value_expression
   : conditional_expression
-  //| local
   | additive_expression
   ;
 
@@ -754,46 +764,33 @@ while_expression
 									  Expression(block_while));
     }
     ;
-    
+
+// Allow a = 1, a[1] = 1, a(1), etc
+for_iterator_expression
+    : rvalue_identifier_expression
+    | dispatch_expression
+    //| local
+    ;
     
 for_expression
     // Define the variable
     // for int iter in container:
     // for auto iter in container: should also be allowed, as deduction!
     // for iter = 0 in container:
-    :/* KW_FOR local KW_IN value_expression OP_COLON block KW_END {
-		auto iterator	 = $2;
-		auto container = $4;
-		auto block_for = ($6 != nullptr) ? $6 : new catmint::Block(@6.first_line);
-		
-		$$ = new catmint::ForStatement(@1.first_line,
-									  Expression(iterator),
-									  Expression(container),
-									  Expression(block_for));
-    }
-    // for iter in container: perhaps only leave this ?
-    |*/ KW_FOR rvalue_identifier_expression KW_IN value_expression OP_COLON block KW_END {
-		auto iter   	 = $2;
-		auto cont      = $4;
-		auto block_for = ($6 != nullptr) ? $6 : new catmint::Block(@6.first_line);
-		
-		$$ = new catmint::ForStatement(@1.first_line,
-									  Expression(iter),
-									  //Expression(new catmint::Symbol(@1.first_line, *$2)),
-									  //nullptr,
-									  Expression(cont),
-									  Expression(block_for));
+    : KW_FOR for_iterator_expression KW_IN value_expression OP_COLON block KW_END {
+		  auto iter   	 = $2;
+		  auto cont      = $4;
+		  auto block_for = ($6 != nullptr) ? $6 : new catmint::Block(@6.first_line);
+		  
+		  $$ = new catmint::ForStatement(@1.first_line,
+									    Expression(iter),
+									    Expression(cont),
+									    Expression(block_for));
     }
     ;
 
-// there should be 3 types of vector access
-// global declarative lvalue
-// two types of rvalue
-//    one that needs an object -- basically the same as the above but without allowing attribution and onverted to a dispatch and a set....
-//    one that doesnt --
 vector_access  // More precisely rvalue ... and let arguments be longer --<< this should be for "for" and others, needs an object, disallow dispatch here
-	: /*dispatch_expression '[' vector_arguments ']' 
-	|*/ rvalue_identifier_expression '[' vector_arguments ']' {
+	: rvalue_identifier_expression '[' vector_arguments ']' {
 	  std::cout << "rvalue vector_access\n";
     fflush(stdout);
 		auto obj   = $1;

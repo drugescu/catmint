@@ -63,6 +63,7 @@ public:
   bool visit(WhileStatement *While) override;
   bool visit(ForStatement *For) override; // Pay attention here, new one
   bool visit(LocalDefinition *Local) override; // Also here, changed
+  bool visit(ReturnExpression *Ret) override; // Also here, changed
   /// @}
 
 private:
@@ -190,6 +191,7 @@ private:
   std::unique_ptr<ForStatement> parseForStatement(rapidjson::Value &tree); // Pay attention here in deserialization
   std::unique_ptr<LocalDefinition> parseLocalDefinition(rapidjson::Value &tree); // Also changed, pay attention
   std::unique_ptr<Assignment> parseAssignment(rapidjson::Value &tree);
+  std::unique_ptr<ReturnExpression> parseReturn(rapidjson::Value &tree); // Added in later
   /// @}
 };
 } /* namespace catmint */

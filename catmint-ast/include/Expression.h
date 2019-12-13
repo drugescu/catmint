@@ -11,6 +11,8 @@ namespace catmint {
 class Expression : public TreeNode {
 public:
   explicit Expression(int lineNumber) : TreeNode(lineNumber) {}
+  
+  //TreeNode* clone() const { return new TreeNode(*this); };
 };
 }
 #endif /* EXPRESSION_H_ */

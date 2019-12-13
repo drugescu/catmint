@@ -55,6 +55,7 @@ public:
   virtual bool visit(WhileStatement *While);  /// Default order: condition, body
   virtual bool visit(ForStatement *For);  /// Default order: ID of iterator, container, body
   virtual bool visit(LocalDefinition *Local); /// \note Does not visit scope!
+  virtual bool visit(ReturnExpression *Ret); // Not implemented yet
 };
 } /* namespace catmint */
 #endif /* ASTVISITOR_H */

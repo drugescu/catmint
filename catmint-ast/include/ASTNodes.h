@@ -26,5 +26,6 @@
 #include "UnaryOperator.h"
 #include "WhileStatement.h"
 #include "ForStatement.h"
+#include "Return.h"
 
 #endif /* ASTNODES_H */
