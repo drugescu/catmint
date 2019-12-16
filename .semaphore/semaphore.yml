@@ -15,7 +15,7 @@ blocks:
             - 'sudo apt-get update -y  '
             - echo "Upgrade"
             - >-
-              sudo apt-get upgrade -y --force-yes -o
+              # sudo apt-get upgrade -y --force-yes -o
               Dpkg::Options::="--force-confnew"
             - echo "Dist-upgrade"
             - sudo apt-get dist-upgrade -y
