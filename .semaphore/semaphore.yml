@@ -1,0 +1,24 @@
+version: v1.0
+name: Initial Pipeline
+agent:
+  machine:
+    type: e1-standard-2
+    os_image: ubuntu1804
+blocks:
+  - name: 'Block #1'
+    task:
+      jobs:
+        - name: Job checkout
+          commands:
+            - checkout
+        - name: Job config
+          commands:
+            - sudo apt install bison -y
+            - sudo apt install flex -y
+            - cd ./catmint-lex
+        - name: Job make
+          commands:
+            - make
+        - name: Job test
+          commands:
+            - ./qtest.sh
