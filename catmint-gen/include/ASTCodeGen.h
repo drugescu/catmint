@@ -29,7 +29,7 @@
 //using namespace llvm;
 
 
-namespace lcpl
+namespace catmint
 {
 
 class ASTCodeGen : public ASTVisitor

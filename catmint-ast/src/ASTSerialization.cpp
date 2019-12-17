@@ -302,11 +302,11 @@ bool ASTSerializer::visit(Assignment *A) {
   CreateJSONObject object(*this, keys::AssignmentNodeType, A);
   writePair(keys::LineNumber, A->getLineNumber());
   writer->Key(keys::LHS);
-  auto LHS = A->getSymbol();
-  assert(LHS && "Assignment does not have an expression to assign to");
+ /* auto LHS = A->getSymbol();
+  assert((LHS.empty()) && "Assignment does not have an expression to assign to");
   if (!visit(LHS)) {
     return false;
-  }
+  }*/
 
   writer->Key(keys::RHS);
   auto RHS = A->getExpression();
@@ -1104,15 +1104,35 @@ static BinaryOperator::BinOpKind getBinOpKind(rapidjson::Value &tree) {
     return BinaryOperator::Mul;
   } else if (opKind == "/") {
     return BinaryOperator::Div;
+  } else if (opKind == "%") {
+    return BinaryOperator::Mod;
+  } else if (opKind == "**") {
+    return BinaryOperator::Pow;
+  } else if (opKind == "&") {
+    return BinaryOperator::And;
+  } else if (opKind == "|") {
+    return BinaryOperator::Or;
+  } else if (opKind == "^") {
+    return BinaryOperator::Xor;
+  } else if (opKind == "<<") {
+    return BinaryOperator::LShift;
+  } else if (opKind == ">>") {
+    return BinaryOperator::RShift;
   } else if (opKind == "<") {
     return BinaryOperator::LessThan;
   } else if (opKind == "<=") {
     return BinaryOperator::LessThanEqual;
+  } else if (opKind == ">") {
+    return BinaryOperator::GreaterThan;
+  } else if (opKind == ">=") {
+    return BinaryOperator::GreaterThanEqual;
   } else if (opKind == "==") {
     return BinaryOperator::Equal;
+  } else if (opKind == "!=") {
+    return BinaryOperator::NotEqual;
   }
 
-  assert(false && "Unknown binary operator kind");
+  assert(false && "Unknown binary operator kind, or unimplemented");
   return BinaryOperator::Invalid;
 }
 
@@ -1151,6 +1171,10 @@ static UnaryOperator::UnaryOpKind getOpKind(rapidjson::Value &tree) {
   if (opKind == "!") {
     return UnaryOperator::Not;
   }
+  
+  /*if (opKind == "++") {
+    return UnaryOperator::Incr;
+  }*/
 
   assert(false && "Unknown unary operator kind");
   return UnaryOperator::Invalid;
@@ -1378,10 +1402,10 @@ std::unique_ptr<LocalDefinition>
 ASTDeserializer::parseLocalDefinition(rapidjson::Value &tree) {
   assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
          tree[keys::NodeType] == keys::LocalDefinitionNodeType &&
-         "Expected while statement object");
+         "Expected Local Definition object");
 
-  assert(tree.HasMember(keys::Name) && "Local definition without name");
-  assert(tree[keys::Name].IsString() && "Invalid name for local definition");
+  //assert(tree.HasMember(keys::Name) && "Local definition without name");
+  //assert(tree[keys::Name].IsString() && "Invalid name for local definition");
 
   assert(tree.HasMember(keys::Type) && "Local definition without type");
   assert(tree[keys::Type].IsString() && "Invalid type for local definition");
@@ -1396,17 +1420,15 @@ ASTDeserializer::parseLocalDefinition(rapidjson::Value &tree) {
     for (auto b = args.Begin(), e = args.End(); b != e; ++b) {
       auto &argTree = *b;
       assert(argTree.IsObject() && "Expected argument object");
+
       auto argNode = parseSymbol(argTree);
-      assert(argNode && "Expected non-null expression node");
-      name_list.push_back((argNode.get()->getName()));
+      assert(argNode && "Expected non-null symbol node");
+      name_list.push_back(argNode.get()->getName());
+      std::cout<<"Argument : " << argNode.get()->getName() << "\n";
     }
   }
   
-  /*for (int i = 0; i < tree[keys::NameList].Size(); i++)
-    name_list.push_back(tree[keys::Name][i].GetString());*/
-    
   auto localDef = createNode<LocalDefinition>(tree, parseLineNumber(tree),
-//                                              tree[keys::Name].GetString(),
                                               name_list,
                                               tree[keys::Type].GetString());
 
@@ -1433,3 +1455,5 @@ ASTDeserializer::parseLocalDefinition(rapidjson::Value &tree) {
 
   return localDef;
 }
+
+// Still missing deserializer for the for, the slicevector, float constant, return

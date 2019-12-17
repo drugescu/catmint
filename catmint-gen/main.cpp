@@ -1,10 +1,10 @@
 
 #include <iostream>
 
-#include <ASTSerialization.h>
-/*#include <SemanticAnalysis.h>
+#include <SemanticAnalysis.h>
 #include <SemanticException.h>
-#include "ASTCodeGen.h"*/
+#include <ASTSerialization.h>
+//#include "ASTCodeGen.h"*/
 
 void printUsage() {
   std::cout << "./lcpl-codegen <inputFile> <outputFile> " << std::endl;
@@ -17,6 +17,7 @@ int main(int argc, char **argv) {
     return 0;
   }
 
+  // Deserialize from ".ast" file
   catmint::ASTDeserializer deserializer(argv[1]);
   std::unique_ptr<catmint::Program> program = deserializer.getRootNode();
 
@@ -35,6 +36,13 @@ int main(int argc, char **argv) {
   } catch (lcpl::SemanticException &e) {
     std::cout << e.what() << std::endl;
   }*/
+  
+  try {
+    catmint::SemanticAnalysis semanticAnalysis(program.get());
+    //semanticAnalysis.runAnalysis();
+  }  catch (catmint::SemanticException &e) {
+    std::cout << e.what() << std::endl;
+  }
 
   return 0;
 }

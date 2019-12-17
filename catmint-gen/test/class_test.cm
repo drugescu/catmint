@@ -1,0 +1,13 @@
+# Comment
+
+
+class Point from IO
+	# Another var region
+	int32 m = 3
+	float f = 3.4
+	String s = "Hello World!"
+end
+
+# 3
+print (-a*(3/20)+null)
+a = 3.0

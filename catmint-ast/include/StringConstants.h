@@ -8,6 +8,7 @@ namespace strings {
 const auto Null = "Null";
 const auto Void = "Void";
 const auto Int = "Int";
+const auto Float = "Float";
 
 const auto Self = "self";
 const auto MainClass = "Main";

@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cassert>
 
-using namespace lcpl;
+using namespace catmint;
 
 TypeTable::TypeTable(Program *p) {
   addTypes(p);
@@ -28,6 +28,7 @@ void TypeTable::addBuiltinTypes(Program *p) {
   typeTable[strings::Int] = new Type(strings::Int);
   typeTable[strings::Null] = new Type(strings::Null);
   typeTable[strings::Void] = new Type(strings::Void);
+  typeTable[strings::Float] = new Type(strings::Float);
 
   addBuiltinClasses(p);
 }
@@ -39,7 +40,8 @@ bool TypeTable::isBuiltinType(Type *t) const {
 
 void TypeTable::addBuiltinClasses(Program *p) {
   std::vector<Feature *> builtinMethods;
-  std::vector<FormalParam *> builtinMethodsParams;
+  //std::vector<FormalParam *> builtinMethodsParams;
+  std::vector<Attribute *> builtinMethodsParams;
 
   // Object
   builtinMethods.push_back(new Method(0, strings::Abort, strings::Void, nullptr,
@@ -62,7 +64,8 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethods.push_back(new Method(0, strings::In, strings::String, nullptr,
                                       builtinMethodsParams));
   builtinMethodsParams.push_back(
-      new FormalParam(0, strings::Message, strings::String));
+      //new FormalParam(0, strings::Message, strings::String));
+      new Attribute(0, strings::Message, strings::String));
   builtinMethods.push_back(
       new Method(0, strings::Out, strings::Io, nullptr, builtinMethodsParams));
   std::unique_ptr<Class> ioClass(
@@ -126,8 +129,10 @@ Type *TypeTable::getIOType() const {
   return typeTable.at(strings::Io);
 }
 
+// Should transfer from one to another here if Main class
 Type *TypeTable::createNewType(Class *cls) {
   if (typeTable.count(cls->getName())) {
+    std::cout << "Duplicate!!!\n";
     throw DuplicateClassException(cls);
   }
   assert(!nodeTypeTable.count(cls) && "Class already associated with type");

@@ -4,7 +4,7 @@
 
 #include <cassert>
 
-using namespace lcpl;
+using namespace catmint;
 
 void SymbolTable::pushScope() {
   SymbolTableScope *scope = new SymbolTableScope();
@@ -23,6 +23,14 @@ void SymbolTable::popScope() {
 void SymbolTable::insert(TreeNode *v, const std::string &name) {
   SymbolTableScope *scope = symbolTable.back();
   (*scope)[name] = v;
+}
+
+void SymbolTable::insert(TreeNode *v, const std::vector<std::string> &name) {
+  SymbolTableScope *scope = symbolTable.back();
+  // for all
+  for (auto& n : name)
+    (*scope)[n] = v;
+  //(*scope)[name] = v;
 }
 
 TreeNode *SymbolTable::lookup(const std::string &name) const {
