@@ -400,6 +400,12 @@ bool ASTSerializer::visit(UnaryOperator *UO) {
   case UnaryOperator::Not:
     opKind = "!";
     break;
+  case UnaryOperator::Increment:
+    opKind = "++";
+    break;
+  case UnaryOperator::Decrement:
+    opKind = "--";
+    break;
   default:
     assert(false && "Unhandled unary operator");
   }

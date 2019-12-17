@@ -11,7 +11,7 @@ namespace catmint {
 class UnaryOperator : public Expression {
 public:
   /// \brief The kinds of unary operators in catmint
-  enum UnaryOpKind { Minus, Not, Invalid };
+  enum UnaryOpKind { Minus, Not, Increment, Decrement, Invalid };
 
   /// \brief Create a node for a unary operator
   /// \note This takes ownership of \p operand if provided

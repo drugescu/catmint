@@ -85,6 +85,7 @@ expression
           logic_expression
             shift_expression
               unary_expression
+                increment_expression
                 basic_expression
                   parenthesis_expression 
                   identifier_expression 
@@ -121,6 +122,7 @@ expression
 %nonassoc <operator> PREC_REL
 %left '[' ']'
 %left OP_ATTRIB
+%left OP_INCR OP_DECR
 //%left '[' ']' '{' '}' KW_IF KW_WHILE
 //%left OP_NOT
 
@@ -457,6 +459,7 @@ expression
   | dispatch_expression
   | void_expression
   | if_expression
+  | increment_expression
 	;
 
 return_expression
@@ -606,7 +609,19 @@ unary_expression
 		// logic negation						
 		$$ = new catmint::UnaryOperator(@1.first_line, UnOp::Not, Expression($2));
 	}
+	| increment_expression
 	;
+	
+increment_expression
+  :// prefix increment
+	OP_INCR basic_expression {
+	  $$ = new catmint::UnaryOperator(@1.first_line, UnOp::Increment, Expression($2));
+	}
+	// prefix decrement
+	| OP_DECR basic_expression {
+	  $$ = new catmint::UnaryOperator(@1.first_line, UnOp::Decrement, Expression($2));
+	}
+  ;
 
 basic_expression
   : identifier_expression
@@ -710,15 +725,15 @@ rvalue_identifier_expression
 	;
 
 // Used in for - change this significantly
-lvalue_identifier_expression
+//lvalue_identifier_expression
 	// Break this into new lvalue identifier_expression and Add dispatch symbol from class
-	: IDENTIFIER {
+/*	: IDENTIFIER {
 		$$ = new catmint::Symbol(@1.first_line, *$1);
 	}
 	| vector_var_access {
   	$$ = $1;
-	}
-	;
+	}*/
+	//;
 
 constant_expression
   : KW_NULL {

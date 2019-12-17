@@ -68,3 +68,9 @@ for a[1] in b:
 end
 
 a[1] = 2
+a[1:2:3] = 2
+
+while a[1]:
+  ++a
+  b = ++b - --a
+end
