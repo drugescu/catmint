@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
   
   try {
     catmint::SemanticAnalysis semanticAnalysis(program.get());
-    //semanticAnalysis.runAnalysis();
+    semanticAnalysis.runAnalysis();
   }  catch (catmint::SemanticException &e) {
     std::cout << e.what() << std::endl;
   }

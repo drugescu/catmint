@@ -6,6 +6,14 @@
 #include <unordered_map>
 #include <map>
 
+#include <StringConstants.h>
+#include <IntConstant.h>
+#include <FloatConstant.h>
+#include <StringConstant.h>
+#include <Type.h>
+
+using namespace catmint;
+
 namespace catmint {
 
 class Attribute;
@@ -42,14 +50,25 @@ public:
 
   bool isEqualOrImplicitlyConvertibleTo(Type *fromType, Type *toType);
 
+  void setType(TreeNode *node, Type *type) { nodeTypeTable[node] = type; }
+
   /// \brief Get the type of \p node or assert (we don't throw an exception
   ///        because we don't intend to catch semantic errors with this)
-  Type *getType(TreeNode *node) const {
+  Type *getType(TreeNode *node) {
+    // For integer/float/string nodes there is no type
+    if(dynamic_cast<catmint::IntConstant *>(node)) {
+      return new catmint::Type(strings::Int);
+    }
+    if(dynamic_cast<catmint::StringConstant *>(node)) {
+      return new catmint::Type(strings::String);
+    }
+    if(dynamic_cast<catmint::FloatConstant *>(node)) {
+      return new catmint::Type(strings::Float);
+    }
+    
     assert(nodeTypeTable.count(node) && "Couldn't get type for node");
     return nodeTypeTable.at(node);
   }
-
-  void setType(TreeNode *node, Type *type) { nodeTypeTable[node] = type; }
 
   /// \brief Get the parent class corresponding to \p c
   Class *getParentClass(Class *c) const;

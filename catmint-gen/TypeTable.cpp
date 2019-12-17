@@ -29,6 +29,9 @@ void TypeTable::addBuiltinTypes(Program *p) {
   typeTable[strings::Null] = new Type(strings::Null);
   typeTable[strings::Void] = new Type(strings::Void);
   typeTable[strings::Float] = new Type(strings::Float);
+  
+  // Add additional types
+  //typeTable["IntegerConstant"] = typeTable[strings::Int];
 
   addBuiltinClasses(p);
 }
@@ -150,7 +153,11 @@ Type *TypeTable::getCommonType(Type *T, Type *U) const {
   return getVoidType();
 }
 
+// Careful hee
 bool TypeTable::isEqualOrImplicitlyConvertibleTo(Type *fromType, Type *toType) {
+  auto from = fromType->getName();
+  auto to = toType->getName();
+  if (from == to) return true;
   return false;
 }
 

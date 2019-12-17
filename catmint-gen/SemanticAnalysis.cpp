@@ -31,6 +31,7 @@ bool SemanticAnalysis::visit(Program *p) {
   std::map<Class *, bool> processed;
   for (auto c : *p) {
     std::cout << "Class : " << c->getName() << "\n";
+    fflush(stdout);
     if (processed[c]) {
       if (static_cast<Class *>(c)) {
         // There is one main auto-inserted, and another in your code

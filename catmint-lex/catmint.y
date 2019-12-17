@@ -107,6 +107,7 @@ expression
 %type <block> block
 
 %type <features> features attributes attribute_definitions
+%type <features> method_arguments
 %type <feature> attribute method
 %type <catmintClass> catmint_class
 %type <catmintClasses> catmint_classes
@@ -224,6 +225,18 @@ attribute_definitions : attribute {
 	}
 	;
 
+method_arguments : IDENTIFIER IDENTIFIER {
+		$$ = new std::vector<catmint::Feature*>();
+		auto attrib = new catmint::Attribute(@1.first_line, *$2, *$1);
+		$$->push_back(attrib);
+	}
+	| attribute_definitions ',' IDENTIFIER IDENTIFIER {
+		$$ = $1;
+		auto attrib = new catmint::Attribute(@1.first_line, *$4, *$3);
+		$$->push_back(attrib);
+	}
+	;
+
 attribute : IDENTIFIER IDENTIFIER {
 		$$ = new catmint::Attribute(@1.first_line, *$2, *$1);
 	}
@@ -276,6 +289,21 @@ method
 							 *params);
 
 		delete $2; delete $3; //delete $5;
+	}
+	| KW_DEF IDENTIFIER IDENTIFIER OP_OPAREN method_arguments OP_CPAREN OP_COLON block KW_END {
+
+    auto& name  	   = *$3;
+		auto& returnType = *$2;
+		auto  body       = $8;
+
+		// Void method
+		$$ = new catmint::Method(@1.first_line,
+							 name,
+							 returnType,
+	   					 Expression(body),
+	   					 *reinterpret_cast<std::vector<catmint::Attribute*>*>($5));
+							 //*params);
+
 	}
 	;
 

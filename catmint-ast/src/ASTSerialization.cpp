@@ -1424,7 +1424,7 @@ ASTDeserializer::parseLocalDefinition(rapidjson::Value &tree) {
       auto argNode = parseSymbol(argTree);
       assert(argNode && "Expected non-null symbol node");
       name_list.push_back(argNode.get()->getName());
-      std::cout<<"Argument : " << argNode.get()->getName() << "\n";
+      //std::cout<<"Argument : " << argNode.get()->getName() << "\n";
     }
   }
   
