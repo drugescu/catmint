@@ -237,7 +237,7 @@ public:
 class TooManyArgsException : public SemanticException {
 public:
   TooManyArgsException(const std::string &name, Expression *d)
-      : SemanticException("Too many args in call to " + name, d), name(name),
+      : SemanticException("Too many args in call to '" + name + "'", d), name(name),
         expr(d) {}
 
   std::string name;

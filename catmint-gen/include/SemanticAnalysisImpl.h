@@ -2,6 +2,7 @@
 #define SEMANTICANALYSISIMPL_H
 
 #include "SemanticException.h"
+#include <iostream>
 
 template <typename DispatchT>
 bool catmint::SemanticAnalysis::checkDispatchArgs(DispatchT *d, Method *m) {
@@ -15,6 +16,7 @@ bool catmint::SemanticAnalysis::checkDispatchArgs(DispatchT *d, Method *m) {
       throw TooManyArgsException(d->getName(), d);
     }
 
+    std::cout << "  Getting type or argument.\n";
     if (!typeTable.isEqualOrImplicitlyConvertibleTo(
             typeTable.getType(arg), typeTable.getType((*paramIt)->getType()))) {
       throw WrongTypeException(typeTable.getType(arg),

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <iostream>
 
 using namespace catmint;
 
@@ -16,6 +17,16 @@ TypeTable::TypeTable(Program *p) {
 }
 
 TypeTable::~TypeTable() { typeTable.clear(); }
+
+int TypeTable::printTypeTable() {
+  std::cout << "-------------------------------------------\n";
+  std::cout << "[Type Table]\n";
+  for (auto it = typeTable.begin(); it != typeTable.end(); it++) {
+    std::cout << "Key: " << it->first << ", Value: " << it->second << "\n";
+  }
+
+  return true;
+}
 
 void TypeTable::addTypes(Program *p) {
   for (auto c : *p) {

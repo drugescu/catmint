@@ -385,33 +385,44 @@ bool SemanticAnalysis::visit(Substring *s) {
 bool SemanticAnalysis::visit(Dispatch *d) {
   auto obj = d->getObject();
 
+  std::cout << "Visiting dispatch " << d->getName() << "\n";
+
   if (obj) {
+    std::cout << "  Object exists in dispatch and visiting.\n";
     if (!visit(obj)) {
       return false;
     }
   } else {
+    std::cout << "  Object does not exist, supposing it is 'self'.\n";
     auto self = symbolTable.lookup("self");
     obj = dynamic_cast<Expression *>(self);
     assert(obj && "Invalid lookup");
   }
 
+  std::cout << "Getting type of object at " << obj->getLineNumber() << "\n";
   auto objType = typeTable.getType(obj);
+
+  std::cout << "Getting class of object at " << obj->getLineNumber() << "\n";
   auto objClass = objType->getClass();
   if (!objClass) {
     throw DispatchOnInvalidObjException(d->getName(), objType);
   }
 
+  std::cout << "  Getting method... \n";
   auto method = typeTable.getMethod(objClass, d->getName());
   if (!method) {
     throw MethodNotFoundException(d->getName(), objClass);
   }
 
+  std::cout << "  Checking dispatch args... \n";
   if (!checkDispatchArgs(d, method)) {
     return false;
   }
 
+  std::cout << "  Set type to return type of method, " << method->getReturnType() << "\n";
   typeTable.setType(d, typeTable.getType(method->getReturnType()));
 
+  std::cout << "  Done dispatch visit.\n";
   return true;
 }
 

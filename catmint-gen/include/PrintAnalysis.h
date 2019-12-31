@@ -1,21 +1,18 @@
-#ifndef SEMANTIC_ANALYSIS_H
-#define SEMANTIC_ANALYSIS_H
+#ifndef PRINT_ANALYSIS_H
+#define PRINT_ANALYSIS_H
 
 #include <map>
 #include <ASTVisitor.h>
 #include <Program.h>
-#include <SymbolTable.h>
-#include <Type.h>
-#include <TypeTable.h>
 
 namespace catmint {
 
-/// \brief Performs the semantic analysis on the catmint program received in the
+/// \brief Performs the debug print analysis on the catmint program received in the
 /// constructor
-class SemanticAnalysis : public ASTVisitor {
+class PrintAnalysis : public ASTVisitor {
 public:
-  SemanticAnalysis(Program *p);
-  virtual ~SemanticAnalysis() {}
+  PrintAnalysis(Program *p);
+  virtual ~PrintAnalysis() {}
 
   void runAnalysis();
 
@@ -27,7 +24,23 @@ private:
   bool visit(Attribute *a) override;
 
   bool visit(Method *m) override;
-  bool visit(FormalParam *f) override;
+
+  bool visit(Expression *e) override;
+
+  bool visit(IntConstant *ic) override;
+  bool visit(StringConstant *sc) override;
+  bool visit(NullConstant *nc) override;
+  bool visit(Symbol *s) override;
+
+  bool visit(Block *b) override;
+  bool visit(BinaryOperator *bo) override;
+  bool visit(Dispatch *d) override;
+  bool visit(IfStatement *i) override;
+  bool visit(ForStatement *i) override;
+  bool visit(WhileStatement *w) override;
+  bool visit(LocalDefinition *local) override;
+  bool visit(ReturnExpression *ret) override;
+  /*bool visit(FormalParam *f) override;
 
   bool visit(Expression *e) override;
 
@@ -47,25 +60,12 @@ private:
   bool visit(NewObject *n) override;
   bool visit(IfStatement *i) override;
   bool visit(WhileStatement *w) override;
-  bool visit(LocalDefinition *local) override;
+  bool visit(LocalDefinition *local) override;*/
 
 private:
   Program *program;
-  TypeTable typeTable;
-  SymbolTable symbolTable;
 
-  void checkMainClassAndMethod();
-  void checkInheritanceGraph();
-
-  void checkFeatures(Class *c);
-
-  template <typename DispatchT> bool checkDispatchArgs(DispatchT *d, Method *m);
 };
 }
 
-// Templates can't be defined in the implementation file, so in order to
-// keep things clean(er) it is common practice to separate their implementations
-// into another header file
-#include "SemanticAnalysisImpl.h"
-
-#endif /* __SEMANTIC_ANALYSIS__ */
+#endif /* PRINT_ANALYSIS_H */

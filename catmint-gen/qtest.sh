@@ -4,5 +4,7 @@
 #./bin/catmint-parser ./test/vect.cm ./test/vect.cm.lext
 #cat ./test/vect.cm.lext
 file1=test/class_test.cm
-echo "Testing semantic verification and code generation on existing AST ($file1)"
+#echo "Parsing file $file1..."
+#../catmint-lex/bin/catmint-parser $file1 $file1.ast
+echo "\n\nTesting semantic verification and code generation on existing AST ($file1)"
 ./bin/catmint-gen $file1.ast $file1.sem

@@ -3,6 +3,7 @@
 
 #include <SemanticAnalysis.h>
 #include <SemanticException.h>
+#include <PrintAnalysis.h>
 #include <ASTSerialization.h>
 //#include "ASTCodeGen.h"*/
 
@@ -20,6 +21,10 @@ int main(int argc, char **argv) {
   // Deserialize from ".ast" file
   catmint::ASTDeserializer deserializer(argv[1]);
   std::unique_ptr<catmint::Program> program = deserializer.getRootNode();
+
+  // Print what has been deserialized for debugging purposes
+  catmint::PrintAnalysis printAnalysis(program.get());
+  printAnalysis.runAnalysis();
 
   /*try {
     lcpl::SemanticAnalysis semanticAnalysis(program.get());

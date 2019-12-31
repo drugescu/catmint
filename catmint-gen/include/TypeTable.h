@@ -4,12 +4,15 @@
 
 #include <cassert>
 #include <unordered_map>
+#include <iostream>
 #include <map>
 
 #include <StringConstants.h>
 #include <IntConstant.h>
 #include <FloatConstant.h>
 #include <StringConstant.h>
+#include <Attribute.h>
+#include <BinaryOperator.h>
 #include <Type.h>
 
 using namespace catmint;
@@ -17,6 +20,7 @@ using namespace catmint;
 namespace catmint {
 
 class Attribute;
+class BinaryOperator;
 class Class;
 class Method;
 class Program;
@@ -50,7 +54,14 @@ public:
 
   bool isEqualOrImplicitlyConvertibleTo(Type *fromType, Type *toType);
 
-  void setType(TreeNode *node, Type *type) { nodeTypeTable[node] = type; }
+  void setType(TreeNode *node, Type *type) { 
+    nodeTypeTable[node] = type; 
+    std::cout << "Set type of node at line " << node->getLineNumber() << " to " << type->getName() << "\n";
+    auto attr = dynamic_cast<catmint::Attribute*>(node);
+    if(attr) {
+      std::cout << "Node is attribute with name '" <<  attr->getName() << "'\n";
+    }
+  }
 
   /// \brief Get the type of \p node or assert (we don't throw an exception
   ///        because we don't intend to catch semantic errors with this)
@@ -66,7 +77,23 @@ public:
       return new catmint::Type(strings::Float);
     }
     
-    assert(nodeTypeTable.count(node) && "Couldn't get type for node");
+
+    if (nodeTypeTable.count(node) == 0) {
+      std::cout << "\n\nError: Node line number: " << node->getLineNumber() << "\n";
+      auto symb = dynamic_cast<catmint::Symbol*>(node);
+      if(symb) {
+        std::cout << "Node is symbol with name '" <<  symb->getName() << "'\n";
+      }
+      auto binop = dynamic_cast<catmint::BinaryOperator*>(node);
+      if(binop) {
+        std::cout << "Node is binary operator with kind '" <<  binop->getName() << "'\n";
+      }
+
+      printTypeTable();
+    }
+
+    assert(nodeTypeTable.count(node) && "Couldn't get type for node.\n");
+    // Derive type here!
     return nodeTypeTable.at(node);
   }
 
@@ -75,6 +102,7 @@ public:
 
   Attribute *getAttribute(Class *c, const std::string &name) const;
   Method *getMethod(Class *c, const std::string &name) const;
+
 
 private:
   void addTypes(Program *p);
@@ -86,6 +114,7 @@ private:
 //  std::unordered_map<std::string, Type *> typeTable;
 //  std::unordered_map<TreeNode *, Type *> nodeTypeTable;
 //  std::unordered_map<Class *, Class *> parentTable;
+    
     std::map<std::string, Type *> typeTable;
     std::map<TreeNode *, Type *> nodeTypeTable;
     std::map<Class *, Class *> parentTable;
@@ -97,6 +126,8 @@ private:
 //  std::unordered_map<Class *, std::unordered_map<std::string, Method *>>
 //      methodTable;
     std::map<Class *, std::map<std::string, Method *>> methodTable;
+
+  int printTypeTable();
 };
 }
 #endif /* INCLUDE_TYPETABLE_H_ */

@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <utility>
+#include <string>
 
 #include "Expression.h"
 
@@ -62,6 +63,30 @@ public:
 
   bool isComparison() const {
     return operatorKind >= FirstComparison && operatorKind <= LastComparison;
+  }
+
+  std::string getName() const {
+    switch (operatorKind) {
+      case Add: return "+";
+      case Mod: return "%";
+      case Pow: return "**";
+      case Or : return "Or";
+      case And: return "And";
+      case Xor: return "Xor";
+      case LShift: return "<<";
+      case RShift: return ">>";
+      case Mul: return "*";
+      case Div: return "/";
+      case LessThan: return "<";
+      case LessThanEqual: return "<=";
+      case GreaterThan: return ">";
+      case GreaterThanEqual: return ">=";
+      case Equal: return "=";
+      case NotEqual: return "!=";
+      
+      default:
+        return "Not implemented.";
+    }
   }
 
 private:
