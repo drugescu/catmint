@@ -7,6 +7,7 @@
 #include <SymbolTable.h>
 #include <Type.h>
 #include <TypeTable.h>
+#include <TypeVisitor.h>
 
 namespace catmint {
 
@@ -49,10 +50,13 @@ private:
   bool visit(WhileStatement *w) override;
   bool visit(LocalDefinition *local) override;
 
-private:
-  Program *program;
+public:
   TypeTable typeTable;
   SymbolTable symbolTable;
+  TypeVisitor typeVisitor;
+
+private:
+  Program *program;
 
   void checkMainClassAndMethod();
   void checkInheritanceGraph();

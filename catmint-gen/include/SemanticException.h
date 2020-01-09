@@ -40,8 +40,8 @@ class DuplicateAttrException : public SemanticException {
 public:
   DuplicateAttrException(Attribute *a, Class *c)
       : SemanticException(
-            "An attribute with the same name already exists in class " +
-                c->getName() + " : " + a->getName(),
+            "An attribute with the same name already exists in class '" +
+                c->getName() + "' : '" + a->getName() + "'.",
             a),
         attribute(a), containingClass(c) {}
 
@@ -53,8 +53,8 @@ class DuplicateMethodException : public SemanticException {
 public:
   DuplicateMethodException(Method *m, Class *c)
       : SemanticException(
-            "A method with the same name already exists in class " +
-                c->getName() + ":" + m->getName(),
+            "A method with the same name already exists in class '" +
+                c->getName() + "' : '" + m->getName() + "'.",
             m),
         method(m), containingClass(c) {}
 
@@ -68,9 +68,9 @@ class DuplicateParamException : public SemanticException {
 public:
   //DuplicateParamException(FormalParam *p, Method *m)
   DuplicateParamException(Attribute *p, Method *m)
-      : SemanticException("Method " + m->getName() +
-                              " has more than one parameter named " +
-                              p->getName(),
+      : SemanticException("Method '" + m->getName() +
+                              "' has more than one parameter named '" +
+                              p->getName() + "'.",
                           p),
         param(p), method(m) {}
 
@@ -83,7 +83,7 @@ class DuplicateClassException : public SemanticException {
 public:
   DuplicateClassException(Class *c)
       : SemanticException(
-            "A class with the same name already exists: " + c->getName(), c),
+            "A class with the same name already exists: '" + c->getName() + "'.", c),
         cls(c) {}
 
   Class *cls;
@@ -93,7 +93,7 @@ class BadInheritanceException : public SemanticException {
 public:
   BadInheritanceException(Class *c, const std::string &ancestor)
       : SemanticException(
-            "Class " + c->getName() + " inherits from " + ancestor, c),
+            "Class '" + c->getName() + "' inherits from '" + ancestor + "'.", c),
         cls(c), ancestor(ancestor) {}
 
   Class *cls;
@@ -103,9 +103,9 @@ public:
 class InvalidMethodSignatureException : public SemanticException {
 public:
   InvalidMethodSignatureException(Class *c, Method *m)
-      : SemanticException("Signature of method " + m->getName() + " in class " +
+      : SemanticException("Signature of method '" + m->getName() + "' in class '" +
                           c->getName() +
-                          " doesn't match that of overriden method"),
+                          "' doesn't match that of overriden method."),
         cls(c), method(m) {}
 
   Class *cls;
@@ -115,7 +115,7 @@ public:
 class MissingOperandException : public SemanticException {
 public:
   MissingOperandException(Expression *e)
-      : SemanticException("Missing value for operand", e), expr(e) {}
+      : SemanticException("Missing value for operand.", e), expr(e) {}
 
   Expression *expr;
 };
@@ -123,7 +123,7 @@ public:
 class MissingIfCondException : public SemanticException {
 public:
   MissingIfCondException(IfStatement *i)
-      : SemanticException("Missing if condition", i), expr(i) {}
+      : SemanticException("Missing 'if' condition.", i), expr(i) {}
 
   IfStatement *expr;
 };
@@ -131,7 +131,7 @@ public:
 class MissingIfThenException : public SemanticException {
 public:
   MissingIfThenException(IfStatement *i)
-      : SemanticException("Missing then branch", i), expr(i) {}
+      : SemanticException("Missing 'then' branch.", i), expr(i) {}
 
   IfStatement *expr;
 };
@@ -139,7 +139,7 @@ public:
 class MissingWhileCondException : public SemanticException {
 public:
   MissingWhileCondException(WhileStatement *w)
-      : SemanticException("Missing while condition", w), expr(w) {}
+      : SemanticException("Missing 'while' condition.", w), expr(w) {}
 
   WhileStatement *expr;
 };
@@ -147,8 +147,8 @@ public:
 class IncompatibleOperandsException : public SemanticException {
 public:
   IncompatibleOperandsException(Expression *e, Type *lhs, Type *rhs)
-      : SemanticException("Incompatible types " + lhs->getName() + " and " +
-                              rhs->getName(),
+      : SemanticException("Incompatible types '" + lhs->getName() + "' and '" +
+                              rhs->getName() + "'.",
                           e),
         expr(e), lhsType(lhs), rhsType(rhs) {}
 
@@ -160,7 +160,7 @@ public:
 class UnknownVariableException : public SemanticException {
 public:
   UnknownVariableException(const std::string &name)
-      : SemanticException("Variable " + name + " not found in symbol table, has it been declared?"),
+      : SemanticException("Variable '" + name + "' not found in symbol table, has it been declared?"),
         name(name) {}
 
   std::string name;
@@ -171,14 +171,14 @@ public:
 class DispatchOnInvalidObjException : public SemanticException {
 public:
   DispatchOnInvalidObjException(const std::string &name, Type *obj)
-      : SemanticException("Trying to call method " + name +
-                          " on a non-class object of type " + obj->getName()),
+      : SemanticException("Trying to call method '" + name +
+                          "' on a non-class object of type '" + obj->getName() + "'."),
         methodName(name), objType(obj), castedType(nullptr) {}
 
   DispatchOnInvalidObjException(const std::string &name, Type *obj,
                                 Type *castedObj)
-      : SemanticException("Trying to call method " + castedObj->getName() +
-                          "::" + name + " on object of type " + obj->getName()),
+      : SemanticException("Trying to call method '" + castedObj->getName() +
+                          "::" + name + "' on object of type '" + obj->getName() + "'."),
         methodName(name), objType(obj), castedType(castedObj) {}
 
   std::string methodName;
@@ -189,8 +189,8 @@ public:
 class AttributeNotFoundException : public SemanticException {
 public:
   AttributeNotFoundException(const std::string &name, Class *c)
-      : SemanticException("Attribute " + name + " not found in class " +
-                          c->getName()),
+      : SemanticException("Attribute '" + name + "' not found in class '" +
+                          c->getName() + "'."),
         name(name), cls(c) {}
 
   std::string name;
@@ -200,8 +200,8 @@ public:
 class MethodNotFoundException : public SemanticException {
 public:
   MethodNotFoundException(const std::string &name, Class *c)
-      : SemanticException("Method " + name + " not found in class " +
-                          c->getName()),
+      : SemanticException("Method '" + name + "' not found in class '" +
+                          c->getName() + "'"),
         name(name), cls(c) {}
 
   std::string name;
@@ -211,7 +211,7 @@ public:
 class TypeNotFoundException : public SemanticException {
 public:
   TypeNotFoundException(const std::string &name)
-      : SemanticException("Type " + name + " not found in TypeTable"),
+      : SemanticException("Type '" + name + "' not found in Type Table."),
         name(name) {}
 
   std::string name;
@@ -220,13 +220,13 @@ public:
 class WrongTypeException : public SemanticException {
 public:
   WrongTypeException(Type *actual, Type *expected, TreeNode *e)
-      : SemanticException("Wrong type " + actual->getName() + " (expected " +
-                              expected->getName() + ")",
+      : SemanticException("Wrong type '" + actual->getName() + "' (expected '" +
+                              expected->getName() + "')",
                           e),
         actual(actual), expected(expected), expr(e) {}
 
   WrongTypeException(Type *actual, Expression *e)
-      : SemanticException("Wrong type " + actual->getName(), e), actual(actual),
+      : SemanticException("Wrong type '" + actual->getName() + "'.", e), actual(actual),
         expected(nullptr), expr(e) {}
 
   Type *actual;
@@ -237,7 +237,7 @@ public:
 class TooManyArgsException : public SemanticException {
 public:
   TooManyArgsException(const std::string &name, Expression *d)
-      : SemanticException("Too many args in call to '" + name + "'", d), name(name),
+      : SemanticException("Too many args in call to '" + name + "'.", d), name(name),
         expr(d) {}
 
   std::string name;
@@ -247,7 +247,7 @@ public:
 class NotEnoughArgsException : public SemanticException {
 public:
   NotEnoughArgsException(const std::string &name, Expression *d)
-      : SemanticException("Not enough args in call to " + name, d), name(name),
+      : SemanticException("Not enough args in call to '" + name + "'.", d), name(name),
         expr(d) {}
 
   std::string name;

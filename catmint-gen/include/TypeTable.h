@@ -7,6 +7,7 @@
 #include <iostream>
 #include <map>
 
+#include <NullConstant.h>
 #include <StringConstants.h>
 #include <IntConstant.h>
 #include <FloatConstant.h>
@@ -39,6 +40,7 @@ public:
   Type *getIntType() const;
   Type *getVoidType() const;
   Type *getNullType() const;
+  Type *getFloatType() const;
 
   Type *getObjectType() const;
   Type *getStringType() const;
@@ -51,8 +53,11 @@ public:
   /// \brief Return the lowest common ancestor of \p T and \p U or the void type
   ///        if they don't have a common ancestor
   Type *getCommonType(Type *T, Type *U) const;
+  // Don't forget this should walk the type hierarchy
+  std::string getCommonTypeStr(std::string T, std::string U) const;
 
   bool isEqualOrImplicitlyConvertibleTo(Type *fromType, Type *toType);
+  bool isEqualOrImplicitlyConvertibleToStr(std::string from, std::string to);
 
   void setType(TreeNode *node, Type *type) { 
     nodeTypeTable[node] = type; 
@@ -90,11 +95,58 @@ public:
       }
 
       printTypeTable();
+
+      // Try and return derived type here
     }
 
     assert(nodeTypeTable.count(node) && "Couldn't get type for node.\n");
     // Derive type here!
+    // Or simply inside the isEqualOrImplicitylConvertibleTo (fromType, toType)
+
     return nodeTypeTable.at(node);
+  }
+
+  /// \brief Get the type of \p node or return error - useful to see if arguments are basic or composed
+  /*Type *peekType(TreeNode *node) {
+    if(dynamic_cast<catmint::IntConstant *>(node)) {
+      return new catmint::Type(strings::Int);
+    }
+    if(dynamic_cast<catmint::StringConstant *>(node)) {
+      return new catmint::Type(strings::String);
+    }
+    if(dynamic_cast<catmint::FloatConstant *>(node)) {
+      return new catmint::Type(strings::Float);
+    }
+    if(dynamic_cast<catmint::Symbol *>(node)) {
+      return new catmint::Type(strings::Symbol);
+    }
+    if(dynamic_cast<catmint::NullConstant *>(node)) {
+      return new catmint::Type(strings::Null);
+    }
+    if (nodeTypeTable.count(node) == 0)
+      return new catmint::Type(strings::ComplexType);
+  }*/
+
+  std::string peekTypeString(TreeNode *node) {
+    if(dynamic_cast<catmint::IntConstant *>(node)) {
+      return std::string(strings::Int);
+    }
+    if(dynamic_cast<catmint::StringConstant *>(node)) {
+      return std::string(strings::String);
+    }
+    if(dynamic_cast<catmint::FloatConstant *>(node)) {
+      return std::string(strings::Float);
+    }
+    if(dynamic_cast<catmint::Symbol *>(node)) {
+      return std::string(strings::Symbol);
+    }
+    if(dynamic_cast<catmint::NullConstant *>(node)) {
+      return std::string(strings::Null);
+    }
+    if (nodeTypeTable.count(node) == 0)
+      return std::string(strings::ComplexType);
+
+    return std::string(strings::Unknown);
   }
 
   /// \brief Get the parent class corresponding to \p c

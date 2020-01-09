@@ -27,6 +27,10 @@ const auto Io = "IO";
 const auto Message = "message";
 const auto Out = "out";
 const auto In = "in";
+
+const auto Symbol = "Symbol";
+const auto ComplexType = "ComplexType";
+const auto Unknown = "Unknown";
 }
 }
 

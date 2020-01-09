@@ -7,11 +7,15 @@
 #include <SemanticAnalysis.h>
 #include <SemanticException.h>
 #include <StringConstants.h>
+//#include <TypeVisitor.h>
 
 using namespace catmint;
 
 SemanticAnalysis::SemanticAnalysis(Program *p)
-    : program(p), typeTable(p), symbolTable() {
+    : program(p), typeTable(p), symbolTable(), typeVisitor(TypeVisitor(&typeTable)) {
+
+  //typeVisitor = TypeVisitor(&typeTable);
+
   assert(program && "Expected non-null program");
 }
 
@@ -307,6 +311,26 @@ bool SemanticAnalysis::visit(Assignment *a) {
 }
 
 bool SemanticAnalysis::visit(BinaryOperator *bo) {
+  auto LHS = bo->getLHS();
+  auto RHS = bo->getRHS();
+
+  std::cout << "  SemanticAnalysis BinaryOperator, kind = " << bo->getOperatorKind() << "\n";
+
+  if (!visit(LHS))
+    return false;
+  
+  if (!visit(RHS))
+    return false;
+
+  auto lhsType = typeTable.getType(LHS);
+  auto rhsType = typeTable.getType(RHS);
+
+  if (!typeTable.isEqualOrImplicitlyConvertibleTo(rhsType, lhsType)) {
+    throw IncompatibleOperandsException(bo, lhsType, rhsType);
+  }
+
+  typeTable.setType(bo, typeTable.getCommonType(lhsType, rhsType));
+
   return true;
 }
 

@@ -136,7 +136,7 @@ catmint_program : block catmint_classes block {
 		base_after->addExpression(Expression($3));
 
 		//gCatmintProgram = new catmint::Program(@1.first_line, *$2, Expression(b));
-		gCatmintProgram = new catmint::Program(@1.first_line, *$2, Expression(base_before), Expression(base_after));
+		gCatmintProgram = new catmint::Program(@1.first_line, *$2, Expression(base_before), Expression(base_after), true);
 	}
 	| block {
     auto base = new catmint::Block(@1.first_line);
@@ -144,7 +144,7 @@ catmint_program : block catmint_classes block {
 
     auto class_vector = new std::vector<catmint::Class*>();
 		
-    gCatmintProgram = new catmint::Program(@1.first_line, *class_vector, Expression(base), nullptr);
+    gCatmintProgram = new catmint::Program(@1.first_line, *class_vector, Expression(base), nullptr, true);
 	}
 	;
 

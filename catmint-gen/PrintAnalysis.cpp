@@ -9,9 +9,7 @@
 
 using namespace catmint;
 
-static int indent = 0;
-
-/* Debug functions */
+int indent = 0;
 
 void printIndent() {
     for (auto i = 0; i < indent; i++) {

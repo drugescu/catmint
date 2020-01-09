@@ -101,15 +101,19 @@ int type_of_expr(Expression *E) {
   return -1;
 }
 
-
-
   /// \brief Create a node for an entire program
   /// \note This takes ownership of \p classes if provided
   /* Constructor */
-  explicit Program(int lineNumber, const std::vector<Class*> &classes = {}, std::unique_ptr<Expression> body1 = nullptr, std::unique_ptr<Expression> body2 = nullptr)
+  explicit Program(int lineNumber, const std::vector<Class*> &classes = {}, std::unique_ptr<Expression> body1 = nullptr, std::unique_ptr<Expression> body2 = nullptr, bool createMain = false)
     : TreeNode(lineNumber), classes() {
     for (auto cls : classes) {
       this->classes.emplace_back(std::move(cls));
+    }
+
+    /* If we have been asked to not generate a main method, for good reason (semantic check) so don't do it. */
+    if (!createMain) {
+      std::cout << "[ LOG ] No main will be generated, though it doesn't exist - as asked externally." << std::endl;
+      return;
     }
 
     // If Main doesn't exist as a class, add it

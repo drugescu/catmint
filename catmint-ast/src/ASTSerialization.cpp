@@ -778,7 +778,9 @@ std::unique_ptr<Program> ASTDeserializer::parseProgram(rapidjson::Value &tree) {
          tree[keys::NodeType] == keys::ProgramNodeType &&
          "Expected program object");
 
+  std::cout<< "ASTDeserializer::parseProgram() - creating program\n";
   auto program = createNode<Program>(tree, parseLineNumber(tree));
+  std::cout<< "ASTDeserializer::parseProgram() - created program\n";
 
   if (tree.HasMember(keys::Classes)) {
     auto &classes = tree[keys::Classes];

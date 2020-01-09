@@ -25,6 +25,13 @@
                     "Type": "Int"
                 },
                 {
+                    "NodeType": "Attribute",
+                    "NodeID": 30,
+                    "LineNumber": 999,
+                    "Name": "HIHI",
+                    "Type": "Object"
+                },
+                {
                     "NodeType": "Method",
                     "NodeID": 4,
                     "LineNumber": 9,
@@ -103,7 +110,7 @@
             "NodeType": "Class",
             "NodeID": 15,
             "LineNumber": 0,
-            "Name": "Main0",
+            "Name": "Main",
             "Features": [
                 {
                     "NodeType": "Method",

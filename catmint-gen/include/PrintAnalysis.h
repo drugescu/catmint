@@ -4,6 +4,7 @@
 #include <map>
 #include <ASTVisitor.h>
 #include <Program.h>
+#include "Debug.h"
 
 namespace catmint {
 

@@ -22,7 +22,7 @@ int TypeTable::printTypeTable() {
   std::cout << "-------------------------------------------\n";
   std::cout << "[Type Table]\n";
   for (auto it = typeTable.begin(); it != typeTable.end(); it++) {
-    std::cout << "Key: " << it->first << ", Value: " << it->second << "\n";
+    std::cout << "Key: " << it->first << ", Value: " << (dynamic_cast<catmint::Type*>(it->second))->getName() << "\n";
   }
 
   return true;
@@ -40,6 +40,7 @@ void TypeTable::addBuiltinTypes(Program *p) {
   typeTable[strings::Null] = new Type(strings::Null);
   typeTable[strings::Void] = new Type(strings::Void);
   typeTable[strings::Float] = new Type(strings::Float);
+  //typeTable[strings::String] = new Type(strings::String); // Not this, this would come later
   
   // Add additional types
   //typeTable["IntegerConstant"] = typeTable[strings::Int];
@@ -123,6 +124,11 @@ Type *TypeTable::getVoidType() const {
   return typeTable.at(strings::Void);
 }
 
+Type *TypeTable::getFloatType() const {
+  assert(typeTable.count(strings::Float) && "Float type not defined");
+  return typeTable.at(strings::Float);
+}
+
 Type *TypeTable::getNullType() const {
   assert(typeTable.count(strings::Null) && "Null type not defined");
   return typeTable.at(strings::Null);
@@ -160,15 +166,81 @@ Type *TypeTable::createNewType(Class *cls) {
   return NewType;
 }
 
+// This is incomplete
 Type *TypeTable::getCommonType(Type *T, Type *U) const {
+
+  auto TN = T->getName();
+  auto UN = U->getName();
+
+  std::cout << "  getCommonType " << TN << " and " << UN << "\n";
+
+  if (TN == UN) {
+    std::cout << "  getCommonType SAME TYPE \n";
+    return T;
+  }
+
+  // Implicit potential conversions
+  if (TN == strings::Int) {
+    // Promotion to float if any are float
+    if (UN == strings::Float) return getFloatType();
+    // 2 * "t" = "tt"
+    if (UN == strings::String) return getStringType();
+  }
+
+  if (TN == strings::Float) {
+    // Promotion to float if any are float
+    if (UN == strings::Int) return getFloatType();
+  }
+
   return getVoidType();
 }
 
-// Careful hee
+// Try to do more stuff here - no semantic analysis, just do what is feasible
+std::string TypeTable::getCommonTypeStr(std::string T, std::string U) const {
+  // Any object - try to walk hierarchy here as well
+  if (T == U)
+    return T;
+
+  // Implicit potential conversions
+  if (T == strings::Int) {
+    // Promotion to float if any are float
+    if (U == strings::Float) return strings::Float;
+    // 2 * "t" = "tt"
+    if (U == strings::String) return strings::String;
+  }
+
+  if (T == strings::Float) {
+    if (U == strings::Int) return strings::Float;
+  }
+
+  return strings::Void;
+}
+
+// Careful here
 bool TypeTable::isEqualOrImplicitlyConvertibleTo(Type *fromType, Type *toType) {
+  
+  // Cover case of void and void, though why this would happen beats me
   auto from = fromType->getName();
   auto to = toType->getName();
   if (from == to) return true;
+  
+  if (getCommonTypeStr(fromType->getName(), toType->getName()) != strings::Void)
+    return true;
+  else
+  {
+    return false;
+  }
+  
+}
+
+bool TypeTable::isEqualOrImplicitlyConvertibleToStr(std::string from, std::string to) {
+  if (from == to)
+    return true;
+
+  // Now explain all conversions 
+  if (getCommonTypeStr(from, to) != strings::Void)
+    return true;
+
   return false;
 }
 

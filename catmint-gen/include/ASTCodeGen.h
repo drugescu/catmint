@@ -51,7 +51,7 @@ private:
     llvm::BasicBlock    *crtBasicBlock;
     llvm::Function      *crtFunction;
     llvm::AllocaInst    *crtSelf;
-    lcpl::Class         *crtClass;
+    catmint::Class         *crtClass;
 
     bool visit(Program *P) override;
 	bool visit(Class *C) override;
@@ -113,8 +113,8 @@ private:
     void setLLVMself(llvm::AllocaInst* alloc_inst) {crtSelf = alloc_inst; }
     llvm::AllocaInst * getLLVMself() {return crtSelf; }
     
-    lcpl::Class* getClass() {return crtClass; }
-    void setClass(lcpl::Class * cls) { crtClass = cls; }
+    catmint::Class* getClass() {return crtClass; }
+    void setClass(catmint::Class * cls) { crtClass = cls; }
 
     
 };

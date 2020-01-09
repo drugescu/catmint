@@ -1,6 +1,11 @@
 main.cpp
 semanticAnalysis.runAnalysis()
 catmint::SemanticAnalysis::visit(Program p)
+
+    checkMainClassAndMethod();
+    
+    checkInheritanceGraph();
+
     catmint::SemanticAnalysis::visit(Class each_class_in_program)
 
     if (typeTable.isBuiltinClass(c)) return true; // Object, String, IO
@@ -11,9 +16,9 @@ catmint::SemanticAnalysis::visit(Program p)
 
     checkFeatures(current class)
 
-OK so the problem is when visiting a dispatch we are checkign the types of the arguments, and of course the type of an operator in a dispatch isn't in yet. It would be the type of the results of the xpression
+Also the get type should return some sort of good natured error in this case. << Fixed, its better now
 
-So the bool catmint::SemanticAnalysis::checkDispatchArgs(DispatchT *d, Method *m)  doesnt check for this now... change it
+Solved.
 
 
-Also the get type should return some sort of good natured error in this case.
+
