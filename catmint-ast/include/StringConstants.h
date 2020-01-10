@@ -16,11 +16,11 @@ const auto MainMethod = "main";
 
 const auto Object = "Object";
 const auto Abort = "abort";
-const auto TypeName = "typeName";
+const auto TypeName = "type";
 const auto Copy = "copy";
 
 const auto String = "String";
-const auto Length = "length";
+const auto Length = "len";
 const auto ToInt = "toInt";
 
 const auto Io = "IO";

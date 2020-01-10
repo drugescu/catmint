@@ -87,7 +87,7 @@ private:
     void generateFunctionPrototype(Method * m);
     void generateStartupPrototype();
     void generateStartup();
-    void generate_lcpl_new();
+    void generate_catmint_new();
     void generateRuntimeFunctionPrototype();
     void generateFunctionPrototype(Class *c, Method *method);
     

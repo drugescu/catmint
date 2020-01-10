@@ -40,31 +40,40 @@ void TypeTable::addBuiltinTypes(Program *p) {
   typeTable[strings::Null] = new Type(strings::Null);
   typeTable[strings::Void] = new Type(strings::Void);
   typeTable[strings::Float] = new Type(strings::Float);
-  //typeTable[strings::String] = new Type(strings::String); // Not this, this would come later
   
   // Add additional types
-  //typeTable["IntegerConstant"] = typeTable[strings::Int];
-
   addBuiltinClasses(p);
 }
 
 bool TypeTable::isBuiltinType(Type *t) const {
-  return t == getIntType() || t == getNullType() || t == getVoidType() ||
+  return t == getIntType() || t == getNullType() || t == getVoidType() || t == getFloatType() ||
          isBuiltinClass(t->getClass());
 }
 
+// Add 'Object', 'IO', 'String' classes
 void TypeTable::addBuiltinClasses(Program *p) {
   std::vector<Feature *> builtinMethods;
   //std::vector<FormalParam *> builtinMethodsParams;
   std::vector<Attribute *> builtinMethodsParams;
 
-  // Object
+  // ---------------------------------------------------------------------------
+  // Add built-in class - 'Object'
+  // ---------------------------------------------------------------------------
+  
+  // Method(int, string &name, string &returnType, Expression* body, vector<...> &formalParameters
+  // Method - 'Obj_object.abort()' returning 'Void'
   builtinMethods.push_back(new Method(0, strings::Abort, strings::Void, nullptr,
                                       builtinMethodsParams));
+
+  // Method - 'Obj_object.type()' returning obj of type 'String'
   builtinMethods.push_back(new Method(0, strings::TypeName, strings::String,
                                       nullptr, builtinMethodsParams));
+
+  // Method - 'Obj_object.copy()' returning obj of type 'Object'
   builtinMethods.push_back(new Method(0, strings::Copy, strings::Object,
                                       nullptr, builtinMethodsParams));
+  
+  // Add these methods to class 'Object' with no parent, add class to typeTable,  park it in the program
   std::unique_ptr<Class> objectClass(
       new Class(0, strings::Object, "", builtinMethods));
   (void)createNewType(objectClass.get());
@@ -75,14 +84,23 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethods.clear();
   builtinMethodsParams.clear();
 
-  // IO
+  // ---------------------------------------------------------------------------
+  // Add built-in class - 'IO'
+  // ---------------------------------------------------------------------------
+
+  // Method - 'IO_object.in(String message)' returning obj of type 'String'
   builtinMethods.push_back(new Method(0, strings::In, strings::String, nullptr,
                                       builtinMethodsParams));
+  
+  // Method - 'IO_object.out(String message)' returning obj of type 'IO'
   builtinMethodsParams.push_back(
-      //new FormalParam(0, strings::Message, strings::String));
+      // Attribute(int lineNum, const std::string &name, const std::string &type, catmint::Program::ExprType init = nullptr)
       new Attribute(0, strings::Message, strings::String));
   builtinMethods.push_back(
       new Method(0, strings::Out, strings::Io, nullptr, builtinMethodsParams));
+  
+  // Add these methods to class 'IO' which inherits 'Object', add class to typeTable,  park it in the program
+  // Class(int, const std::string &name, const std::string &parentClassName, const std::vector<...> &features = {})
   std::unique_ptr<Class> ioClass(
       new Class(0, strings::Io, strings::Object, builtinMethods));
   (void)createNewType(ioClass.get());
@@ -91,11 +109,19 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethods.clear();
   builtinMethodsParams.clear();
 
-  // String
+  // ---------------------------------------------------------------------------
+  // Add built-in class - 'String'
+  // ---------------------------------------------------------------------------
+
+  // Method - 'String_object.len()' returning an 'Int'
   builtinMethods.push_back(new Method(0, strings::Length, strings::Int, nullptr,
                                       builtinMethodsParams));
+  // Method - 'String_object.toInt()' returning an 'Int'
   builtinMethods.push_back(new Method(0, strings::ToInt, strings::Int, nullptr,
                                       builtinMethodsParams));
+  
+  // Add these methods to class 'String' which inherits 'Object', add class to typeTable,  park it in the program
+  // Class(int, const std::string &name, const std::string &parentClassName, const std::vector<...> &features = {})
   std::unique_ptr<Class> stringClass(
       new Class(0, strings::String, strings::Object, builtinMethods));
   (void)createNewType(stringClass.get());
@@ -172,10 +198,7 @@ Type *TypeTable::getCommonType(Type *T, Type *U) const {
   auto TN = T->getName();
   auto UN = U->getName();
 
-  std::cout << "  getCommonType " << TN << " and " << UN << "\n";
-
   if (TN == UN) {
-    std::cout << "  getCommonType SAME TYPE \n";
     return T;
   }
 

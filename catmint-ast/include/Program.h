@@ -112,7 +112,7 @@ int type_of_expr(Expression *E) {
 
     /* If we have been asked to not generate a main method, for good reason (semantic check) so don't do it. */
     if (!createMain) {
-      std::cout << "[ LOG ] No main will be generated, though it doesn't exist - as asked externally." << std::endl;
+      std::cout << "[ LOG ] No 'Main' will be generated - explicitely set this way (semantic analysis or codegen)." << std::endl;
       return;
     }
 
