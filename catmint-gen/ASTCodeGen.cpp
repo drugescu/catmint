@@ -137,7 +137,7 @@ bool ASTCodeGen::visit(Method *m)
     // self - camp adaugat clasei Method si initializat in constructor
     AllocaInst* ptr_stack = new AllocaInst(llvm::PointerType::get(self_type, 0), DL.getAllocaAddrSpace(), nullptr, "addr.self", label_entry);
     //AllocaInst* ptr_stack = new AllocaInst(self_type, ConstantInt::get(self_type, 0, true), "addr.self", label_entry);
-    ptr_stack->setAlignment(8);
+    //ptr_stack->setAlignment(8);
     
     ///\ salvam pointer la locatia de stiva care tine "self"
     setLLVMself(ptr_stack);
@@ -298,7 +298,7 @@ bool ASTCodeGen::visit(Dispatch *dispatch)
             
             param_value = arg->getLLVMop();
             LoadInst* load_param = new LoadInst(param_value, "", false, getBasicBlock());
-            load_param->setAlignment(8);
+            load_param->setAlignment(llvm::MaybeAlign(8));
             
             ptr_call_params.push_back(param_value);
         }
@@ -433,7 +433,7 @@ void ASTCodeGen::generateConstructor(std::string name)
     
     // Block entry (label_entry)
     AllocaInst* ptr_self_addr = new AllocaInst(self, DL.getAllocaAddrSpace(), nullptr, "self.addr", label_entry); // modded
-    ptr_self_addr->setAlignment(8);
+    ptr_self_addr->setAlignment(llvm::MaybeAlign(8));
     StoreInst* copy_self = new StoreInst(ptr_self, ptr_self_addr, false, label_entry);
     LoadInst* load_self = new LoadInst(ptr_self_addr, "", false, label_entry);
     
@@ -601,7 +601,7 @@ void ASTCodeGen::generateMain_RTTI()
     ///\ R<Class> variable
     llvm::GlobalVariable* var_RMain = new GlobalVariable(*module, func_rtti,
                                     false, GlobalValue::ExternalLinkage, 0, "RMain");
-    var_RMain->setAlignment(8);
+    var_RMain->setAlignment(llvm::MaybeAlign(8));
 
     ///\ constante pentru a initializa variabila
     std::vector<llvm::Constant*> const_RMain_fields;
@@ -709,7 +709,8 @@ void ASTCodeGen::generateStartup()
     PointerType* ptr_type_void_func = PointerType::get(void_func, 0);
     
     AllocaInst* ptr_function = new AllocaInst(ptr_type_void_func, DL.getAllocaAddrSpace(), nullptr, "function", label_entry);
-    ptr_function->setAlignment(8);
+    //ptr_function->setAlignment(8);
+    ptr_function->setAlignment(llvm::MaybeAlign(8));
     
     ///\ todo - de facut globala
     Constant* cast_RMain = ConstantExpr::getCast(llvm::Instruction::BitCast,
