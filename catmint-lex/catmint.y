@@ -86,7 +86,9 @@ expression
             shift_expression
               unary_expression
                 basic_expression
-                  parenthesis_expression 
+                  parenthesis_expression
+				  new_list
+				  new_dict
                   identifier_expression 
                     constant_expression
                     lvalue_identifier_expression
@@ -135,7 +137,6 @@ catmint_program : block catmint_classes block {
     auto base_after = new catmint::Block(@1.first_line);
 		base_after->addExpression(Expression($3));
 
-		//gCatmintProgram = new catmint::Program(@1.first_line, *$2, Expression(b));
 		gCatmintProgram = new catmint::Program(@1.first_line, *$2, Expression(base_before), Expression(base_after), true);
 	}
 	| block {
@@ -379,47 +380,44 @@ local_expr
 	  fflush(stdout);
 
 	  /* construct a LocalDefinition from a slicevector */
-		// Get vector_var_access Slicevector object
-		auto ld_name = new std::vector<std::string>();
+	  // Get vector_var_access Slicevector object
+	  auto ld_name = new std::vector<std::string>();
 		
-		// Ugly hack - should add name to Slicevector
-		auto var_access = dynamic_cast<catmint::Slicevector*>($1);
-		auto var_access_name = dynamic_cast<catmint::Symbol*>(var_access->getObject())->getName();
-    ld_name->push_back(var_access_name);
+	  // Ugly hack - should add name to Slicevector
+	  auto var_access = dynamic_cast<catmint::Slicevector*>($1);
+	  auto var_access_name = dynamic_cast<catmint::Symbol*>(var_access->getObject())->getName();
+      ld_name->push_back(var_access_name);
     
-    // Don't forget to record edges...
-    auto base_init = Expression($3);
+      // Don't forget to record edges...
+      auto base_init = Expression($3);
     
-    // Construct a new init that contains a dispatch of type set on the object, if need be
-    // So basically have a local definition with a set as initializer
-		auto args = std::vector<catmint::Expression *>();
-		//catmint::TreeNode* copy_val = ($3)->clone();
-		//args.push_back(dynamic_cast<catmint::Expression *>(copy_val));
-    auto dispatch_init = Expression(new catmint::Dispatch(@1.first_line, std::string("set"), Expression(var_access), args));
+      // Construct a new init that contains a dispatch of type set on the object, if need be
+      // So basically have a local definition with a set as initializer
+	  auto args = std::vector<catmint::Expression *>();
+	  //catmint::TreeNode* copy_val = ($3)->clone();
+	  //args.push_back(dynamic_cast<catmint::Expression *>(copy_val));
+      auto dispatch_init = Expression(new catmint::Dispatch(@1.first_line, std::string("set"), Expression(var_access), args));
     
-    // Add both expressions to it
-    auto new_block = new catmint::Block(@1.first_line);
-    new_block->addExpression(std::move(base_init)); // std::move here
-    new_block->addExpression(std::move(dispatch_init));
+      // Add both expressions to it
+      auto new_block = new catmint::Block(@1.first_line);
+      new_block->addExpression(std::move(base_init)); // std::move here
+      new_block->addExpression(std::move(dispatch_init));
     
-    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("auto_vect"), Expression(new_block));
+      auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("auto_vect"), Expression(new_block));
     
-    $$ = base;
-
-			
-		//$$ = dispatch;
+      $$ = base;
 	}
 	| IDENTIFIER OP_ATTRIB value_expression {
-		// initialized attribute but type must be deduced from rhs
-    auto ld_name = new std::vector<std::string>();
-		std::cout << "-- LocalDefinition : " << *$1 << std::endl;
-    ld_name->push_back(*$1);
-    auto init = Expression($3);
-    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("auto"), std::move(init));
+      // initialized attribute but type must be deduced from rhs
+      auto ld_name = new std::vector<std::string>();
+      std::cout << "-- LocalDefinition : " << *$1 << std::endl;
+      ld_name->push_back(*$1);
+      auto init = Expression($3);
+      auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, std::string("auto"), std::move(init));
     
-    $$ = base;
+      $$ = base;
 
-		delete $1;
+      delete $1;
 	}
 	// a[3] = 3
 	// a = [0, 1, b] // must also add a[1] = [0,1,b]
@@ -427,42 +425,42 @@ local_expr
 	
 	  // Set name
 	  auto ld_name = new std::vector<std::string>();
-    ld_name->push_back(*$1);
+      ld_name->push_back(*$1);
 
-    // Set partial type
-    auto ld_type = std::string("_uuid_generic_0001_list");  // Semantic analyzer will add complete type
+      // Set partial type
+      auto ld_type = std::string("_uuid_generic_0001_list");  // Semantic analyzer will add complete type
 
-    // Get initializers
-    auto& args = *$4;
+      // Get initializers
+      auto& args = *$4;
       
-    //this should be a dispatch with list.insert!
-    auto obj = new catmint::Symbol(@1.first_line, *$1);
-		//auto  obj  = $1;
+      //this should be a dispatch with list.insert!
+      auto obj = new catmint::Symbol(@1.first_line, *$1);
+	  //auto  obj  = $1;
 
-		// Dispatch on list with .insert method
+	  // Dispatch on list with .insert method
 	  auto init = Expression(new catmint::Dispatch(@1.first_line, std::string("insert"), Expression(obj), args));
       
-    // Create argument list expression
-   // auto init = Expression($3);
+      // Create argument list expression
+      // auto init = Expression($3);
     
-    // Create actual local definition
-		if (args.size() != 0)
+      // Create actual local definition
+	  if (args.size() != 0)
       $$ = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type, std::move(init)); 
 		else
 		  $$ = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type); 
 
-    //$$ = base;
+      //$$ = base;
 	}
 	// a = {}
 	| IDENTIFIER OP_ATTRIB '{' '}' {
 	
 	  auto ld_name = new std::vector<std::string>();
-    ld_name->push_back(*$1);
+      ld_name->push_back(*$1);
     
    
-    auto ld_type = std::string("_uuid_generic_0002_dictionary"); // Semantic analyzer will add complete type
-    auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type);
-    $$ = base;
+      auto ld_type = std::string("_uuid_generic_0002_dictionary"); // Semantic analyzer will add complete type
+      auto base = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type);
+      $$ = base;
 	
 	}*/
 	;
@@ -479,7 +477,6 @@ id_list
   ;
 
 expression 
-// Ambiguity should have been solves
   : local
   | return_expression//value_expression
   | dispatch_expression
@@ -640,6 +637,8 @@ basic_expression
   : identifier_expression
 	| negative_expression
 	| parenthesis_expression
+	| new_list
+	// | new_dict
 	| if_expression
 	| dispatch_expression
 	;
@@ -768,6 +767,33 @@ parenthesis_expression : OP_OPAREN value_expression OP_CPAREN {
 	}
 	;
 
+new_list : '[' dispatch_arguments ']' {
+  // Set name
+  auto ld_name = new std::vector<std::string>();
+  ld_name->push_back(std::string("_uuid_generic_0001_list_new_name"));
+
+  // Set partial type
+  auto ld_type = std::string("_uuid_generic_0001_list");  // Semantic analyzer will add complete type
+
+  // Create actual local definition
+  $$ = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type, Expression(new catmint::Block(@2.first_line, *$2))); 
+}
+;
+
+// Dictionary syntax should be: { key: value, key: value }, etc
+/*new_dict : '{' dispatch_arguments '{]}' {
+  // Set name
+  auto ld_name = new std::vector<std::string>();
+  ld_name->push_back(std::string("_uuid_generic_0001_list_new_name"));
+
+  // Set partial type
+  auto ld_type = std::string("_uuid_generic_0001_list");  // Semantic analyzer will add complete type
+
+  // Create actual local definition
+  $$ = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type, Expression(new catmint::Block(@2.first_line, *$2))); 
+}
+;*/
+
 negative_expression
 	: OP_MINUS basic_expression %prec PREC_NEG {
 		auto type  = UnOp::Minus;
@@ -817,24 +843,26 @@ for_expression
     }
     ;
 
-vector_access  // More precisely rvalue ... and let arguments be longer --<< this should be for "for" and others, needs an object, disallow dispatch here
+// More precisely rvalue ... and let arguments be longer --<< this should be for "for" and others, needs an object, disallow dispatch here
+vector_access
 	: rvalue_identifier_expression '[' vector_arguments ']' {
-	  std::cout << "rvalue vector_access\n";
-    fflush(stdout);
-		auto obj   = $1;
-		auto name  = std::string("get");
-		//auto args  = std::vector<catmint::Expression*>{$3};
-		auto args  = *$3;
+	
+	std::cout << "rvalue vector_access\n";
+	fflush(stdout);
+	auto obj   = $1;
+	auto name  = std::string("get");
+	//auto args  = std::vector<catmint::Expression*>{$3};
+	auto args  = *$3;
 		
-		// Crude checks here
+	// Crude checks here
     if (args.size() == 0) {
       // we have a vector [:] which means all
-		  auto  start  = new catmint::StringConstant(@1.first_line,  "0"); // Make more checks here!
-		  auto  stop   = new catmint::StringConstant(@1.first_line, "-1");
-		  auto  step   = new catmint::StringConstant(@1.first_line,  "1");
+	  auto  start  = new catmint::StringConstant(@1.first_line,  "0"); // Make more checks here!
+	  auto  stop   = new catmint::StringConstant(@1.first_line, "-1");
+	  auto  step   = new catmint::StringConstant(@1.first_line,  "1");
 
-		  // special syntax for String: access a substring
-		  auto slice = new catmint::Slicevector(@1.first_line,
+	  // special syntax for String: access a substring
+	  auto slice = new catmint::Slicevector(@1.first_line,
 								   Expression(obj),
 								   Expression(start),
 								   Expression(step),								   
@@ -931,7 +959,7 @@ vector_arguments
   ;
   
 vector_var_access 
-  //: lvalue_identifier_expression '[' vector_arguments ']' {
+  // : lvalue_identifier_expression '[' vector_arguments ']' {
   : IDENTIFIER '[' vector_arguments ']' {  
     std::cout<<"good, l_value vector_var_access" << std::endl;
     fflush(stdout);

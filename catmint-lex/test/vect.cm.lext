@@ -28,174 +28,127 @@
                                     {
                                         "NodeType": "Block",
                                         "NodeID": 5,
-                                        "LineNumber": 64,
+                                        "LineNumber": 13,
                                         "Expressions": [
                                             {
-                                                "NodeType": "ForStatement",
+                                                "NodeType": "LocalDefinition",
                                                 "NodeID": 6,
-                                                "LineNumber": 64,
-                                                "Iterator": {
-                                                    "NodeType": "Dispatch",
+                                                "LineNumber": 13,
+                                                "Type": "auto",
+                                                "Initializer": {
+                                                    "NodeType": "LocalDefinition",
                                                     "NodeID": 7,
-                                                    "LineNumber": 64,
-                                                    "Name": "get",
-                                                    "Object": {
-                                                        "NodeType": "Symbol",
+                                                    "LineNumber": 13,
+                                                    "Type": "_uuid_generic_0001_list",
+                                                    "Initializer": {
+                                                        "NodeType": "Block",
                                                         "NodeID": 8,
-                                                        "LineNumber": 64,
-                                                        "Name": "a"
-                                                    },
-                                                    "Arguments": [
-                                                        {
-                                                            "NodeType": "IntegerConstant",
-                                                            "NodeID": 9,
-                                                            "LineNumber": 64,
-                                                            "Value": 1
-                                                        }
-                                                    ]
-                                                },
-                                                "Container": {
-                                                    "NodeType": "Symbol",
-                                                    "NodeID": 10,
-                                                    "LineNumber": 64,
-                                                    "Name": "b"
-                                                },
-                                                "Body": {
-                                                    "NodeType": "Block",
-                                                    "NodeID": 11,
-                                                    "LineNumber": 65,
-                                                    "Expressions": [
-                                                        {
-                                                            "NodeType": "IfStatement",
-                                                            "NodeID": 12,
-                                                            "LineNumber": 65,
-                                                            "Condition": {
-                                                                "NodeType": "BinaryOperator",
-                                                                "NodeID": 13,
-                                                                "LineNumber": 65,
-                                                                "OperatorKind": "==",
-                                                                "LeftHandSide": {
-                                                                    "NodeType": "Dispatch",
-                                                                    "NodeID": 14,
-                                                                    "LineNumber": 65,
-                                                                    "Name": "get",
-                                                                    "Object": {
-                                                                        "NodeType": "Symbol",
-                                                                        "NodeID": 15,
-                                                                        "LineNumber": 65,
-                                                                        "Name": "a"
-                                                                    },
-                                                                    "Arguments": [
+                                                        "LineNumber": 13,
+                                                        "Expressions": [
+                                                            {
+                                                                "NodeType": "IntegerConstant",
+                                                                "NodeID": 9,
+                                                                "LineNumber": 13,
+                                                                "Value": 1
+                                                            },
+                                                            {
+                                                                "NodeType": "LocalDefinition",
+                                                                "NodeID": 10,
+                                                                "LineNumber": 13,
+                                                                "Type": "_uuid_generic_0001_list",
+                                                                "Initializer": {
+                                                                    "NodeType": "Block",
+                                                                    "NodeID": 11,
+                                                                    "LineNumber": 13,
+                                                                    "Expressions": [
                                                                         {
                                                                             "NodeType": "IntegerConstant",
-                                                                            "NodeID": 16,
-                                                                            "LineNumber": 65,
-                                                                            "Value": 1
+                                                                            "NodeID": 12,
+                                                                            "LineNumber": 13,
+                                                                            "Value": 2
                                                                         }
                                                                     ]
                                                                 },
-                                                                "RightHandSide": {
-                                                                    "NodeType": "IntegerConstant",
-                                                                    "NodeID": 17,
-                                                                    "LineNumber": 65,
-                                                                    "Value": 3
-                                                                }
-                                                            },
-                                                            "Then": {
-                                                                "NodeType": "Block",
-                                                                "NodeID": 18,
-                                                                "LineNumber": 66,
-                                                                "Expressions": [
+                                                                "NameList": [
                                                                     {
-                                                                        "NodeType": "Return",
-                                                                        "NodeID": 19,
-                                                                        "LineNumber": 66,
-                                                                        "Object": {
-                                                                            "NodeType": "Dispatch",
-                                                                            "NodeID": 20,
-                                                                            "LineNumber": 66,
-                                                                            "Name": "get",
-                                                                            "Object": {
-                                                                                "NodeType": "Symbol",
-                                                                                "NodeID": 21,
-                                                                                "LineNumber": 66,
-                                                                                "Name": "a"
+                                                                        "NodeType": "Symbol",
+                                                                        "NodeID": 13,
+                                                                        "LineNumber": 13,
+                                                                        "Name": "_uuid_generic_0001_list_new_name"
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "NodeType": "LocalDefinition",
+                                                                "NodeID": 14,
+                                                                "LineNumber": 13,
+                                                                "Type": "_uuid_generic_0001_list",
+                                                                "Initializer": {
+                                                                    "NodeType": "Block",
+                                                                    "NodeID": 15,
+                                                                    "LineNumber": 13,
+                                                                    "Expressions": [
+                                                                        {
+                                                                            "NodeType": "IntegerConstant",
+                                                                            "NodeID": 16,
+                                                                            "LineNumber": 13,
+                                                                            "Value": 3
+                                                                        },
+                                                                        {
+                                                                            "NodeType": "LocalDefinition",
+                                                                            "NodeID": 17,
+                                                                            "LineNumber": 13,
+                                                                            "Type": "_uuid_generic_0001_list",
+                                                                            "Initializer": {
+                                                                                "NodeType": "Block",
+                                                                                "NodeID": 18,
+                                                                                "LineNumber": 13,
+                                                                                "Expressions": [
+                                                                                    {
+                                                                                        "NodeType": "IntegerConstant",
+                                                                                        "NodeID": 19,
+                                                                                        "LineNumber": 13,
+                                                                                        "Value": 4
+                                                                                    }
+                                                                                ]
                                                                             },
-                                                                            "Arguments": [
+                                                                            "NameList": [
                                                                                 {
-                                                                                    "NodeType": "IntegerConstant",
-                                                                                    "NodeID": 22,
-                                                                                    "LineNumber": 66,
-                                                                                    "Value": 1
+                                                                                    "NodeType": "Symbol",
+                                                                                    "NodeID": 20,
+                                                                                    "LineNumber": 13,
+                                                                                    "Name": "_uuid_generic_0001_list_new_name"
                                                                                 }
                                                                             ]
                                                                         }
+                                                                    ]
+                                                                },
+                                                                "NameList": [
+                                                                    {
+                                                                        "NodeType": "Symbol",
+                                                                        "NodeID": 21,
+                                                                        "LineNumber": 13,
+                                                                        "Name": "_uuid_generic_0001_list_new_name"
                                                                     }
                                                                 ]
                                                             }
-                                                        }
-                                                    ]
-                                                }
-                                            },
-                                            {
-                                                "NodeType": "LocalDefinition",
-                                                "NodeID": 23,
-                                                "LineNumber": 70,
-                                                "Type": "auto_vect",
-                                                "Initializer": {
-                                                    "NodeType": "Block",
-                                                    "NodeID": 24,
-                                                    "LineNumber": 70,
-                                                    "Expressions": [
+                                                        ]
+                                                    },
+                                                    "NameList": [
                                                         {
-                                                            "NodeType": "IntegerConstant",
-                                                            "NodeID": 25,
-                                                            "LineNumber": 70,
-                                                            "Value": 2
-                                                        },
-                                                        {
-                                                            "NodeType": "Dispatch",
-                                                            "NodeID": 26,
-                                                            "LineNumber": 70,
-                                                            "Name": "set",
-                                                            "Object": {
-                                                                "NodeType": "Slicevector",
-                                                                "NodeID": 27,
-                                                                "LineNumber": 70,
-                                                                "Object": {
-                                                                    "NodeType": "Symbol",
-                                                                    "NodeID": 28,
-                                                                    "LineNumber": 70,
-                                                                    "Name": "a"
-                                                                },
-                                                                "Start": {
-                                                                    "NodeType": "IntegerConstant",
-                                                                    "NodeID": 29,
-                                                                    "LineNumber": 70,
-                                                                    "Value": 1
-                                                                },
-                                                                "Step": {
-                                                                    "NodeType": "StringConstant",
-                                                                    "NodeID": 30,
-                                                                    "LineNumber": 70,
-                                                                    "Value": "1"
-                                                                },
-                                                                "End": {
-                                                                    "NodeType": "IntegerConstant",
-                                                                    "NodeID": 31,
-                                                                    "LineNumber": 70,
-                                                                    "Value": 1
-                                                                }
-                                                            }
+                                                            "NodeType": "Symbol",
+                                                            "NodeID": 22,
+                                                            "LineNumber": 13,
+                                                            "Name": "_uuid_generic_0001_list_new_name"
                                                         }
                                                     ]
                                                 },
                                                 "NameList": [
                                                     {
                                                         "NodeType": "Symbol",
-                                                        "NodeID": 32,
-                                                        "LineNumber": 70,
-                                                        "Name": "a"
+                                                        "NodeID": 23,
+                                                        "LineNumber": 13,
+                                                        "Name": "b"
                                                     }
                                                 ]
                                             }
