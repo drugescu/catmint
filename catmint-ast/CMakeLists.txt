@@ -1,11 +1,18 @@
+project(catmint)
+cmake_minimum_required(VERSION 3.16)
+
+find_package(LLVM REQUIRED CONFIG)
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+
 include(CheckCXXCompilerFlag)
-set(CXX11_FLAG "-std=c++11" CACHE STRING "Compiler flag to enable C++ 11")
-CHECK_CXX_COMPILER_FLAG(${CXX11_FLAG} HAVE_CXX11)
-if (HAVE_CXX11)
-  add_definitions(${CXX11_FLAG})
+set(CXX14_FLAG "-std=c++14" CACHE STRING "Compiler flag to enable C++ 14")
+CHECK_CXX_COMPILER_FLAG(${CXX14_FLAG} HAVE_CXX14)
+if (HAVE_CXX14)
+  add_definitions(${CXX14_FLAG})
 else()
   message(FATAL_ERROR
-    "The compiler doesn't seem to have C++ 11 support (try setting the C++11 flag manually?)")
+    "The compiler doesn't seem to have C++ 14 support (try setting the C++14 flag manually?)")
 endif()
 
 set(INCLUDE_DIR include)
@@ -47,3 +54,4 @@ set(AST_FILES
   )
 
 add_library(catmint-ast STATIC ${AST_FILES})
+target_link_libraries(catmint-ast LLVMSupport)

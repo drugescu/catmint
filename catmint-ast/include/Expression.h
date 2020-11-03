@@ -21,7 +21,6 @@ public:
   void setLLVMop(llvm::Value * op) { LLVMop = op; }
   llvm::Value* getLLVMop() { return LLVMop; }
   
-  //TreeNode* clone() const { return new TreeNode(*this); };
 };
 }
 #endif /* EXPRESSION_H_ */

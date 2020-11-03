@@ -60,46 +60,46 @@ class Program : public TreeNode {
 
 public:
 
+  /// \brief Return the type of an Expression *E
+  int type_of_expr(Expression *E) {
+    if (auto IntCt = dynamic_cast<IntConstant *>(E)) {
+      return INT;
+    } else if (auto FloatCt = dynamic_cast<FloatConstant *>(E)) {
+      return FLOAT;
+    } else if (auto StringCt = dynamic_cast<StringConstant *>(E)) {
+      return STRING;
+    } else if (auto NullCt = dynamic_cast<NullConstant *>(E)) {
+      return NULLCT;
+    } else if (auto Sym = dynamic_cast<Symbol *>(E)) {
+      return SYMBOL;
+    } else if (auto Blk = dynamic_cast<Block *>(E)) {
+      return BLOCK;
+    } else if (auto BinOp = dynamic_cast<BinaryOperator *>(E)) {
+      return BINOP;
+    } else if (auto UnaryOp = dynamic_cast<UnaryOperator *>(E)) {
+      return UNARYOP;
+    }  else if (auto C = dynamic_cast<Cast *>(E)) {
+      return CCC;
+    } else if (auto Substr = dynamic_cast<Substring *>(E)) {
+      return SUBSTR;
+    } else if (auto Disp = dynamic_cast<Dispatch *>(E)) {
+      return DISP;
+    } else if (auto SDispatch = dynamic_cast<StaticDispatch *>(E)) {
+      return SDISP;
+    } else if (auto New = dynamic_cast<NewObject *>(E)) {
+      return NEW;
+    } else if (auto If = dynamic_cast<IfStatement *>(E)) {
+      return IF;
+    } else if (auto While = dynamic_cast<WhileStatement *>(E)) {
+      return WHILE;
+    } else if (auto Local = dynamic_cast<LocalDefinition *>(E)) {
+      return LOCAL;
+    } else if (auto Assign = dynamic_cast<Assignment *>(E)) {
+      return ASSIGN;
+    }
 
-int type_of_expr(Expression *E) {
-  if (auto IntCt = dynamic_cast<IntConstant *>(E)) {
-    return INT;
-  } else if (auto FloatCt = dynamic_cast<FloatConstant *>(E)) {
-    return FLOAT;
-  } else if (auto StringCt = dynamic_cast<StringConstant *>(E)) {
-    return STRING;
-  } else if (auto NullCt = dynamic_cast<NullConstant *>(E)) {
-    return NULLCT;
-  } else if (auto Sym = dynamic_cast<Symbol *>(E)) {
-    return SYMBOL;
-  } else if (auto Blk = dynamic_cast<Block *>(E)) {
-    return BLOCK;
-  } else if (auto BinOp = dynamic_cast<BinaryOperator *>(E)) {
-    return BINOP;
-  } else if (auto UnaryOp = dynamic_cast<UnaryOperator *>(E)) {
-    return UNARYOP;
-  }  else if (auto C = dynamic_cast<Cast *>(E)) {
-    return CCC;
-  } else if (auto Substr = dynamic_cast<Substring *>(E)) {
-    return SUBSTR;
-  } else if (auto Disp = dynamic_cast<Dispatch *>(E)) {
-    return DISP;
-  } else if (auto SDispatch = dynamic_cast<StaticDispatch *>(E)) {
-    return SDISP;
-  } else if (auto New = dynamic_cast<NewObject *>(E)) {
-    return NEW;
-  } else if (auto If = dynamic_cast<IfStatement *>(E)) {
-    return IF;
-  } else if (auto While = dynamic_cast<WhileStatement *>(E)) {
-    return WHILE;
-  } else if (auto Local = dynamic_cast<LocalDefinition *>(E)) {
-    return LOCAL;
-  } else if (auto Assign = dynamic_cast<Assignment *>(E)) {
-    return ASSIGN;
+    return -1;
   }
-
-  return -1;
-}
 
   /// \brief Create a node for an entire program
   /// \note This takes ownership of \p classes if provided
@@ -138,10 +138,9 @@ int type_of_expr(Expression *E) {
       // Now add stuff to it - whats before, before the first block, what's after, after the last block
       // find main, which is by default executed, and add the expressions to it
       for (auto met = found_class->begin(); met != found_class->end(); met++) {
-        //std::cout << "  Class Main has feature : " << (*met)->getName() << std::endl;
+        // std::cout << "  Class Main has feature : " << (*met)->getName() << std::endl;
         if ((*met)->getName() == "main") {
            found_method = dynamic_cast<Method*>(*met);
-           //std::cout << "    Class Main has a \"main\" method, here we must insert our stuff : " << found_method->getName() << std::endl;
         }
       }
 
@@ -155,7 +154,6 @@ int type_of_expr(Expression *E) {
         auto endingExpr   = std::move(body2);
         
         if (found_method->isMethod()) {
-          //std::cout << "    'main' is indeed a method!" << std::endl;
         }
         else {
           std::cout << "[ Error ] 'main' of 'Main' is not a method!" << std::endl;

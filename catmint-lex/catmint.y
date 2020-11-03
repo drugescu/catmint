@@ -1013,67 +1013,67 @@ vector_var_access
 // ----------------------------------------------------------------------------
 
 void printUsage() {
-	std::cout << "Usage: ./catmint-parser <inputFile> <outputFile>" << std::endl;
+  std::cout << "Usage: ./catmint-parser <inputFile> <outputFile>" << std::endl;
 }
 
 int main(int argc, char** argv) {
 
-	if(argc != 3) {
-		printUsage();
-		return 0;
-	}
+  if(argc != 3) {
+	printUsage();
+	return 0;
+  }
 
-	gInputFileName = strdup(argv[1]);
-	
-	// Preprocess file for module inclusion
-	std::ifstream in;
-	std::string target = "target.~tmp";
-	std::ofstream out(target, std::ofstream::out | std::ofstream::trunc);
-	
-	// Open and read initial file
-	std::stringstream buffer;	
-	std::ifstream initial;
-	initial.open(gInputFileName);
-	buffer << initial.rdbuf();
-	initial.close();
-	
-	// Vector of modules
-	std::vector<std::string> matches;
-	
-	// Try to match module constructions
+  gInputFileName = strdup(argv[1]);
+
+  // Preprocess file for module inclusion
+  std::ifstream in;
+  std::string target = "target.~tmp";
+  std::ofstream out(target, std::ofstream::out | std::ofstream::trunc);
+
+  // Open and read initial file
+  std::stringstream buffer;	
+  std::ifstream initial;
+  initial.open(gInputFileName);
+  buffer << initial.rdbuf();
+  initial.close();
+
+  // Vector of modules
+  std::vector<std::string> matches;
+
+  // Try to match module constructions
   std::string result = "";
-	try 
-	{
-	  std::regex re("using (.*)\n");
-	  std::string text = buffer.str();
-	  std::smatch match;
-	  std::sregex_iterator next(text.begin(), text.end(), re);
-	  std::sregex_iterator end;
-	  
-	  while (next != end) {
-	    std::smatch match = *next;
-	    std::string match_string = match.str();
-	    match_string = match_string.substr(0, strlen(match.str().c_str()) - 1);
-	    std::cout << "Found module inclusion: " << match_string << "\n";
-	    matches.insert(matches.end(), match_string);
-	    next++;
-	  }
-	  
-    // Now eliminate module inclusions
-    result = regex_replace(buffer.str(), re, "");
+  try 
+  {
+	std::regex re("using (.*)\n");
+	std::string text = buffer.str();
+	std::smatch match;
+	std::sregex_iterator next(text.begin(), text.end(), re);
+	std::sregex_iterator end;
+	
+	while (next != end) {
+	  std::smatch match = *next;
+	  std::string match_string = match.str();
+	  match_string = match_string.substr(0, strlen(match.str().c_str()) - 1);
+	  std::cout << "Found module inclusion: " << match_string << "\n";
+	  matches.insert(matches.end(), match_string);
+	  next++;
 	}
-	catch (std::regex_error& e) {
-	  std::cout << "Syntax error in regular expression." << std::endl;
-	}
+	
+	// Now eliminate module inclusions
+	result = regex_replace(buffer.str(), re, "");
+  }
+  catch (std::regex_error& e) {
+	std::cout << "Syntax error in regular expression." << std::endl;
+  }
 
   // Now open each module and add it to the buffer
-	std::stringstream Sbuffer;	
+  std::stringstream Sbuffer;	
 
   for(auto inclusion : matches) {
     auto module_name = inclusion.substr(strlen("using "), strlen(inclusion.c_str()));
 	  std::string full_path_to_module = module_name + ".cmm";
 	  std::string full_path_to_module2 = "./test/" + module_name + ".cmm";
-    std::cout << "[ LOG ] Opening and adding module << " << full_path_to_module << " >>" << std::endl;
+      std::cout << "[ LOG ] Opening and adding module << " << full_path_to_module << " >>" << std::endl;
 	  in.open(full_path_to_module.c_str());
 	  
 	  // Test alternate paths
@@ -1093,19 +1093,19 @@ int main(int argc, char** argv) {
   }
   
   // Now add the original file
-	Sbuffer << result;
-	out << Sbuffer.str();
-	out.close();
+  Sbuffer << result;
+  out << Sbuffer.str();
+  out.close();
 	
-	/* Open actual merged file */
-	yyin = fopen("target.~tmp", "r");
+  /* Open actual merged file */
+  yyin = fopen("target.~tmp", "r");
 
-	if(yyparse()) {
-		return 1;
-	}
+  if(yyparse()) {
+	return 1;
+  }
 
-	catmint::ASTSerializer serializer(argv[2]);
-	serializer.visit(gCatmintProgram);
+  catmint::ASTSerializer serializer(argv[2]);
+  serializer.visit(gCatmintProgram);
 
-	return 0;
+  return 0;
 }
