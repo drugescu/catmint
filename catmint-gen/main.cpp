@@ -5,7 +5,7 @@
 #include <SemanticException.h>
 #include <PrintAnalysis.h>
 #include <ASTSerialization.h>
-//#include "ASTCodeGen.h"*/
+#include "ASTCodeGen.h"
 
 void printUsage() {
   std::cout << "./lcpl-codegen <inputFile> <outputFile> " << std::endl;
@@ -26,32 +26,28 @@ int main(int argc, char **argv) {
   catmint::PrintAnalysis printAnalysis(program.get());
   printAnalysis.runAnalysis();
 
-  /*try {
-    lcpl::SemanticAnalysis semanticAnalysis(program.get());
-    //semanticAnalysis.runAnalysis();
-      
-    lcpl::ASTCodeGen codeGenerator(argv[1], program.get(), &semanticAnalysis);
-    codeGenerator.runCodeGeneration(argv[2]);
-   
-
-    if ((argc == 4) && (strcmp(argv[3], "--run") == 0)) {
-      std::cout << "Running interpreter" << std::endl;
-//      semanticAnalysis.runInterpreter();
-    }
-  } catch (lcpl::SemanticException &e) {
-    std::cout << e.what() << std::endl;
-  }*/
-  
   try {
     catmint::SemanticAnalysis semanticAnalysis(program.get());
     semanticAnalysis.runAnalysis();
+
+    // Print outputs
+    semanticAnalysis.typeTable.printTypeTable();
+    semanticAnalysis.symbolTable.print(std::cout);
+
+    try {
+      catmint::ASTCodeGen codeGenerator(argv[1], program.get(), &semanticAnalysis);
+      codeGenerator.runCodeGeneration("");
+    }
+    catch (std::exception e) {
+      std::cout << e.what() << std::endl;
+    }
   }  catch (catmint::SemanticException &e) {
     std::cout << e.what() << std::endl;
   }
 
   std::cout << "[ LOG ] : Semantic analysis complete. No errors.\n";
 
-  
+
 
   return 0;
 }

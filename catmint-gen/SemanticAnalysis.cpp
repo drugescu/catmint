@@ -26,6 +26,11 @@ void SemanticAnalysis::runAnalysis() {
 
 bool SemanticAnalysis::visit(Program *p) {
 
+  std::cout << "Starting Semantic Analysis..." << std::endl;
+
+  // Startup scope of Symbol table
+  
+
   // Check that main exists (we have inserted it manually) and inheritance graph
   checkMainClassAndMethod();
   checkInheritanceGraph();
@@ -68,18 +73,19 @@ bool SemanticAnalysis::visit(Program *p) {
   return true;
 }
 
-// Visit lass by visiting attributes and adding symbols/types to tables
+// Visit class by visiting attributes and adding symbols/types to tables
 bool SemanticAnalysis::visit(Class *c) {
   if (typeTable.isBuiltinClass(c)) {
     return true;
   }
 
-  // create a scope and add all attributes to it
-  SymbolTable::Scope classScope(symbolTable);
+  // Create a scope and add all attributes to it
+  SymbolTable::Scope classScope(symbolTable, c->getName());
   for (auto currentClass = c; currentClass;
        currentClass = typeTable.getParentClass(currentClass)) {
     for (auto f : *currentClass) {
       if (f->isAttribute()) {
+
         auto attr = static_cast<Attribute *>(f);
         symbolTable.insert(attr);
 
@@ -89,16 +95,18 @@ bool SemanticAnalysis::visit(Class *c) {
     }
   }
 
-  // add self to symbol table
+  // Add self to symbol table
   std::vector<std::string> def_names;
   def_names.push_back("self");
   std::unique_ptr<LocalDefinition> self(
       // line of code, name, type
-      new LocalDefinition(0, def_names, c->getName()));
+      new LocalDefinition(0, def_names, c->getName())
+  );
+  
   symbolTable.insert(self.get());
   typeTable.setType(self.get(), typeTable.getType(c));
 
-  // Verify features
+  // Verify class features
   checkFeatures(c);
 
   return ASTVisitor::visit(c);
@@ -203,7 +211,7 @@ void SemanticAnalysis::checkInheritanceGraph() {
 bool SemanticAnalysis::visit(Method *m) {
   std::unordered_set<std::string> paramNames;
 
-  SymbolTable::Scope methodScope(symbolTable);
+  SymbolTable::Scope methodScope(symbolTable, m->getName());
   for (auto param : *m) {
     if (paramNames.count(param->getName())) {
       throw DuplicateParamException(param, m);
@@ -268,7 +276,8 @@ bool SemanticAnalysis::visit(Symbol *s) {
 }
 
 bool SemanticAnalysis::visit(Block *b) {
-  SymbolTable::Scope blockScope(symbolTable);
+  // Since blocks don't have names/aliases, our named scope will be annonymous as well
+  SymbolTable::Scope blockScope(symbolTable, "anonymous_block");
 
   // visit all expressions first
   if (!ASTVisitor::visit(b)) {
@@ -520,7 +529,7 @@ bool SemanticAnalysis::visit(WhileStatement *w) {
 
   auto body = w->getBody();
   if (body) {
-    SymbolTable::Scope whileScope(symbolTable);
+    SymbolTable::Scope whileScope(symbolTable, "anonymous_while");
     if (!visit(body)) {
       return false;
     }

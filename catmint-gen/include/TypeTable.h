@@ -155,7 +155,8 @@ public:
   Attribute *getAttribute(Class *c, const std::string &name) const;
   Method *getMethod(Class *c, const std::string &name) const;
 
-
+  int printTypeTable();
+  
 private:
   void addTypes(Program *p);
   void addBuiltinTypes(Program *p);
@@ -179,7 +180,7 @@ private:
 //      methodTable;
     std::map<Class *, std::map<std::string, Method *>> methodTable;
 
-  int printTypeTable();
+
 };
 }
 #endif /* INCLUDE_TYPETABLE_H_ */
