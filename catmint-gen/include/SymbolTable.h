@@ -11,9 +11,11 @@
 
 namespace catmint {
 
+class Symbol;
 class TreeNode;
 
 typedef std::unordered_map<std::string, TreeNode *> UnnamedSymbolTableScope;
+typedef std::unordered_map<Symbol *, TreeNode *> SymbolMap;
 
 // Scopes should be names so instead of a vect<unordered_map<string, TreeNode>>
 //   we should have vect<string,unordered_map<string, TreeNode>>

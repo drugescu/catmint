@@ -28,9 +28,6 @@ bool SemanticAnalysis::visit(Program *p) {
 
   std::cout << "Starting Semantic Analysis..." << std::endl;
 
-  // Startup scope of Symbol table
-  
-
   // Check that main exists (we have inserted it manually) and inheritance graph
   checkMainClassAndMethod();
   checkInheritanceGraph();
@@ -75,7 +72,21 @@ bool SemanticAnalysis::visit(Program *p) {
 
 // Visit class by visiting attributes and adding symbols/types to tables
 bool SemanticAnalysis::visit(Class *c) {
-  if (typeTable.isBuiltinClass(c)) {
+  if (typeTable.isBuiltinClass(c)) {// visiting builtin classes is a lot simpler than user classes, because we
+    // don't need to check anything, we just need to add method parameters to
+    // the type table
+    SymbolTable::Scope BuiltinScope(symbolTable, c->getName());
+    for (auto f : *c) {
+      if (f->isMethod()) {
+        auto method = static_cast<Method *>(f);
+        for (auto param : *method) {
+          if (!visit(param)) {
+            return false;
+          }
+        }
+      }
+    }
+
     return true;
   }
 
@@ -271,6 +282,7 @@ bool SemanticAnalysis::visit(NullConstant *nc) {
 bool SemanticAnalysis::visit(Symbol *s) {
   auto who = symbolTable.lookup(s->getName());
   typeTable.setType(s, typeTable.getType(who));
+  definitionsMap[s] = who;
 
   return true;
 }
@@ -434,17 +446,32 @@ bool SemanticAnalysis::visit(Dispatch *d) {
 
   std::cout << "Getting type of object at " << obj->getLineNumber() << "\n";
   auto objType = typeTable.getType(obj);
+  std::cout << ">> Type is : " << objType->getName() << "\n";
 
   std::cout << "Getting class of object at " << obj->getLineNumber() << "\n";
   auto objClass = objType->getClass();
   if (!objClass) {
     throw DispatchOnInvalidObjException(d->getName(), objType);
   }
+  std::cout << ">> Class is : " << objClass->getName() << "\n";
 
-  std::cout << "  Getting method... \n";
+  std::cout << "  Getting method... " << d->getName() << "\n";
   auto method = typeTable.getMethod(objClass, d->getName());
   if (!method) {
-    throw MethodNotFoundException(d->getName(), objClass);
+    if (typeTable.isBuiltinClass(objClass))
+    {
+      std::cout << d->getName() << " is a built-in class.\n";
+      if ((d->getName() == strings::Out) ||
+          (d->getName() == strings::In))
+      {}
+      else
+      {
+        throw MethodNotFoundException(d->getName(), objClass);
+      }
+      
+    }
+    else
+      throw MethodNotFoundException(d->getName(), objClass);
   }
 
   std::cout << "  Checking dispatch args... \n";
@@ -452,8 +479,16 @@ bool SemanticAnalysis::visit(Dispatch *d) {
     return false;
   }
 
-  std::cout << "  Set type to return type of method, " << method->getReturnType() << "\n";
-  typeTable.setType(d, typeTable.getType(method->getReturnType()));
+  if (method)
+  {
+    std::cout << "  Set type to return type of method, " << method->getReturnType() << "\n";
+    typeTable.setType(d, typeTable.getType(method->getReturnType()));
+  }
+  else { // Temporary hack
+    if (d->getName() == "out") {
+      typeTable.setType(d, typeTable.getStringType());
+    }
+  }
 
   std::cout << "  Done dispatch visit.\n";
   return true;
@@ -508,6 +543,47 @@ bool SemanticAnalysis::visit(NewObject *n) {
 }
 
 bool SemanticAnalysis::visit(IfStatement *i) {
+  auto condExpr = i->getCond();
+  auto thenExpr = i->getThen();
+  auto elseExpr = i->getElse();
+
+  if (!condExpr) {
+    throw MissingIfCondException(i);
+  }
+
+  if (!visit(condExpr)) {
+    return false;
+  }
+
+  if (typeTable.getType(condExpr) != typeTable.getIntType()) {
+    throw WrongTypeException(typeTable.getType(condExpr),
+                             typeTable.getIntType(), condExpr);
+  }
+
+  if (!thenExpr) {
+    throw MissingIfThenException(i);
+  }
+
+  {
+    SymbolTable::Scope thenScope(symbolTable, "then_expr_anon");
+    if (!visit(thenExpr)) {
+      return false;
+    }
+  }
+
+  if (elseExpr) {
+    SymbolTable::Scope elseScope(symbolTable, "else_expr_anon");
+    if (!visit(elseExpr)) {
+      return false;
+    }
+  }
+
+  auto thenType = typeTable.getType(thenExpr);
+  auto elseType = elseExpr != nullptr ? typeTable.getType(elseExpr)
+                                      : typeTable.getVoidType();
+
+  typeTable.setType(i, typeTable.getCommonType(thenType, elseType));
+
   return true;
 }
 

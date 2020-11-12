@@ -7,6 +7,12 @@
 
 template <typename DispatchT>
 bool catmint::SemanticAnalysis::checkDispatchArgs(DispatchT *d, Method *m) {
+  // Temporary - should not matter for in and out...
+  if (!m) {
+    std::cout << "method is none.\n";
+    return true;
+  }
+
   auto paramIt = m->begin();
   for (auto arg : *d) {
     if (!visit(arg)) {

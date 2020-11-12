@@ -21,6 +21,7 @@
 #include <llvm/ExecutionEngine/GenericValue.h>
 #include <llvm/ExecutionEngine/MCJIT.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Target/TargetMachine.h>
 
 #include "ASTVisitor.h"
 #include "Program.h"
@@ -31,6 +32,33 @@
 
 namespace catmint
 {
+
+class RuntimeInterface {
+public:
+  RuntimeInterface(llvm::Module &M);
+
+  llvm::StructType *rttiType() const { return RTTIType; }
+  llvm::StructType *stringType() const { return StringType; }
+  llvm::StructType *ioType() const { return IOType; }
+
+  llvm::Value *stringRTTI() const { return RString; }
+  llvm::Value *ioRTTI() const { return RIO; }
+
+  llvm::Function *ioOut() const { return IO_out; }
+  llvm::Function *lcplNew() const { return LCPLNew; }
+
+private:
+  llvm::StructType *RTTIType;
+  llvm::StructType *StringType;
+  llvm::StructType *IOType;
+
+  llvm::Value *RString;
+  llvm::Value *RIO;
+
+  llvm::Function *IO_out;
+
+  llvm::Function *LCPLNew;
+};
 
 class ASTCodeGen : public ASTVisitor
 {
@@ -43,20 +71,21 @@ public:
     
     
 private:
-    llvm::Module *module;
-    Program *program;
-    
-    ///\ aux
-    int BlockID;
-    llvm::BasicBlock    *crtBasicBlock;
-    llvm::Function      *crtFunction;
-    llvm::AllocaInst    *crtSelf;
-    catmint::Class         *crtClass;
+  llvm::Module *module;
+  llvm::LLVMContext TheContext;
+  Program *program;
+  
+  ///\ aux
+  int BlockID;
+  llvm::BasicBlock    *crtBasicBlock;
+  llvm::Function      *crtFunction;
+  llvm::AllocaInst    *crtSelf;
+  catmint::Class         *crtClass;
 
-    bool visit(Program *P) override;
-	bool visit(Class *C) override;
-    bool visit(Feature * f) override;
-    bool visit(Attribute *F) override;
+  bool visit(Program *P) override;
+  bool visit(Class *C) override;
+  bool visit(Feature * f) override;
+  bool visit(Attribute *F) override;
 	bool visit(Method *M) override;
 	bool visit(FormalParam *F) override;
 
@@ -80,41 +109,41 @@ private:
 	bool visit(WhileStatement *While) override;
 	bool visit(LocalDefinition *Local) override;
 
-    
-    void generateTypes ();
-    void generateRuntimeTypes();
-    void generateRuntimeGlobalVars();
-    void generateFunctionPrototype(Method * m);
-    void generateStartupPrototype();
-    void generateStartup();
-    void generate_catmint_new();
-    void generateRuntimeFunctionPrototype();
-    void generateFunctionPrototype(Class *c, Method *method);
-    
-    void generateConstructor(std::string class_name);
-    llvm::GlobalVariable* DeclareGlobalRttiVar(std::string name);
-    llvm::GlobalVariable* DefineGlobalStringConst(std::string name);
-    llvm::GlobalVariable* getGlobal(std::string globalName);
-    std::string getLLVMmethodName(std::string, std::string);
-    std::string setLLVMmethodName(Method *m);
-    
-    void generateMain_Name_Type();
-    void generateMain_RTTI();
+  void generateTypes ();
+  void generateRuntimeTypes();
+  void generateRuntimeGlobalVars();
+  void generateFunctionPrototype(Method * m);
+  void generateStartupPrototype();
+  void generateStartup();
+  void generate_catmint_new();
+  void generateRuntimeFunctionPrototype();
+  void generateFunctionPrototype(Class *c, Method *method);
+  
+  void generateConstructor(std::string class_name);
+  llvm::GlobalVariable* DeclareGlobalRttiVar(std::string name);
+  llvm::GlobalVariable* DefineGlobalStringConst(std::string name);
+  llvm::GlobalVariable* getGlobal(std::string globalName);
+  std::string getLLVMmethodName(std::string, std::string);
+  std::string setLLVMmethodName(Method *m);
+  
+  void generateMain_Name_Type();
+  void generateMain_RTTI();
+  
+  RuntimeInterface Runtime;
 
-    
-    std::string getBlockLabel() {BlockID++; return std::string("block" + std::to_string(BlockID)); }
-    
-    llvm::BasicBlock* getBasicBlock() {return crtBasicBlock; }
-    void setBasicBlock(llvm::BasicBlock * bb) { crtBasicBlock = bb; }
+  std::string getBlockLabel() { BlockID++; return std::string("block" + std::to_string(BlockID)); }
+  
+  llvm::BasicBlock* getBasicBlock() {return crtBasicBlock; }
+  void setBasicBlock(llvm::BasicBlock * bb) { crtBasicBlock = bb; }
 
-    llvm::Function  * getFunction() { return crtFunction; }
-    void setFunction(llvm::Function * func) { crtFunction = func; }
+  llvm::Function  * getFunction() { return crtFunction; }
+  void setFunction(llvm::Function * func) { crtFunction = func; }
 
-    void setLLVMself(llvm::AllocaInst* alloc_inst) {crtSelf = alloc_inst; }
-    llvm::AllocaInst * getLLVMself() {return crtSelf; }
-    
-    catmint::Class* getClass() {return crtClass; }
-    void setClass(catmint::Class * cls) { crtClass = cls; }
+  void setLLVMself(llvm::AllocaInst* alloc_inst) {crtSelf = alloc_inst; }
+  llvm::AllocaInst * getLLVMself() {return crtSelf; }
+  
+  catmint::Class* getClass() {return crtClass; }
+  void setClass(catmint::Class * cls) { crtClass = cls; }
 
     
 };

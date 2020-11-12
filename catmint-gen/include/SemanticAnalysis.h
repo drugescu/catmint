@@ -54,6 +54,16 @@ public:
   TypeTable typeTable;
   SymbolTable symbolTable;
   TypeVisitor typeVisitor;
+  SymbolMap definitionsMap;
+
+  /// \brief Get the type table
+  /// \warning  This should only be called after runAnalysis(), otherwise the
+  ///           table will be empty
+  TypeTable getTypeTable() { return typeTable; }
+
+  /// \brief Get a map from symbols to their definitions
+  SymbolMap getSymbolDefinitions() const { return definitionsMap; }
+
 
 private:
   Program *program;
@@ -64,6 +74,7 @@ private:
   void checkFeatures(Class *c);
 
   template <typename DispatchT> bool checkDispatchArgs(DispatchT *d, Method *m);
+
 };
 }
 

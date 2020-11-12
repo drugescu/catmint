@@ -52,12 +52,7 @@ public:
 
   /// \brief Remove a feature by name
   void removeFeature(std::string name) {
-    /*for (auto& cls : this->features) {
-      if (cls.get()->getName() == name) {
-        this->features.erase(cls.get());
-        break;
-      }
-    }*/
+
     this->features.erase(
       std::remove_if(
           this->features.begin(),

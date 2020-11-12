@@ -678,10 +678,10 @@ bool ASTSerializer::visit(LocalDefinition *Local) {
   CreateJSONObject object(*this, keys::LocalDefinitionNodeType, Local);
   writePair(keys::LineNumber, Local->getLineNumber());
 
-  //writePair(keys::Name, Local->getName());
   writePair(keys::Type, Local->getType());
 
   if (auto Scope = Local->getScope()) {
+    
     // TODO: assert(Scope && "Local definition doesn't have scope"); set scope
     // during syntax analysis
     writePair(keys::Scope, (int)getID(Scope));
