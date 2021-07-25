@@ -25,13 +25,6 @@
                     "Type": "Int"
                 },
                 {
-                    "NodeType": "Attribute",
-                    "NodeID": 30,
-                    "LineNumber": 999,
-                    "Name": "HIHI",
-                    "Type": "Object"
-                },
-                {
                     "NodeType": "Method",
                     "NodeID": 4,
                     "LineNumber": 9,
@@ -131,7 +124,62 @@
                             {
                                 "NodeType": "Block",
                                 "NodeID": 19,
-                                "LineNumber": 1
+                                "LineNumber": 1,
+                                "Expressions": [
+                                    {
+                                        "NodeType": "Block",
+                                        "NodeID": 20,
+                                        "LineNumber": 22,
+                                        "Expressions": [
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 21,
+                                                "LineNumber": 22,
+                                                "Type": "IO",
+                                                "NameList": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 22,
+                                                        "LineNumber": 22,
+                                                        "Name": "n"
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "NodeType": "Dispatch",
+                                                "NodeID": 23,
+                                                "LineNumber": 23,
+                                                "Name": "out",
+                                                "Object": {
+                                                    "NodeType": "Symbol",
+                                                    "NodeID": 24,
+                                                    "LineNumber": 23,
+                                                    "Name": "n"
+                                                },
+                                                "Arguments": [
+                                                    {
+                                                        "NodeType": "StringConstant",
+                                                        "NodeID": 25,
+                                                        "LineNumber": 23,
+                                                        "Value": "test\n"
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "NodeType": "Dispatch",
+                                                "NodeID": 26,
+                                                "LineNumber": 24,
+                                                "Name": "input",
+                                                "Object": {
+                                                    "NodeType": "Symbol",
+                                                    "NodeID": 27,
+                                                    "LineNumber": 24,
+                                                    "Name": "n"
+                                                }
+                                            }
+                                        ]
+                                    }
+                                ]
                             }
                         ]
                     }

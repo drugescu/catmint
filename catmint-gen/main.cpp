@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
     std::cout << e.what() << std::endl;
   }
 
-  std::cout << "[ LOG ] : Semantic analysis complete. No errors.\n";
+  std::cout << "[ LOG ] : Semantic analysis complete.\n";
 
 
 

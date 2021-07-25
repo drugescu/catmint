@@ -1,0 +1,83 @@
+{
+    "NodeType": "Program",
+    "NodeID": 0,
+    "LineNumber": 1,
+    "Classes": [
+        {
+            "NodeType": "Class",
+            "NodeID": 1,
+            "LineNumber": 0,
+            "Name": "Main",
+            "Features": [
+                {
+                    "NodeType": "Method",
+                    "NodeID": 2,
+                    "LineNumber": 0,
+                    "Name": "main",
+                    "ReturnType": "Void",
+                    "Body": {
+                        "NodeType": "Block",
+                        "NodeID": 3,
+                        "LineNumber": 1,
+                        "Expressions": [
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 4,
+                                "LineNumber": 1,
+                                "Expressions": [
+                                    {
+                                        "NodeType": "Block",
+                                        "NodeID": 5,
+                                        "LineNumber": 1,
+                                        "Expressions": [
+                                            {
+                                                "NodeType": "LocalDefinition",
+                                                "NodeID": 6,
+                                                "LineNumber": 1,
+                                                "Type": "String",
+                                                "Initializer": {
+                                                    "NodeType": "StringConstant",
+                                                    "NodeID": 7,
+                                                    "LineNumber": 1,
+                                                    "Value": "Hello, a!"
+                                                },
+                                                "NameList": [
+                                                    {
+                                                        "NodeType": "Symbol",
+                                                        "NodeID": 8,
+                                                        "LineNumber": 1,
+                                                        "Name": "a"
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "NodeType": "Dispatch",
+                                                "NodeID": 9,
+                                                "LineNumber": 2,
+                                                "Name": "out",
+                                                "Object": {
+                                                    "NodeType": "Symbol",
+                                                    "NodeID": 10,
+                                                    "LineNumber": 2,
+                                                    "Name": "a"
+                                                },
+                                                "Arguments": [
+                                                    {
+                                                        "NodeType": "StringConstant",
+                                                        "NodeID": 11,
+                                                        "LineNumber": 2,
+                                                        "Value": "testing"
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ]
+}

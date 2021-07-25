@@ -35,7 +35,8 @@ public:
   llvm::Value *ioRTTI() const { return RIO; }
 
   llvm::Function *ioOut() const { return IO_out; }
-  llvm::Function *lcplNew() const { return LCPLNew; }
+  llvm::Function *ioIn() const { return IO_in; }
+  llvm::Function *catmintNew() const { return CatmintNew; }
 
 private:
   llvm::StructType *RTTIType;
@@ -47,8 +48,9 @@ private:
   llvm::Value *RIO;
 
   llvm::Function *IO_out;
+  llvm::Function *IO_in;
 
-  llvm::Function *LCPLNew;
+  llvm::Function *CatmintNew;
 };
 
 class IRGenerator : public ASTVisitor {

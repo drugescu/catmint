@@ -19,4 +19,6 @@ class Point from IO
 	end
 end
 
-
+IO n
+n.out("test\n")
+n.input()

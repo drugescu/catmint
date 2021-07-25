@@ -1,9 +1,9 @@
 CXX = g++
 
-CXXFLAGS = -std=c++11
-INCLUDES = -I../catmint-ast/include -I.
+CXXFLAGS = -std=c++14
+INCLUDES = -I../catmint-ast/include
 LFLAGS = -L../catmint-ast 
-LIBS = -lcatmint-ast
+LIBS = -lcatmint-ast -lLLVM-10
 MAIN = ./bin/catmint-parser
 
 .PHONY: clean

@@ -8,7 +8,7 @@ using namespace catmint;
 RuntimeInterface::RuntimeInterface(llvm::Module &M) {
   auto &Context = M.getContext();
 
-  RTTIType = llvm::StructType::create(Context, "struct.__lcpl_rtti");
+  RTTIType = llvm::StructType::create(Context, "struct.__catmint_rtti");
   StringType = llvm::StructType::create(Context, "struct.TString");
   ObjectType = llvm::StructType::create(Context, "struct.TObject");
   IOType = llvm::StructType::create(Context, "struct.TIO");
@@ -21,32 +21,35 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
   auto IntType = llvm::IntegerType::getInt32Ty(Context);
   auto VoidPtrType = llvm::IntegerType::getInt8PtrTy(Context);
 
-  /* __lcpl_rtti =
+  /* __catmint_rtti =
       struct TString* name;
       int size;
-      struct __lcpl_rtti *parent;
+      struct __catmint_rtti *parent;
       void* vtable[]; */
   RTTIType->setBody({StrPtrType, IntType, RTTIPtrType,
                     llvm::ArrayType::get(VoidPtrType, 0) });
 
-  /*   struct TString { struct __lcpl_rtti *rtti; int length; char *string; }; */
+  /*   struct TString { struct __catmint_rtti *rtti; int length; char *string; }; */
   StringType->setBody({RTTIPtrType, IntType, llvm::Type::getInt8PtrTy(Context) });
 
-  /*   struct TIO { struct __lcpl_rtti *rtti; } */
+  /*   struct TIO { struct __catmint_rtti *rtti; } */
   llvm::Type *IOTypeFields[] = { RTTIPtrType };
   IOType->setBody(IOTypeFields);
 
-  /*   struct TObject { struct __lcpl_rtti *rtti; } */
+  /*   struct TObject { struct __catmint_rtti *rtti; } */
   ObjectType->setBody({ RTTIPtrType });
 
   RString = M.getOrInsertGlobal("RString", RTTIType);
   RIO = M.getOrInsertGlobal("RIO", RTTIType);
 
   llvm::Type *IOOutParamTypes[] = { IOPtrType, StrPtrType };
+  llvm::Type *IOInParamTypes[] = { IOPtrType };
   IO_out = llvm::cast<llvm::Function>(M.getOrInsertFunction(
       "M2_IO_out", llvm::FunctionType::get(IOPtrType, IOOutParamTypes, false)).getCallee());
-  LCPLNew = llvm::cast<llvm::Function>(M.getOrInsertFunction(
-      "__lcpl_new", llvm::FunctionType::get(VoidPtrType, RTTIPtrType, false)).getCallee());
+  IO_in = llvm::cast<llvm::Function>(M.getOrInsertFunction(
+      "M2_IO_in", llvm::FunctionType::get(IOPtrType, IOInParamTypes, false)).getCallee());
+  CatmintNew = llvm::cast<llvm::Function>(M.getOrInsertFunction(
+      "__catmint_new", llvm::FunctionType::get(VoidPtrType, RTTIPtrType, false)).getCallee());
 }
 
 IRGenerator::IRGenerator(llvm::StringRef ModuleName, Program *P,
@@ -202,7 +205,7 @@ bool IRGenerator::visit(Block *B) {
   // Create string
   auto StringType = Runtime.stringType();
   auto RString = Runtime.stringRTTI();
-  auto New = Runtime.lcplNew();
+  auto New = Runtime.catmintNew();
   auto NewString = Builder.CreateBitCast(Builder.CreateCall(New, {RString}),
                                          StringType->getPointerTo());
   std::string StringValue("Hello World!\n");
@@ -216,7 +219,7 @@ bool IRGenerator::visit(Block *B) {
                             StringField);
   // Create a new IO object and bitcast from void* to IO*
   auto RIO = Runtime.ioRTTI();
-  //auto New = Runtime.lcplNew();
+  //auto New = Runtime.catmintNew();
   auto IOType = Runtime.ioType();
   auto NewIO = Builder.CreateBitCast(Builder.CreateCall(New, RIO),
                                      IOType->getPointerTo());
@@ -256,7 +259,7 @@ bool IRGenerator::visit(Dispatch *D) {
   // hardcode to IO::out; remove this check when you're ready to handle other
   // dynamic dispatches
   if (D->getName() != "out") {
-    return true;
+    //return true;
   }
 
   for (auto Arg : *D) {
@@ -265,28 +268,45 @@ bool IRGenerator::visit(Dispatch *D) {
     }
   }
 
-  // Get the Value generated for the first (and only) argument
-  // TODO: Generalize this to handle more than one argument
-  auto OutputString = NodeMap[*D->begin()];
-  if (!OutputString) {
-    return true;
-  }
-
   // TODO: Because we're not taking a 'self' object as parameter yet, we'll have
   // to create a new IO object here to pass into the IO::out method. You should
   // update this after implementing 'self'.
-  auto IOType = Runtime.ioType();
-  auto RIO = Runtime.ioRTTI();
-  auto New = Runtime.lcplNew();
+  if (D->getName() == "out") {
+    // Get the Value generated for the first (and only) argument
+    // TODO: Generalize this to handle more than one argument
+    auto OutputString = NodeMap[*D->begin()];
+    if (!OutputString) {
+      return true;
+    }
 
-  // Create a new IO object and bitcast from void* to IO*
-  auto NewIO = Builder.CreateBitCast(Builder.CreateCall(New, RIO),
-                                     IOType->getPointerTo());
+    auto IOType = Runtime.ioType();
+    auto RIO = Runtime.ioRTTI();
+    auto New = Runtime.catmintNew();
 
-  auto IO_out = Runtime.ioOut();
-  llvm::Value *OutArgs[] = { NewIO, OutputString };
+    // Create a new IO object and bitcast from void* to IO*
+    auto NewIO = Builder.CreateBitCast(Builder.CreateCall(New, RIO),
+                                      IOType->getPointerTo());
 
-  (void)Builder.CreateCall(IO_out, OutArgs);
+    auto IO_out = Runtime.ioOut();
+    llvm::Value *OutArgs[] = { NewIO, OutputString };
+
+    (void)Builder.CreateCall(IO_out, OutArgs);
+  }
+  else if (D->getName() == "input") {
+    auto IOType = Runtime.ioType();
+    auto RIO = Runtime.ioRTTI();
+    auto New = Runtime.catmintNew();
+
+    // Create a new IO object and bitcast from void* to IO*
+    auto NewIO = Builder.CreateBitCast(Builder.CreateCall(New, RIO),
+                                      IOType->getPointerTo());
+
+    auto IO_in = Runtime.ioIn();
+    llvm::Value *OutArgs[] = { NewIO };
+
+    (void)Builder.CreateCall(IO_in, OutArgs);
+    
+  }
 
   return true;
 }
@@ -299,7 +319,7 @@ bool IRGenerator::visit(StringConstant *SC) {
   // * Write the pointer to the storage into the new String object
   auto StringType = Runtime.stringType();
   auto RString = Runtime.stringRTTI();
-  auto New = Runtime.lcplNew();
+  auto New = Runtime.catmintNew();
 
   auto NewString = Builder.CreateBitCast(Builder.CreateCall(New, {RString}),
                                          StringType->getPointerTo());
