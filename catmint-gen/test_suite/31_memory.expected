@@ -1,0 +1,10 @@
+refs 1
+after retain 2
+after release 1
+literal refs 0
+literal still hello
+net growth 0
+net growth again 0
+temporaries leak 1
+copy shared refs 1
+done

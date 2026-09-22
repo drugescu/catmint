@@ -9,7 +9,9 @@
  *
  * Everything here is fixed by agreement with IRGenerator.cpp and must not be
  * changed on one side only:
- *   - every object begins with a pointer to its run-time type information;
+ *   - every object begins with a pointer to its run-time type information,
+ *     followed by a reference count: zero means the object is static (a
+ *     string literal, a class name) and must never be freed;
  *   - a virtual table is an array of function pointers at the end of the RTTI
  *     record, with the parent's slots first;
  *   - the built-in slot order is Object {abort, typeName, copy}, then IO
@@ -36,18 +38,25 @@ struct __catmint_rtti {
   void *vtable[];               /* parent's slots first, then new ones  */
 };
 
+/* Every object starts this way. `refs` is 1 when __catmint_new made it and 0
+ * when it is a static object the compiler emitted -- a string literal or a
+ * class name. Zero is therefore "do not free", which is what makes free() on
+ * a literal a no-op instead of heap corruption. */
 struct TObject {
   struct __catmint_rtti *rtti;
+  int refs;
 };
 
 struct TString {
   struct __catmint_rtti *rtti;
+  int refs;
   int length;
   char *string;
 };
 
 struct TIO {
   struct __catmint_rtti *rtti;
+  int refs;
 };
 
 /* A growable array of object references. This is the one container the
@@ -56,6 +65,7 @@ struct TIO {
  * the language. */
 struct TList {
   struct __catmint_rtti *rtti;
+  int refs;
   int length;
   int capacity;
   void **items;
@@ -67,6 +77,7 @@ struct TList {
  * trip through a container without losing anything. */
 struct TInteger {
   struct __catmint_rtti *rtti;
+  int refs;
   long long value;
 };
 
@@ -74,6 +85,7 @@ struct TInteger {
  * expressible in catmint on top of these methods. */
 struct TFile {
   struct __catmint_rtti *rtti;
+  int refs;
   FILE *handle;
 };
 
@@ -81,6 +93,7 @@ struct TFile {
  * somewhere to live, since the language has no free functions. */
 struct TMath {
   struct __catmint_rtti *rtti;
+  int refs;
 };
 
 /* A flexible array member cannot be initialised, so each class's RTTI gets a
@@ -95,23 +108,25 @@ struct TMath {
     void *vtable[slots];                                                       \
   } name
 
-CATMINT_RTTI_TYPE(catmint_rtti3, 3);
-CATMINT_RTTI_TYPE(catmint_rtti7, 7);
-CATMINT_RTTI_TYPE(catmint_rtti16_io, 16);
-CATMINT_RTTI_TYPE(catmint_rtti8_list, 8);
-CATMINT_RTTI_TYPE(catmint_rtti5, 5);
-CATMINT_RTTI_TYPE(catmint_rtti6, 6);
-CATMINT_RTTI_TYPE(catmint_rtti8, 8);
-CATMINT_RTTI_TYPE(catmint_rtti9, 9);
-CATMINT_RTTI_TYPE(catmint_rtti12_file, 12);
-CATMINT_RTTI_TYPE(catmint_rtti17_string, 17);
-CATMINT_RTTI_TYPE(catmint_rtti21_math, 21);
+/* Object now holds seven slots, so every subclass's own methods start at
+ * seven. These sizes are the totals, Object's included. */
+CATMINT_RTTI_TYPE(catmint_rtti7_object, 7);
+CATMINT_RTTI_TYPE(catmint_rtti21_io, 21);
+CATMINT_RTTI_TYPE(catmint_rtti12_list, 12);
+CATMINT_RTTI_TYPE(catmint_rtti10_integer, 10);
+CATMINT_RTTI_TYPE(catmint_rtti16_file, 16);
+CATMINT_RTTI_TYPE(catmint_rtti21_string, 21);
+CATMINT_RTTI_TYPE(catmint_rtti25_math, 25);
 
 #define RTTI(x) ((struct __catmint_rtti *)&(x))
 
 void  M6_Object_abort(struct TObject *self);
 struct TString *M6_Object_typeName(struct TObject *self);
 struct TObject *M6_Object_copy(struct TObject *self);
+void M6_Object_free(struct TObject *self);
+struct TObject *M6_Object_retain(struct TObject *self);
+void M6_Object_release(struct TObject *self);
+int M6_Object_refs(struct TObject *self);
 
 int M6_String_length(struct TString *self);
 int M6_String_toInt(struct TString *self);
@@ -142,6 +157,7 @@ int M2_IO_args(struct TIO *self);
 struct TString *M2_IO_arg(struct TIO *self, int index);
 struct TIO *M2_IO_err(struct TIO *self, struct TString *message);
 void M2_IO_exit(struct TIO *self, int code);
+int M2_IO_allocated(struct TIO *self);
 
 int M4_File_open(struct TFile *self, struct TString *path, struct TString *mode);
 struct TString *M4_File_readLine(struct TFile *self);
@@ -185,25 +201,32 @@ long long M7_Integer_getLong(struct TInteger *self);
 void *__catmint_new(struct __catmint_rtti *rtti);
 void String_init(struct TString *self);
 
-extern catmint_rtti17_string RString;
+extern catmint_rtti21_string RString;
 
-/* Class names. Each is itself a String, so its rtti is RString. */
-struct TString NObject = { RTTI(RString), 6, "Object" };
-struct TString NString = { RTTI(RString), 6, "String" };
-struct TString NIO      = { RTTI(RString), 2, "IO" };
-struct TString NList    = { RTTI(RString), 4, "List" };
-struct TString NInteger = { RTTI(RString), 7, "Integer" };
-struct TString NFile    = { RTTI(RString), 4, "File" };
-struct TString NMath    = { RTTI(RString), 4, "Math" };
+/* Class names. Each is itself a String, so its rtti is RString, and each has
+ * a reference count of zero: they are static and must never be freed. */
+struct TString NObject = { RTTI(RString), 0, 6, "Object" };
+struct TString NString = { RTTI(RString), 0, 6, "String" };
+struct TString NIO      = { RTTI(RString), 0, 2, "IO" };
+struct TString NList    = { RTTI(RString), 0, 4, "List" };
+struct TString NInteger = { RTTI(RString), 0, 7, "Integer" };
+struct TString NFile    = { RTTI(RString), 0, 4, "File" };
+struct TString NMath    = { RTTI(RString), 0, 4, "Math" };
 
-catmint_rtti3 RObject = {
+#define CATMINT_OBJECT_SLOTS                                                   \
+  (void *)M6_Object_abort, (void *)M6_Object_typeName,                         \
+      (void *)M6_Object_copy, (void *)M6_Object_free,                          \
+      (void *)M6_Object_retain, (void *)M6_Object_release,                     \
+      (void *)M6_Object_refs
+
+catmint_rtti7_object RObject = {
   &NObject, sizeof(struct TObject), NULL,
-  { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy }
+  { CATMINT_OBJECT_SLOTS }
 };
 
-catmint_rtti17_string RString = {
+catmint_rtti21_string RString = {
   &NString, sizeof(struct TString), RTTI(RObject),
-  { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
+  { CATMINT_OBJECT_SLOTS,
     (void *)M6_String_length, (void *)M6_String_toInt,
     (void *)M6_String_substring, (void *)M6_String_concat,
     (void *)M6_String_equal, (void *)M6_String_at,
@@ -215,28 +238,28 @@ catmint_rtti17_string RString = {
 
 /* The two new slots go on the end. Inserting anywhere else would renumber
  * `in` and `out` and silently break every already-compiled caller. */
-catmint_rtti16_io RIO = {
+catmint_rtti21_io RIO = {
   &NIO, sizeof(struct TIO), RTTI(RObject),
-  { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
+  { CATMINT_OBJECT_SLOTS,
     (void *)M2_IO_in, (void *)M2_IO_out,
     (void *)M2_IO_readLine, (void *)M2_IO_eof, (void *)M2_IO_entropy,
     (void *)M2_IO_ticks, (void *)M2_IO_epoch, (void *)M2_IO_localOffset,
     (void *)M2_IO_sleep,
     (void *)M2_IO_args, (void *)M2_IO_arg, (void *)M2_IO_err,
-    (void *)M2_IO_exit }
+    (void *)M2_IO_exit, (void *)M2_IO_allocated }
 };
 
-catmint_rtti12_file RFile = {
+catmint_rtti16_file RFile = {
   &NFile, sizeof(struct TFile), RTTI(RObject),
-  { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
+  { CATMINT_OBJECT_SLOTS,
     (void *)M4_File_open, (void *)M4_File_readLine, (void *)M4_File_readAll,
     (void *)M4_File_write, (void *)M4_File_eof, (void *)M4_File_close,
     (void *)M4_File_isOpen, (void *)M4_File_exists, (void *)M4_File_remove }
 };
 
-catmint_rtti21_math RMath = {
+catmint_rtti25_math RMath = {
   &NMath, sizeof(struct TMath), RTTI(RObject),
-  { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
+  { CATMINT_OBJECT_SLOTS,
     (void *)M4_Math_sqrt, (void *)M4_Math_pow, (void *)M4_Math_exp,
     (void *)M4_Math_log, (void *)M4_Math_log10, (void *)M4_Math_sin,
     (void *)M4_Math_cos, (void *)M4_Math_tan, (void *)M4_Math_atan2,
@@ -245,16 +268,16 @@ catmint_rtti21_math RMath = {
     (void *)M4_Math_max, (void *)M4_Math_pi, (void *)M4_Math_e }
 };
 
-catmint_rtti8_list RList = {
+catmint_rtti12_list RList = {
   &NList, sizeof(struct TList), RTTI(RObject),
-  { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
+  { CATMINT_OBJECT_SLOTS,
     (void *)M4_List_len, (void *)M4_List_get, (void *)M4_List_set,
     (void *)M4_List_append, (void *)M4_List_slice }
 };
 
-catmint_rtti6 RInteger = {
+catmint_rtti10_integer RInteger = {
   &NInteger, sizeof(struct TInteger), RTTI(RObject),
-  { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
+  { CATMINT_OBJECT_SLOTS,
     (void *)M7_Integer_get, (void *)M7_Integer_set,
     (void *)M7_Integer_getLong }
 };
@@ -263,13 +286,20 @@ catmint_rtti6 RInteger = {
  * Allocation and initialisers
  * ------------------------------------------------------------------------- */
 
-/* Allocate an instance of the class described by rtti, zero it, and install
- * the rtti pointer. Generated code calls this for `new` and for every
- * declaration of a variable of class type. */
+/* How many objects __catmint_new has handed out and not taken back. A
+ * program can read it through IO.allocated(), which is what makes "did that
+ * loop leak?" a question with an answer. */
+static int gLiveObjects = 0;
+
+/* Allocate an instance of the class described by rtti, zero it, install the
+ * rtti pointer and start the reference count at one. Generated code calls
+ * this for `new` and for every declaration of a variable of class type. */
 void *__catmint_new(struct __catmint_rtti *rtti) {
   void *object = malloc(rtti->size);
   memset(object, 0, rtti->size);
   ((struct TObject *)object)->rtti = rtti;
+  ((struct TObject *)object)->refs = 1;
+  gLiveObjects += 1;
   return object;
 }
 
@@ -281,8 +311,13 @@ void IO_init(struct TIO *self) {
   (void)self;
 }
 
+/* One shared, static empty buffer, rather than a literal: free() has to be
+ * able to tell "this String owns its characters" from "this String is
+ * pointing at something malloc never returned". */
+static char gEmptyChars[1] = "";
+
 void String_init(struct TString *self) {
-  self->string = "";
+  self->string = gEmptyChars;
   self->length = 0;
 }
 
@@ -327,11 +362,112 @@ struct TString *M6_Object_typeName(struct TObject *self) {
   return self->rtti->name;
 }
 
-/* A shallow copy: the size in the RTTI covers the whole instance. */
+/* A shallow copy: the size in the RTTI covers the whole instance. The copy
+ * is a fresh allocation with its own count of one, whatever the original's
+ * count was -- copying a literal gives something you can free. */
 struct TObject *M6_Object_copy(struct TObject *self) {
-  struct TObject *copy = malloc(self->rtti->size);
-  memcpy(copy, self, self->rtti->size);
+  struct TObject *copy = (struct TObject *)__catmint_new(self->rtti);
+
+  memcpy(copy, self, (size_t)self->rtti->size);
+  copy->refs = 1;
+
+  /* Shallow would leave the two sharing one malloc'd buffer, and freeing
+   * both would be a double free. The buffer a built-in owns is therefore
+   * duplicated; the objects a List holds are not, since those are
+   * references and sharing them is what a shallow copy means. */
+  if (copy->rtti == RTTI(RString)) {
+    struct TString *text = (struct TString *)copy;
+    if (text->string == gEmptyChars) {
+      /* nothing owned */
+    } else {
+      char *chars = calloc((size_t)text->length + 1, 1);
+      memcpy(chars, ((struct TString *)self)->string, (size_t)text->length);
+      text->string = chars;
+    }
+  } else if (copy->rtti == RTTI(RList)) {
+    struct TList *list = (struct TList *)copy;
+    if (list->capacity > 0 && list->items) {
+      void **items = malloc((size_t)list->capacity * sizeof(void *));
+      memcpy(items, ((struct TList *)self)->items,
+             (size_t)list->length * sizeof(void *));
+      list->items = items;
+    }
+  } else if (copy->rtti == RTTI(RFile)) {
+    /* Two objects must not hold one FILE *: the copy starts closed. */
+    ((struct TFile *)copy)->handle = NULL;
+  }
   return copy;
+}
+
+/* -------------------------------------------------------------------------
+ * Memory
+ *
+ * Reference counting the programmer drives: the compiler inserts no retain
+ * and no release. What the runtime guarantees is that the counting is
+ * correct when you do call them, that a static object is never freed, and
+ * that a built-in's own buffers go back with it.
+ * ------------------------------------------------------------------------- */
+
+/* The buffers a built-in owns beyond its own struct. A user class owns
+ * nothing extra: its object fields are references, and freeing one object
+ * does not reach through them. */
+static void release_owned_buffers(struct TObject *self) {
+  if (self->rtti == RTTI(RString)) {
+    struct TString *text = (struct TString *)self;
+    /* A String built by the runtime owns its characters. A freshly
+     * initialised one points at the shared empty buffer and owns nothing. */
+    if (text->string && text->string != gEmptyChars) {
+      free(text->string);
+    }
+    text->string = gEmptyChars;
+    text->length = 0;
+  } else if (self->rtti == RTTI(RList)) {
+    struct TList *list = (struct TList *)self;
+    free(list->items);
+    list->items = NULL;
+  } else if (self->rtti == RTTI(RFile)) {
+    struct TFile *file = (struct TFile *)self;
+    if (file->handle) {
+      fclose(file->handle);
+      file->handle = NULL;
+    }
+  }
+}
+
+/* Give the object back now, whatever its count says. A count of zero means a
+ * static object -- a string literal, a class name -- and freeing one of those
+ * does nothing, which is the point of keeping the count in the object. */
+void M6_Object_free(struct TObject *self) {
+  if (self == NULL || self->refs == 0) {
+    return;
+  }
+  release_owned_buffers(self);
+  self->refs = 0;
+  gLiveObjects -= 1;
+  free(self);
+}
+
+struct TObject *M6_Object_retain(struct TObject *self) {
+  if (self != NULL && self->refs > 0) {
+    self->refs += 1;
+  }
+  return self;
+}
+
+/* One fewer holder; the last one out frees it. */
+void M6_Object_release(struct TObject *self) {
+  if (self == NULL || self->refs == 0) {
+    return;
+  }
+  self->refs -= 1;
+  if (self->refs == 0) {
+    self->refs = 1; /* so free() does not mistake it for a static object */
+    M6_Object_free(self);
+  }
+}
+
+int M6_Object_refs(struct TObject *self) {
+  return self == NULL ? 0 : self->refs;
 }
 
 /* -------------------------------------------------------------------------
@@ -976,6 +1112,13 @@ struct TIO *M2_IO_err(struct TIO *self, struct TString *message) {
 void M2_IO_exit(struct TIO *self, int code) {
   (void)self;
   exit(code);
+}
+
+/* Objects allocated and not yet given back. Compare two readings around a
+ * piece of work to see whether it leaks. */
+int M2_IO_allocated(struct TIO *self) {
+  (void)self;
+  return gLiveObjects;
 }
 
 /* -------------------------------------------------------------------------

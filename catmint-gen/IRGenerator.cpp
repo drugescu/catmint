@@ -31,10 +31,12 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
 
   // { TString *name; int size; __catmint_rtti *parent; void *vtable[]; }
   RTTIType->setBody({Ptr, I32, Ptr, llvm::ArrayType::get(Ptr, 0)});
-  // { rtti; int length; char *chars; }
-  StringType->setBody({Ptr, I32, Ptr});
-  ObjectType->setBody({Ptr});
-  IOType->setBody({Ptr});
+  // Every object is { rtti, int refs, ... }; refs is 0 for a static object,
+  // which is how free() knows not to touch a string literal.
+  // { rtti; int refs; int length; char *chars; }
+  StringType->setBody({Ptr, I32, I32, Ptr});
+  ObjectType->setBody({Ptr, I32});
+  IOType->setBody({Ptr, I32});
 
   RObject = llvm::cast<llvm::GlobalVariable>(
       M.getOrInsertGlobal("RObject", RTTIType));
@@ -281,49 +283,45 @@ bool IRGenerator::layoutClass(ClassInfo *CI) {
 
   // Built-in layouts are fixed by runtime.ll and must not be recomputed.
   if (CI->Builtin) {
+    auto Ptr = llvm::PointerType::getUnqual(Context);
+    auto I32 = llvm::Type::getInt32Ty(Context);
     if (Name == strings::Object) {
       CI->Ty = Runtime.objectType();
-      CI->Elements = {llvm::PointerType::getUnqual(Context)};
+      CI->Elements = {Ptr, I32};
     } else if (Name == strings::Io) {
       CI->Ty = Runtime.ioType();
-      CI->Elements = {llvm::PointerType::getUnqual(Context)};
+      CI->Elements = {Ptr, I32};
     } else if (Name == strings::List) {
-      // { rtti, int length, int capacity, void **items }
-      CI->Elements = {llvm::PointerType::getUnqual(Context),
-                      llvm::Type::getInt32Ty(Context),
-                      llvm::Type::getInt32Ty(Context),
-                      llvm::PointerType::getUnqual(Context)};
+      // { rtti, int refs, int length, int capacity, void **items }
+      CI->Elements = {Ptr, I32, I32, I32, Ptr};
       CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TList");
     } else if (Name == strings::File) {
-      // { rtti, FILE *handle }
-      CI->Elements = {llvm::PointerType::getUnqual(Context),
-                      llvm::PointerType::getUnqual(Context)};
+      // { rtti, int refs, FILE *handle }
+      CI->Elements = {Ptr, I32, Ptr};
       CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TFile");
     } else if (Name == strings::Math) {
-      // { rtti } -- Math has no state.
-      CI->Elements = {llvm::PointerType::getUnqual(Context)};
+      // { rtti, int refs } -- Math has no state of its own.
+      CI->Elements = {Ptr, I32};
       CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TMath");
     } else if (Name == strings::Integer) {
-      // { rtti, long long value }
-      CI->Elements = {llvm::PointerType::getUnqual(Context),
-                      llvm::Type::getInt64Ty(Context)};
+      // { rtti, int refs, long long value }
+      CI->Elements = {Ptr, I32, llvm::Type::getInt64Ty(Context)};
       CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TInteger");
     } else {
       CI->Ty = Runtime.stringType();
-      CI->Elements = {llvm::PointerType::getUnqual(Context),
-                      llvm::Type::getInt32Ty(Context),
-                      llvm::PointerType::getUnqual(Context)};
+      CI->Elements = {Ptr, I32, I32, Ptr};
     }
     return true;
   }
 
-  // { rtti, inherited fields..., own fields... }
+  // { rtti, refs, inherited fields..., own fields... }
   if (CI->Parent) {
     CI->Elements = CI->Parent->Elements;
     CI->FieldIndex = CI->Parent->FieldIndex;
     CI->FieldType = CI->Parent->FieldType;
   } else {
-    CI->Elements = {llvm::PointerType::getUnqual(Context)};
+    CI->Elements = {llvm::PointerType::getUnqual(Context),
+                    llvm::Type::getInt32Ty(Context)};
   }
 
   for (auto *F : *CI->AST) {
@@ -428,9 +426,11 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
   // @N<Class> : the class name as a TString, whose own rtti is @RString.
   auto *Chars = Builder.CreateGlobalString(Name, ".name." + Name,
                                            /*AddressSpace=*/0, &Module);
+  // A reference count of zero: the class name is static, so free() on it is
+  // a no-op rather than a call to free() on something malloc never returned.
   auto *NameInit = llvm::ConstantStruct::get(
       Runtime.stringType(),
-      {Runtime.stringRTTI(),
+      {Runtime.stringRTTI(), llvm::ConstantInt::get(I32, 0),
        llvm::ConstantInt::get(I32, static_cast<uint64_t>(Name.size())),
        llvm::cast<llvm::Constant>(Chars)});
   CI->NameGlobal = new llvm::GlobalVariable(
@@ -965,15 +965,16 @@ llvm::Value *IRGenerator::emitFloatConstant(FloatConstant *FC) {
 }
 
 /// String literals become private TString globals rather than heap objects, so
-/// evaluating one costs nothing at run time.
+/// evaluating one costs nothing at run time. Their reference count is zero,
+/// which is what tells free() and release() to leave them alone.
 llvm::Value *IRGenerator::makeStringLiteral(const std::string &Value) {
+  auto *I32 = llvm::Type::getInt32Ty(Context);
   auto *Chars = Builder.CreateGlobalString(Value, ".str",
                                            /*AddressSpace=*/0, &Module);
   auto *Init = llvm::ConstantStruct::get(
       Runtime.stringType(),
-      {Runtime.stringRTTI(),
-       llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context),
-                              static_cast<uint64_t>(Value.size())),
+      {Runtime.stringRTTI(), llvm::ConstantInt::get(I32, 0),
+       llvm::ConstantInt::get(I32, static_cast<uint64_t>(Value.size())),
        llvm::cast<llvm::Constant>(Chars)});
   return new llvm::GlobalVariable(Module, Runtime.stringType(),
                                   /*isConstant=*/false,

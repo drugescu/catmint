@@ -96,6 +96,17 @@ void TypeTable::addBuiltinClasses(Program *p) {
   // Method - 'Obj_object.copy()' returning obj of type 'Object'
   builtinMethods.push_back(new Method(0, strings::Copy, strings::Object,
                                       nullptr, builtinMethodsParams));
+
+  // Slots 3 to 6: giving memory back. These sit on Object, so every class
+  // has them, which means every subclass's own methods now start at slot 7.
+  builtinMethods.push_back(
+      new Method(0, "free", strings::Void, nullptr, builtinMethodsParams));
+  builtinMethods.push_back(
+      new Method(0, "retain", strings::Object, nullptr, builtinMethodsParams));
+  builtinMethods.push_back(
+      new Method(0, "release", strings::Void, nullptr, builtinMethodsParams));
+  builtinMethods.push_back(
+      new Method(0, "refs", strings::Int, nullptr, builtinMethodsParams));
   
   // Add these methods to class 'Object' with no parent, add class to typeTable,  park it in the program
   std::unique_ptr<Class> objectClass(
@@ -172,6 +183,10 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethodsParams.push_back(new Attribute(0, "code", strings::Int));
   builtinMethods.push_back(
       new Method(0, "exit", strings::Void, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(
+      new Method(0, "allocated", strings::Int, nullptr, builtinMethodsParams));
   builtinMethodsParams.clear();
   
   // Add these methods to class 'IO' which inherits 'Object', add class to typeTable,  park it in the program

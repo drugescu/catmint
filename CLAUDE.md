@@ -134,6 +134,32 @@ The layouts and the virtual table slot order in `runtime.c` are fixed by
 agreement with `IRGenerator.cpp`; changing one without the other silently
 miscompiles.
 
+## Memory
+
+Every object is `{ rtti, int refs, fields... }`. `__catmint_new` starts the
+count at 1; a static object -- a string literal, a class name -- is emitted
+with a count of 0, and **0 means never free**. That is the whole reason the
+count lives in the object rather than in a hidden allocation header: reading
+a header in front of a compiler-emitted global would be reading memory the
+program does not own.
+
+`Object` therefore carries four methods, in slots 3 to 6: `free` gives the
+object back now, `retain` and `release` count holders and free at zero, and
+`refs` reports the count. `IO.allocated()` is the number of live objects, so
+a program -- or a test -- can prove a loop does not leak.
+
+The compiler inserts nothing. This is manual counting, which is what the
+project's "C-level memory control, no GC" asks for, and it has one visible
+hole: a temporary inside an expression has no name, so `a + b` allocates a
+String nothing can free. Closing that means the generator emitting a release
+for each temporary at the end of the statement, which is the next step and
+is not taken yet.
+
+Freeing a built-in also returns what it owns: a String's characters, a List's
+item array, a File's handle. `Object.copy` duplicates those rather than
+sharing them, so the copy can be freed independently of the original. Freeing
+a user object is shallow: its fields are references and nothing follows them.
+
 ## State of code generation
 
 Code generation is real: every class and method is emitted, objects have a
