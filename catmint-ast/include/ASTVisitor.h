@@ -51,6 +51,7 @@ public:
   virtual bool visit(Dispatch *D);        /// Default order: args, object
   virtual bool visit(StaticDispatch *SD); /// Default order: args, object
   virtual bool visit(NewObject *NO);
+  virtual bool visit(FieldAccess *FA); /// Default order: object, value
   virtual bool visit(IfStatement *If); /// Default order: condition, then, else
   virtual bool visit(WhileStatement *While);  /// Default order: condition, body
   virtual bool visit(ForStatement *For);  /// Default order: ID of iterator, container, body

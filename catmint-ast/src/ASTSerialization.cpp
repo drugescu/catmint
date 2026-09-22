@@ -60,6 +60,7 @@ const auto SlicevectorNodeType = "Slicevector";
 const auto DispatchNodeType = "Dispatch";
 const auto StaticDispatchNodeType = "StaticDispatch";
 const auto NewObjectNodeType = "NewObject";
+const auto FieldAccessNodeType = "FieldAccess";
 const auto IfStatementNodeType = "IfStatement";
 const auto WhileStatementNodeType = "WhileStatement";
 const auto ForStatementNodeType = "ForStatement";
@@ -572,6 +573,32 @@ bool ASTSerializer::visit(NewObject *NO) {
   return true;
 }
 
+bool ASTSerializer::visit(FieldAccess *FA) {
+  assert(isValid() && "Invalid serializer");
+  assert(FA && "Expected non-null field access");
+
+  CreateJSONObject fieldObject(*this, keys::FieldAccessNodeType, FA);
+  writePair(keys::LineNumber, FA->getLineNumber());
+  writePair(keys::Name, FA->getField());
+
+  writer->Key(keys::Object);
+  auto object = FA->getObject();
+  assert(object && "Field access doesn't have an object");
+  if (!visit(object)) {
+    return false;
+  }
+
+  // Present only for `a.b = v`; a read carries no value.
+  if (auto value = FA->getValue()) {
+    writer->Key(keys::Value);
+    if (!visit(value)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool ASTSerializer::visit(ReturnExpression *R) {
   assert(isValid() && "Invalid serializer");
   assert(R && "Expected non-null return expression");
@@ -972,6 +999,8 @@ ASTDeserializer::parseExpression(rapidjson::Value &tree) {
     return parseStaticDispatch(tree);
   } else if (nodeType == keys::NewObjectNodeType) {
     return parseNewObject(tree);
+  } else if (nodeType == keys::FieldAccessNodeType) {
+    return parseFieldAccess(tree);
   } else if (nodeType == keys::IfStatementNodeType) {
     return parseIfStatement(tree);
   } else if (nodeType == keys::WhileStatementNodeType) {
@@ -1344,6 +1373,30 @@ ASTDeserializer::parseNewObject(rapidjson::Value &tree) {
 
   return createNode<NewObject>(tree, parseLineNumber(tree),
                                tree[keys::Type].GetString());
+}
+
+std::unique_ptr<FieldAccess>
+ASTDeserializer::parseFieldAccess(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::FieldAccessNodeType &&
+         "Expected field access object");
+
+  assert(tree.HasMember(keys::Name) && "Field access without a field name");
+  assert(tree[keys::Name].IsString() && "Invalid field name");
+
+  assert(tree.HasMember(keys::Object) && "Field access without an object");
+  auto object = parseExpression(tree[keys::Object]);
+  assert(object && "Expected non-null expression node");
+
+  std::unique_ptr<Expression> value(nullptr);
+  if (tree.HasMember(keys::Value)) {
+    value = parseExpression(tree[keys::Value]);
+    assert(value && "Expected non-null expression node");
+  }
+
+  return createNode<FieldAccess>(tree, parseLineNumber(tree), std::move(object),
+                                 tree[keys::Name].GetString(),
+                                 std::move(value));
 }
 
 std::unique_ptr<IfStatement>

@@ -84,6 +84,8 @@ bool ASTVisitor::visit(Expression *E) {
     return visit(SDispatch);
   } else if (auto New = dynamic_cast<NewObject *>(E)) {
     return visit(New);
+  } else if (auto Field = dynamic_cast<FieldAccess *>(E)) {
+    return visit(Field);
   } else if (auto If = dynamic_cast<IfStatement *>(E)) {
     return visit(If);
   } else if (auto While = dynamic_cast<WhileStatement *>(E)) {
@@ -156,6 +158,13 @@ bool ASTVisitor::visit(StaticDispatch *SD) {
 }
 
 bool ASTVisitor::visit(NewObject *NO) { return true; }
+
+bool ASTVisitor::visit(FieldAccess *FA) {
+  if (!visit(FA->getObject())) {
+    return false;
+  }
+  return FA->getValue() ? visit(FA->getValue()) : true;
+}
 
 bool ASTVisitor::visit(IfStatement *If) {
   if (!visit(If->getCond())) {

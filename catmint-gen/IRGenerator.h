@@ -202,6 +202,7 @@ private:
   llvm::Value *emitDispatch(Dispatch *D);
   llvm::Value *emitStaticDispatch(StaticDispatch *SD);
   llvm::Value *emitNewObject(NewObject *NO);
+  llvm::Value *emitFieldAccess(FieldAccess *FA);
   llvm::Value *emitCast(Cast *C);
   llvm::Value *emitSubstring(Substring *S);
 

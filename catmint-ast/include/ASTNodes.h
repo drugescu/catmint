@@ -9,6 +9,7 @@
 #include "Class.h"
 #include "Dispatch.h"
 #include "Expression.h"
+#include "FieldAccess.h"
 #include "FormalParam.h"
 #include "IfStatement.h"
 #include "IntConstant.h"

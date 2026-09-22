@@ -152,6 +152,12 @@ slots 0-2 and `IO` adds `input` and `out` at 3 and 4.
 Dispatch loads the function pointer from the receiver's vtable, after a
 `__cm_checkNull`. Static dispatch calls the implementation directly.
 
+`a.b` reads a field of any object and `a.b = v` writes one, both lowering to a
+single GEP into the object's struct. Inherited fields need no special case,
+because a subclass's layout begins with its parent's. `a.b` and `a.b(...)` are
+told apart by the token after the name: with `(` the parser shifts into
+`dispatch_expression`, otherwise it reduces `field_access`.
+
 Two details that are easy to trip over, both forced by the grammar:
 
 - **There is no `new`.** Declaring a variable of class type constructs it, so

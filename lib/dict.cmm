@@ -9,22 +9,10 @@ class DictEntry from Object
   Object v
 
   # catmint has no constructor arguments, so an object is made by declaring it
-  # and then handed its fields.
+  # and then handed its fields. The fields themselves are read and written
+  # directly, so this class needs no accessors.
   def DictEntry fill(String key, Object value):
     k = key
-    v = value
-    return self
-  end
-
-  def String key:
-    return k
-  end
-
-  def Object value:
-    return v
-  end
-
-  def DictEntry setValue(Object value):
     v = value
     return self
   end
@@ -81,8 +69,8 @@ class Dict from Object
     List bucket = bucketFor(key)
     for e in bucket:
       DictEntry entry = e
-      if entry.key() == key:
-        return entry.value()
+      if entry.k == key:
+        return entry.v
       end
     end
     return null
@@ -92,7 +80,7 @@ class Dict from Object
     List bucket = bucketFor(key)
     for e in bucket:
       DictEntry entry = e
-      if entry.key() == key:
+      if entry.k == key:
         return 1
       end
     end
@@ -104,8 +92,8 @@ class Dict from Object
     List bucket = bucketFor(key)
     for e in bucket:
       DictEntry entry = e
-      if entry.key() == key:
-        entry.setValue(value)
+      if entry.k == key:
+        entry.v = value
         return self
       end
     end
@@ -123,7 +111,7 @@ class Dict from Object
       List bucket = b
       for e in bucket:
         DictEntry entry = e
-        out.append(entry.key())
+        out.append(entry.k)
       end
     end
     return out

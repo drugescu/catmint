@@ -754,6 +754,14 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
   if (auto *LD = dynamic_cast<LocalDefinition *>(E))
     return LD->getType();
   if (auto *NO = dynamic_cast<NewObject *>(E))  return NO->getType();
+  if (auto *FA = dynamic_cast<FieldAccess *>(E)) {
+    if (auto *CI = lookupClass(staticTypeOf(FA->getObject()))) {
+      auto It = CI->FieldType.find(FA->getField());
+      if (It != CI->FieldType.end())
+        return It->second;
+    }
+    return strings::Object;
+  }
   if (auto *C = dynamic_cast<Cast *>(E))        return C->getType();
   if (dynamic_cast<Substring *>(E))             return strings::String;
   if (auto *R = dynamic_cast<ReturnExpression *>(E))
@@ -855,6 +863,7 @@ llvm::Value *IRGenerator::emit(Expression *E) {
   if (auto *N = dynamic_cast<StaticDispatch *>(E))   return emitStaticDispatch(N);
   if (auto *N = dynamic_cast<Dispatch *>(E))         return emitDispatch(N);
   if (auto *N = dynamic_cast<NewObject *>(E))        return emitNewObject(N);
+  if (auto *N = dynamic_cast<FieldAccess *>(E))      return emitFieldAccess(N);
   if (auto *N = dynamic_cast<Cast *>(E))             return emitCast(N);
   if (auto *N = dynamic_cast<Substring *>(E))        return emitSubstring(N);
   if (auto *N = dynamic_cast<Symbol *>(E))           return emitSymbol(N);
@@ -1522,6 +1531,47 @@ llvm::Value *IRGenerator::emitNewObject(NewObject *NO) {
         Module.getOrInsertFunction(symbolName(CI->AST->getName()) + "_init", FT), {Obj});
   }
   return Obj;
+}
+
+/// `a.b`, and `a.b = v` when the node carries a value. Both are one GEP into
+/// the object's struct; the field index comes from the layout computed for the
+/// object's static type, so an inherited field needs no special case -- a
+/// subclass's layout starts with its parent's.
+llvm::Value *IRGenerator::emitFieldAccess(FieldAccess *FA) {
+  const std::string ObjType = staticTypeOf(FA->getObject());
+  ClassInfo *CI = lookupClass(ObjType);
+  if (!CI)
+    fail(FA->getLineNumber(),
+         "'" + ObjType + "' is not a class, so it has no field '" +
+             FA->getField() + "'");
+
+  auto Field = CI->FieldIndex.find(FA->getField());
+  if (Field == CI->FieldIndex.end())
+    fail(FA->getLineNumber(), "class '" + ObjType + "' has no field '" +
+                                  FA->getField() + "'");
+  const std::string FieldType = CI->FieldType[FA->getField()];
+
+  llvm::Value *Object = emit(FA->getObject());
+  if (!Object)
+    fail(FA->getLineNumber(),
+         "the object of '." + FA->getField() + "' produced no value");
+  Builder.CreateCall(Runtime.checkNull(), {Object});
+
+  auto *Addr = Builder.CreateGEP(
+      CI->Ty, Object, {Builder.getInt32(0), Builder.getInt32(Field->second)},
+      FA->getField() + ".addr");
+
+  if (auto *Value = FA->getValue()) {
+    const std::string FromType = staticTypeOf(Value);
+    llvm::Value *V = emit(Value);
+    if (!V)
+      return nullptr;
+    V = coerce(V, FromType, FieldType, FA->getLineNumber());
+    Builder.CreateStore(V, Addr);
+    return V;
+  }
+
+  return Builder.CreateLoad(lowerType(FieldType), Addr, FA->getField());
 }
 
 llvm::Value *IRGenerator::emitCast(Cast *C) {

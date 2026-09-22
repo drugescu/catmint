@@ -567,6 +567,45 @@ bool SemanticAnalysis::visit(NewObject *n) {
   return true;
 }
 
+/// `a.b`, and `a.b = v` when the node carries a value. The field is looked up
+/// on the object's class, walking up the hierarchy, so an inherited field is
+/// reached exactly like an own one.
+bool SemanticAnalysis::visit(FieldAccess *fa) {
+  auto object = fa->getObject();
+  if (!object) {
+    throw MissingOperandException(fa);
+  }
+  if (!visit(object)) {
+    return false;
+  }
+
+  auto objType = typeTable.getType(object);
+  auto objClass = objType->getClass();
+  if (!objClass) {
+    throw DispatchOnInvalidObjException(fa->getField(), objType);
+  }
+
+  auto attribute = typeTable.getAttribute(objClass, fa->getField());
+  if (!attribute) {
+    throw AttributeNotFoundException(fa->getField(), objClass);
+  }
+
+  auto fieldType = typeTable.getType(attribute->getType());
+
+  if (auto value = fa->getValue()) {
+    if (!visit(value)) {
+      return false;
+    }
+    auto valueType = typeTable.getType(value);
+    if (!typeTable.isEqualOrImplicitlyConvertibleTo(valueType, fieldType)) {
+      throw WrongTypeException(valueType, fieldType, fa);
+    }
+  }
+
+  typeTable.setType(fa, fieldType);
+  return true;
+}
+
 bool SemanticAnalysis::visit(IfStatement *i) {
   auto condExpr = i->getCond();
   auto thenExpr = i->getThen();

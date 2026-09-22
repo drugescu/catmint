@@ -48,6 +48,7 @@ private:
   bool visit(Dispatch *d) override;
   bool visit(StaticDispatch *sd) override;
   bool visit(NewObject *n) override;
+  bool visit(FieldAccess *fa) override;
   bool visit(IfStatement *i) override;
   bool visit(WhileStatement *w) override;
   bool visit(LocalDefinition *local) override;

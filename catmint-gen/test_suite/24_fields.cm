@@ -1,0 +1,53 @@
+# Reading and writing a field of another object.
+
+class Point
+  Int x
+  Int y
+end
+
+class Named from Point
+  String label
+end
+
+class Inner
+  Int value
+end
+
+class Outer
+  Inner part
+  Int tag
+end
+
+class Main
+  # A field read through a parameter: the case that used to need a getter.
+  def Int sum(Point p):
+    return p.x + p.y
+  end
+
+  def main:
+    IO io
+
+    Point p
+    p.x = 3
+    p.y = 4
+    io.out("point " + p.x + "," + p.y + "\n")
+    io.out("sum " + sum(p) + "\n")
+
+    # An inherited field is reached the same way as an own one.
+    Named n
+    n.x = 1
+    n.y = 2
+    n.label = "origin"
+    io.out(n.label + " at " + n.x + "," + n.y + "\n")
+
+    # A field holding an object, and a field of that object.
+    Outer o
+    o.tag = 7
+    o.part.value = 9
+    io.out("nested " + o.tag + " " + o.part.value + "\n")
+
+    # A field is an lvalue and an rvalue in the same statement.
+    p.x = p.x * 10 + p.y
+    io.out("computed " + p.x + "\n")
+  end
+end

@@ -138,6 +138,7 @@ expression
                     rvalue_identifier_expression
                       vector_access
                   negative_expression
+                  field_access
                   if_expression
     conditional_expression
     dispatch_expression
@@ -430,6 +431,19 @@ local_expr
 	  getDispatch->addArgument(Expression($3));
 	  $$ = getDispatch;
 	}
+	// a.b = v. field_access has already been reduced, so the value is simply
+	// attached to the node that is there, exactly as a[i] = v does.
+	| field_access OP_ATTRIB value_expression {
+	  auto access = dynamic_cast<catmint::FieldAccess*>($1);
+	  if (!access) {
+	    std::cout << "[ ERROR ] : Line " << @1.first_line
+	              << " : left side of '=' is not a field." << std::endl;
+	    fflush(stdout);
+	    exit(1);
+	  }
+	  access->setValue(Expression($3));
+	  $$ = access;
+	}
 	| IDENTIFIER OP_ATTRIB value_expression {
       // initialized attribute but type must be deduced from rhs
       auto ld_name = new std::vector<std::string>();
@@ -683,6 +697,7 @@ unary_expression
 
 basic_expression
   : identifier_expression
+	| field_access
 	| negative_expression
 	| parenthesis_expression
 	| new_list
@@ -715,6 +730,21 @@ if_expression
 								   Expression(block_else));
     }
   ;
+
+// A field of an object: `a.b`. The same node serves the assignment `a.b = v`,
+// which attaches the value to it (see local_expr) rather than introducing a
+// second rule that would be ambiguous with this one.
+//
+// `a.b(...)` is a dispatch, and the two are told apart by the token after the
+// name: with '(' the parser shifts into dispatch_expression, otherwise it
+// reduces here. That is a shift/reduce conflict, resolved the way bison
+// resolves them by default, which is the way we want it.
+field_access
+	: basic_expression '.' IDENTIFIER {
+		$$ = new catmint::FieldAccess(@1.first_line, Expression($1), *$3);
+		delete $3;
+	}
+	;
 
 dispatch_expression
 	: IDENTIFIER OP_OPAREN dispatch_arguments OP_CPAREN {
