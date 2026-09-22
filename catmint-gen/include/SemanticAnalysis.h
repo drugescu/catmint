@@ -15,7 +15,9 @@ namespace catmint {
 /// constructor
 class SemanticAnalysis : public ASTVisitor {
 public:
-  SemanticAnalysis(Program *p);
+  /// \param libraryOnly  true when analysing a .cmm module on its own; such a
+  ///                     unit has no entry point, so the Main check is skipped.
+  SemanticAnalysis(Program *p, bool libraryOnly = false);
   virtual ~SemanticAnalysis() {}
 
   void runAnalysis();
@@ -69,6 +71,7 @@ public:
 
 private:
   Program *program;
+  bool libraryOnly;
   /// A `for` binds its loop variable, which has no definition node of its own
   /// in the tree. The synthesised definitions are owned here so that they
   /// outlive the symbol table entries pointing at them.

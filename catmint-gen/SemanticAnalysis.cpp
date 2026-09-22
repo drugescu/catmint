@@ -11,8 +11,9 @@
 
 using namespace catmint;
 
-SemanticAnalysis::SemanticAnalysis(Program *p)
-    : program(p), typeTable(p), symbolTable(), typeVisitor(TypeVisitor(&typeTable)) {
+SemanticAnalysis::SemanticAnalysis(Program *p, bool libraryOnly)
+    : program(p), libraryOnly(libraryOnly), typeTable(p), symbolTable(),
+      typeVisitor(TypeVisitor(&typeTable)) {
 
   //typeVisitor = TypeVisitor(&typeTable);
 
@@ -28,8 +29,12 @@ bool SemanticAnalysis::visit(Program *p) {
 
   std::cout << "Starting Semantic Analysis..." << std::endl;
 
-  // Check that main exists (we have inserted it manually) and inheritance graph
-  checkMainClassAndMethod();
+  // Check that main exists (we have inserted it manually) and inheritance graph.
+  // A library compiled on its own has no entry point, so only the inheritance
+  // graph is checked there.
+  if (!libraryOnly) {
+    checkMainClassAndMethod();
+  }
   checkInheritanceGraph();
   
   auto mainVisits = 0;

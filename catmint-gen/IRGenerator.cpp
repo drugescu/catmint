@@ -61,12 +61,21 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
 // ---------------------------------------------------------------------------
 
 IRGenerator::IRGenerator(llvm::StringRef ModuleName, Program *P,
-                         const TypeTable &ASTTypes, SymbolMap DefinitionsMap)
+                         const TypeTable &ASTTypes, SymbolMap DefinitionsMap,
+                         std::set<std::string> ExternalClasses,
+                         bool LibraryOnly)
     : Context(), Module(ModuleName, Context), Builder(Context),
       // A generic little-endian 64-bit layout. Only used to size objects; the
       // module carries no datalayout of its own so lli/clang supply the host's.
       SizingLayout("e-m:e-i64:64-f80:128-n8:16:32:64-S128"), Runtime(Module),
-      AST(P), ASTTypes(ASTTypes), DefinitionsMap(std::move(DefinitionsMap)) {}
+      AST(P), ASTTypes(ASTTypes), DefinitionsMap(std::move(DefinitionsMap)),
+      ExternalClasses(std::move(ExternalClasses)), LibraryOnly(LibraryOnly) {}
+
+/// A built-in is external in the same sense an imported class is: its code
+/// lives in another object (runtime.ll), so only declarations belong here.
+bool IRGenerator::isExternal(const ClassInfo *CI) const {
+  return CI->Builtin || ExternalClasses.count(CI->AST->getName()) != 0;
+}
 
 void IRGenerator::fail(int Line, const std::string &Message) {
   std::ostringstream OS;
@@ -157,7 +166,7 @@ bool IRGenerator::collectClasses() {
     Classes[Name] = CI;
   }
 
-  if (!lookupClass(strings::MainClass)) {
+  if (!LibraryOnly && !lookupClass(strings::MainClass)) {
     std::cerr << "[ CODEGEN ERROR ] program has no 'Main' class\n";
     return false;
   }
@@ -280,6 +289,10 @@ llvm::FunctionType *IRGenerator::methodType(ClassInfo *CI, Method *M) {
 void IRGenerator::declareMethods(ClassInfo *CI) {
   if (CI->Builtin)
     return;
+  // For an imported class the declaration is exactly what we want, and it is
+  // created on demand by emitCall and by the vtable, so nothing to do here.
+  if (isExternal(CI))
+    return;
   for (auto *F : *CI->AST) {
     auto *M = dynamic_cast<Method *>(F);
     if (!M)
@@ -305,6 +318,17 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
 
   auto Ptr = llvm::PointerType::getUnqual(Context);
   auto I32 = llvm::Type::getInt32Ty(Context);
+
+  if (isExternal(CI)) {
+    // The module that owns this class defines @R<Class> and @N<Class>; here
+    // they are only referenced. An external declaration carries no body, so
+    // the vtable length does not matter to the linker.
+    CI->NameGlobal = llvm::cast<llvm::GlobalVariable>(
+        Module.getOrInsertGlobal("N" + Name, Runtime.stringType()));
+    CI->RTTI = llvm::cast<llvm::GlobalVariable>(
+        Module.getOrInsertGlobal("R" + Name, Runtime.rttiType()));
+    return;
+  }
 
   // @N<Class> : the class name as a TString, whose own rtti is @RString.
   auto *Chars = Builder.CreateGlobalString(Name, ".name." + Name,
@@ -354,6 +378,14 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
   const std::string Name = CI->AST->getName();
   auto Ptr = llvm::PointerType::getUnqual(Context);
   auto *FT = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {Ptr}, false);
+
+  if (isExternal(CI)) {
+    // Declared, not defined: the initialiser is compiled with its own module.
+    CI->Init = llvm::cast<llvm::Function>(
+        Module.getOrInsertFunction(Name + "_init", FT).getCallee());
+    return true;
+  }
+
   CI->Init = llvm::Function::Create(FT, llvm::GlobalValue::ExternalLinkage,
                                     Name + "_init", &Module);
 
@@ -504,7 +536,7 @@ llvm::Module *IRGenerator::runGenerator() {
       return nullptr;
 
   for (auto *CI : ClassOrder) {
-    if (CI->Builtin)
+    if (isExternal(CI))
       continue;
     for (auto *Feat : *CI->AST) {
       auto *M = dynamic_cast<Method *>(Feat);
@@ -513,7 +545,8 @@ llvm::Module *IRGenerator::runGenerator() {
     }
   }
 
-  emitProgramMain();
+  if (!LibraryOnly)
+    emitProgramMain();
   return &Module;
 }
 

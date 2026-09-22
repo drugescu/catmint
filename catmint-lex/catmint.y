@@ -31,6 +31,13 @@
 	// concatenated text the parser sees.
 	std::string gCurrentFile;
 
+	// Separate compilation: leave `using` directives unexpanded, because each
+	// module is compiled to its own object and linked afterwards.
+	bool gExpandModules = true;
+	// A .cmm is a library: it must not get a synthesised Main class, or every
+	// module in a program would define one.
+	bool gCreateMain = true;
+
 	int  yylex ();
 	void yyerror(const char *error)
 	{
@@ -149,7 +156,7 @@ catmint_program : block catmint_classes block {
     auto base_after = new catmint::Block(@1.first_line);
 		base_after->addExpression(Expression($3));
 
-		gCatmintProgram = new catmint::Program(@1.first_line, *$2, Expression(base_before), Expression(base_after), true);
+		gCatmintProgram = new catmint::Program(@1.first_line, *$2, Expression(base_before), Expression(base_after), gCreateMain);
 	}
 	| block {
     auto base = new catmint::Block(@1.first_line);
@@ -157,7 +164,7 @@ catmint_program : block catmint_classes block {
 
     auto class_vector = new std::vector<catmint::Class*>();
 		
-    gCatmintProgram = new catmint::Program(@1.first_line, *class_vector, Expression(base), nullptr, true);
+    gCatmintProgram = new catmint::Program(@1.first_line, *class_vector, Expression(base), nullptr, gCreateMain);
 	}
 	;
 
@@ -956,7 +963,11 @@ vector_arguments
 void printUsage() {
   std::cout << "Usage: catmint-parser [-I <dir>]... <inputFile> <outputFile>"
             << std::endl;
-  std::cout << "  -I <dir>   also look for modules in <dir>" << std::endl;
+  std::cout << "  -I <dir>     also look for modules in <dir>" << std::endl;
+  std::cout << "  --no-expand  leave 'using' unexpanded (separate compilation)"
+            << std::endl;
+  std::cout << "  --module     compile a .cmm library: no Main is synthesised"
+            << std::endl;
 }
 
 // ----------------------------------------------------------------------------
@@ -1091,6 +1102,13 @@ bool expandFile(const std::string &path, std::ostringstream &out,
     }
 
     std::cout << "Found module inclusion: using " << moduleName << std::endl;
+    if (!gExpandModules) {
+      // Separate compilation: record nothing here and splice nothing in. The
+      // driver compiles the module on its own and hands its interface to this
+      // unit with --import.
+      out << "\n";
+      continue;
+    }
     if (!expandModule(moduleName, dir, out, includeStack)) {
       includeStack.pop_back();
       return false;
@@ -1128,6 +1146,10 @@ int main(int argc, char** argv) {
       gSearchPaths.push_back(argv[++i]);
     } else if (arg.rfind("-I", 0) == 0 && arg.size() > 2) {
       gSearchPaths.push_back(arg.substr(2));
+    } else if (arg == "--no-expand") {
+      gExpandModules = false;
+    } else if (arg == "--module") {
+      gCreateMain = false;
     } else {
       positional.push_back(arg);
     }

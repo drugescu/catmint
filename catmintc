@@ -3,6 +3,8 @@
 #
 #   ./catmintc examples/tour.cm            -> ./tour
 #   ./catmintc -I lib app.cm               -> also search ./lib for modules
+#   ./catmintc --separate -I lib app.cm    -> compile each module to its own
+#                                             object and link them
 #   ./catmintc examples/tour.cm -o mytour  -> ./mytour
 #   ./catmintc --run examples/tour.cm      -> compile, then run it
 #
@@ -22,9 +24,11 @@ RUN=0
 OUT=""
 SRC=""
 INCLUDES=""
+SEPARATE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --run) RUN=1; shift ;;
+    --separate) SEPARATE=1; shift ;;
     -o)    OUT="$2"; shift 2 ;;
     -I)    INCLUDES="$INCLUDES -I $2"; shift 2 ;;
     -I*)   INCLUDES="$INCLUDES -I ${1#-I}"; shift ;;
@@ -34,7 +38,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$SRC" ]; then
-  echo "usage: catmintc [--run] [-o output] [-I moduledir]... <program.cm>" >&2
+  echo "usage: catmintc [--run] [--separate] [-o output] [-I moduledir]... <program.cm>" >&2
   exit 2
 fi
 for tool in "$PARSER" "$GEN"; do
@@ -46,24 +50,83 @@ BASE=$(basename "$SRC" .cm)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-# 1. Source -> AST (flex/bison front end). `using` directives are expanded
-#    here, recursively, each module at most once.
-# shellcheck disable=SC2086
-"$PARSER" $INCLUDES "$SRC" "$WORK/$BASE.ast" >"$WORK/parse.log" 2>&1 || {
-  echo "catmintc: parse failed" >&2; cat "$WORK/parse.log" >&2; exit 1; }
-[ -s "$WORK/$BASE.ast" ] || {
-  echo "catmintc: parse produced no AST" >&2; tail -20 "$WORK/parse.log" >&2; exit 1; }
+# Where a module named <m> lives: the source directory, then each -I directory.
+find_module() {
+  name=$1
+  for dir in $(dirname "$SRC") $(echo "$INCLUDES" | tr -s " " "\n" | grep -v "^-I$" | grep -v "^$") .; do
+    if [ -f "$dir/$name.cmm" ]; then echo "$dir/$name.cmm"; return 0; fi
+  done
+  return 1
+}
 
-# 2. AST -> LLVM IR (semantic analysis + code generation). catmint-gen writes
-#    <input>.ll beside the input, so run it inside the work directory.
-( cd "$WORK" && "$GEN" "$BASE.ast" "$BASE.sem" >gen.log 2>gen.err ) || {
-  echo "catmintc: compilation failed" >&2; cat "$WORK/gen.err" >&2; exit 1; }
+# The modules a file imports, transitively, deepest first, each listed once.
+# Compiling in this order means a module is always built before whatever
+# imports it.
+MODULE_ORDER=""
+collect_modules() {
+  for name in $(sed -n 's/^[[:space:]]*using[[:space:]]\{1,\}\([A-Za-z_][A-Za-z_0-9]*\)[[:space:]]*$/\1/p' "$1"); do
+    case " $MODULE_ORDER " in *" $name "*) continue ;; esac
+    path=$(find_module "$name") || {
+      echo "catmintc: cannot find module $name" >&2; exit 1; }
+    MODULE_ORDER="$MODULE_ORDER $name"
+    collect_modules "$path"
+  done
+}
 
-# 3. Link against the runtime, made portable for this host.
+parse_one() {
+  # parse_one <source> <output.ast> <extra parser flags...>
+  src=$1; out=$2; shift 2
+  # shellcheck disable=SC2086
+  "$PARSER" $INCLUDES "$@" "$src" "$out" >"$WORK/parse.log" 2>&1 || {
+    echo "catmintc: parse failed for $src" >&2; cat "$WORK/parse.log" >&2; exit 1; }
+  [ -s "$out" ] || {
+    echo "catmintc: parse produced no AST for $src" >&2
+    tail -20 "$WORK/parse.log" >&2; exit 1; }
+}
+
+generate_one() {
+  # generate_one <name> <extra catmint-gen flags...>
+  name=$1; shift
+  # catmint-gen writes <input>.ll beside its input, so run it in the work dir.
+  ( cd "$WORK" && "$GEN" "$@" "$name.ast" "$name.sem" >"gen.$name.log" 2>"gen.$name.err" ) || {
+    echo "catmintc: compilation failed for $name" >&2
+    cat "$WORK/gen.$name.err" >&2; exit 1; }
+}
+
+OBJECTS=""
+
+if [ "$SEPARATE" -eq 1 ]; then
+  # Separate compilation. Each module becomes its own LLVM module; the program
+  # sees only their declarations, through --import.
+  collect_modules "$SRC"
+  IMPORTS=""
+  for name in $MODULE_ORDER; do
+    path=$(find_module "$name")
+    parse_one "$path" "$WORK/$name.ast" --no-expand --module
+  done
+  # Build deepest-last so each unit can import the ones it depends on.
+  for name in $MODULE_ORDER; do
+    # shellcheck disable=SC2086
+    generate_one "$name" --module $IMPORTS
+    IMPORTS="$IMPORTS --import $name.ast"
+    OBJECTS="$OBJECTS $WORK/$name.ast.ll"
+  done
+  parse_one "$SRC" "$WORK/$BASE.ast" --no-expand
+  # shellcheck disable=SC2086
+  generate_one "$BASE" $IMPORTS
+else
+  # Default: `using` is expanded textually, so the whole program is one unit.
+  parse_one "$SRC" "$WORK/$BASE.ast"
+  generate_one "$BASE"
+fi
+OBJECTS="$OBJECTS $WORK/$BASE.ast.ll"
+
+# Link against the runtime, made portable for this host.
 "$GENDIR/make-host-runtime.sh" "$GENDIR/runtime.ll" "$WORK/runtime.host.ll" >/dev/null
-"$LLVM_LINK" "$WORK/$BASE.ast.ll" "$WORK/runtime.host.ll" -o "$WORK/$BASE.bc"
+# shellcheck disable=SC2086
+"$LLVM_LINK" $OBJECTS "$WORK/runtime.host.ll" -o "$WORK/$BASE.bc"
 
-# 4. Bitcode -> native executable.
+# Bitcode -> native executable.
 "$CLANG" -Wno-override-module "$WORK/$BASE.bc" -o "$OUT"
 echo "catmintc: wrote $OUT"
 

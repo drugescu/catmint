@@ -171,9 +171,43 @@ spliced in at most once, so a diamond does not duplicate class definitions and
 a cycle terminates; and line directives keep error messages pointing at the
 file and line you wrote.
 
-What this is not, yet, is separate compilation: every module is re-parsed on
-every build, and all classes share one global namespace, so two modules cannot
-both define a `Point`.
+### Separate compilation
+
+By default `using` splices modules in textually, so the whole program is one
+translation unit. Pass `--separate` to compile each module on its own instead:
+
+```sh
+./catmintc --run --separate -I . app.cm
+```
+
+Each module becomes its own LLVM module, defining only its own classes, and
+the objects are linked at the end. A unit that imports a module sees only its
+declarations: external `@R<Class>` metadata and `declare`d methods.
+
+The interface between units is the module's own `.ast` file. There is no
+separate header format, and no need for one: both sides run the same layout
+and virtual-table algorithm over the same declarations, so the slot numbers
+agree by construction. This matters, because a disagreement would be a silent
+miscompile rather than a link error.
+
+Under the hood the driver runs, for each module deepest-first:
+
+```sh
+catmint-parser --no-expand --module shapes.cmm shapes.ast
+catmint-gen     --module                       shapes.ast shapes.sem
+catmint-parser --no-expand --module square.cmm square.ast
+catmint-gen     --module --import shapes.ast   square.ast square.sem
+catmint-parser --no-expand                     app.cm     app.ast
+catmint-gen     --import shapes.ast --import square.ast app.ast app.sem
+llvm-link shapes.ast.ll square.ast.ll app.ast.ll runtime.host.ll -o app.bc
+```
+
+`--module` says this is a library: no `Main` is required and no entry point is
+emitted. `--no-expand` stops the parser splicing the module in, since it is
+being compiled on its own.
+
+What is still missing is namespacing. All classes share one global namespace,
+so two modules cannot both define a `Point`, in either mode.
 
 ## 6. Tests
 

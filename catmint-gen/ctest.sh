@@ -30,6 +30,30 @@ for file in ${*:-test_suite/*.cm}; do
     printf "${RED}NO .expected${NC}\n"; errors=$((errors+1)); failed="$failed $name"; continue
   fi
 
+  # A test with a .separate marker is built the other way: every module is
+  # compiled to its own object and the objects are linked. Same source, same
+  # expected output, so the two builds are checked against each other.
+  if [ -f "test_suite/$name.separate" ]; then
+    if ! ../catmintc --separate -I test_suite/modules "$file" -o "$WORK/$name.bin" \
+          >"$WORK/$name.sep.log" 2>&1; then
+      printf "${RED}FAIL${NC} (separate build; see $WORK/$name.sep.log)\n"
+      errors=$((errors+1)); failed="$failed $name"; continue
+    fi
+    if [ -f "test_suite/$name.stdin" ]; then
+      "$WORK/$name.bin" <"test_suite/$name.stdin" >"$WORK/$name.out" 2>&1
+    else
+      "$WORK/$name.bin" </dev/null >"$WORK/$name.out" 2>&1
+    fi
+    if diff -q "$WORK/$name.out" "$expected" >/dev/null 2>&1; then
+      printf "${GREEN}ok${NC} (separate)\n"
+    else
+      printf "${RED}FAIL${NC} (separate, output)\n"
+      diff "$expected" "$WORK/$name.out" | sed 's/^/      /' | head -20
+      errors=$((errors+1)); failed="$failed $name"
+    fi
+    continue
+  fi
+
   # 1. parse. test_suite/modules holds the .cmm files that tests import.
   if ! $PARSER -I test_suite/modules "$file" "$WORK/$name.ast" >"$WORK/$name.parse.log" 2>&1; then
     printf "${RED}FAIL${NC} (parser)\n"; errors=$((errors+1)); failed="$failed $name"; continue

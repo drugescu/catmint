@@ -251,6 +251,12 @@ public:
   /// \brief Add a class and take ownership of it - don't add a class that already exist, or merge them - not rgiht now
   void addClass(std::unique_ptr<Class> c) { classes.push_back(std::move(c)); }
 
+  /// Hand this program's classes to another one. Used when importing a
+  /// separately compiled module: the importing unit needs the module's
+  /// declarations in its own tree, and the module's Program object is
+  /// discarded afterwards.
+  std::vector<std::unique_ptr<Class>> takeClasses() { return std::move(classes); }
+
   /// \brief Add an outlying block of code to the Main class, to the main method, Python-styles
 
   /// @{

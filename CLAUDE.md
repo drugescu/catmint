@@ -70,6 +70,21 @@ Both Makefiles locate LLVM through `llvm-config` and accept an override:
 parser uses try/catch and the AST relies on `dynamic_cast`. The whole project
 is C++17; do not lower it, LLVM 16+ headers need it.
 
+### Two build modes
+
+By default `using` is expanded textually and the program is one translation
+unit. `catmintc --separate` instead compiles each module on its own:
+`catmint-parser --no-expand [--module]` then `catmint-gen [--module]
+[--import <module.ast>]...`, with `llvm-link` merging the objects.
+
+An imported class is treated exactly like a built-in: its layout and vtable
+are still computed (a subclass or call site needs them) but nothing is
+defined, so `@R<Class>` and `@N<Class>` are declared external and the methods
+are `declare`d. The interface format is just the module's `.ast`; both sides
+run the same vtable algorithm over the same declarations, so slot numbers
+agree by construction. A disagreement there would be a silent miscompile, not
+a link error, so that property is what the `13_separate` test guards.
+
 `catmint-ast/Makefile` is CMake-generated output that is committed to the repo.
 Do not edit it or invoke it directly; use `GNUmakefile`, which wraps the CMake
 build into `catmint-ast/build/`.

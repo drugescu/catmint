@@ -13,6 +13,7 @@
 #include "llvm/IR/Module.h"
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -98,7 +99,9 @@ struct ClassInfo {
 class IRGenerator {
 public:
   IRGenerator(llvm::StringRef ModuleName, Program *P, const TypeTable &ASTTypes,
-              SymbolMap DefinitionsMap);
+              SymbolMap DefinitionsMap,
+              std::set<std::string> ExternalClasses = {},
+              bool LibraryOnly = false);
 
   llvm::Module *runGenerator();
 
@@ -118,6 +121,17 @@ private:
 
   std::map<std::string, ClassInfo> Classes;
   std::vector<ClassInfo *> ClassOrder; // parents before children
+
+  /// Classes that belong to a separately compiled module. Their layout and
+  /// virtual table are still computed here -- a subclass or a call site needs
+  /// them -- but nothing is defined: the metadata is declared external and the
+  /// method bodies live in the other object.
+  std::set<std::string> ExternalClasses;
+  /// True when compiling a .cmm: no Main is required and no entry point is
+  /// emitted.
+  bool LibraryOnly = false;
+
+  bool isExternal(const ClassInfo *CI) const;
 
   /// A local variable: its stack slot plus the catmint type it was declared with.
   struct Local {
