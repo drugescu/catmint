@@ -532,6 +532,13 @@ bool SemanticAnalysis::visit(StaticDispatch *d) {
     throw DispatchOnInvalidObjException(d->getName(), castedType);
   }
 
+  // 'expr is Type' is a type test, not a call: any object may be asked about
+  // any class, and the answer is an Int.
+  if (d->getName() == "is") {
+    typeTable.setType(d, typeTable.getIntType());
+    return true;
+  }
+
   if (!typeTable.isEqualOrImplicitlyConvertibleTo(objType, castedType)) {
     throw DispatchOnInvalidObjException(d->getName(), objType, castedType);
   }

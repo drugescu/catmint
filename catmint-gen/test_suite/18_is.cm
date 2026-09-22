@@ -1,0 +1,41 @@
+class Animal from IO
+end
+
+class Cat from Animal
+end
+
+class Main from IO
+  def main:
+    Cat c
+    Animal a
+
+    # A subclass is its base, but not the other way round.
+    out(c is Cat)
+    out(c is Animal)
+    out(c is Object)
+    out(a is Cat)
+    out("\n")
+
+    # The point of 'is': guard a downcast that would otherwise abort.
+    List things
+    things.append(c)
+    things.append("a string")
+    things.append(7)
+
+    for item in things:
+      if item is Cat:
+        out("cat ")
+      end
+      if item is String:
+        out("string ")
+      end
+      if item is Integer:
+        Int n = item
+        out("int:")
+        out(n)
+        out(" ")
+      end
+    end
+    out("\n")
+  end
+end

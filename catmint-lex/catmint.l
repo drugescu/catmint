@@ -60,6 +60,7 @@ static int gColumnNumber = 1;
 "if"		      { countColumns(); return KW_IF; }
 "for"		      { countColumns(); return KW_FOR; }
 "in"		      { countColumns(); return KW_IN; }
+"is"          { countColumns(); return KW_IS; }
 "do"		      { countColumns(); return KW_DO; }
 "while"	      { countColumns(); return KW_WHILE; }
 "then"		    { countColumns(); return KW_THEN; }

@@ -101,7 +101,7 @@
 
 %token KW_WHILE KW_FOR KW_RETURN
 %token KW_CLASS KW_SELF KW_FROM KW_END KW_VAR KW_NULL KW_DO KW_IN
-%token KW_USING
+%token KW_USING KW_IS
 %token KW_CONSTRUCTOR
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
 
@@ -555,6 +555,16 @@ conditional_expression
 	}
 	| additive_expression OP_ISNE additive_expression %prec PREC_REL {
 		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::NotEqual, Expression($1), Expression($3));
+	}
+	// 'expr is Type' asks whether the object is of that type, giving 1 or 0.
+	// It reuses StaticDispatch, which already carries both an object and a
+	// type name, so no new AST node or serialization is needed. 'is' is a
+	// keyword, so it cannot collide with a method of that name.
+	| additive_expression KW_IS type_name %prec PREC_REL {
+		$$ = new catmint::StaticDispatch(@1.first_line, Expression($1), *$3,
+		                                 std::string("is"),
+		                                 std::vector<catmint::Expression*>());
+		delete $3;
 	}
 	;
 

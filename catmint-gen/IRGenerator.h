@@ -48,6 +48,7 @@ public:
   llvm::FunctionCallee boxInt() const { return BoxInt; }
   llvm::FunctionCallee unboxInt() const { return UnboxInt; }
   llvm::FunctionCallee objectEquals() const { return ObjectEquals; }
+  llvm::FunctionCallee isType() const { return IsType; }
   llvm::FunctionCallee checkNull() const { return CheckNull; }
   llvm::FunctionCallee dynamicCast() const { return DynamicCast; }
   llvm::FunctionCallee stringSubstring() const { return StringSubstring; }
@@ -70,6 +71,7 @@ private:
   llvm::FunctionCallee BoxInt;
   llvm::FunctionCallee UnboxInt;
   llvm::FunctionCallee ObjectEquals;
+  llvm::FunctionCallee IsType;
   llvm::FunctionCallee CheckNull;
   llvm::FunctionCallee DynamicCast;
   llvm::FunctionCallee StringSubstring;

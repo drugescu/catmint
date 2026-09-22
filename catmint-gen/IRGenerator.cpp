@@ -54,6 +54,8 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
                                    llvm::FunctionType::get(I32, {Ptr}, false));
   ObjectEquals = M.getOrInsertFunction(
       "__cm_equals", llvm::FunctionType::get(I32, {Ptr, Ptr}, false));
+  IsType = M.getOrInsertFunction(
+      "__cm_isType", llvm::FunctionType::get(I32, {Ptr, Ptr}, false));
   CheckNull = M.getOrInsertFunction(
       "__cm_checkNull", llvm::FunctionType::get(Void, {Ptr}, false));
   DynamicCast = M.getOrInsertFunction(
@@ -766,6 +768,8 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
     return strings::Object;
   }
   if (auto *SD = dynamic_cast<StaticDispatch *>(E)) {
+    if (SD->getName() == "is")
+      return strings::Int;
     if (auto *CI = lookupClass(SD->getType())) {
       auto It = CI->VTableImpl.find(SD->getName());
       if (It != CI->VTableImpl.end())
@@ -1481,6 +1485,11 @@ llvm::Value *IRGenerator::emitStaticDispatch(StaticDispatch *SD) {
   ClassInfo *CI = lookupClass(SD->getType());
   if (!CI)
     fail(SD->getLineNumber(), "unknown class '" + SD->getType() + "'");
+
+  // 'expr is Type' walks the object's ancestry and answers 1 or 0. It never
+  // aborts, which is what makes it usable as a guard before a downcast.
+  if (SD->getName() == "is")
+    return Builder.CreateCall(Runtime.isType(), {Receiver, CI->RTTI}, "istype");
   std::vector<Expression *> Args;
   for (auto *A : *SD)
     Args.push_back(A);

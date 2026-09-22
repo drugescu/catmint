@@ -426,6 +426,24 @@ void __cm_checkNull(void *object) {
   }
 }
 
+/* 'expr is Type': 1 when the object's class is the target or inherits from
+ * it, 0 otherwise, including for null. Unlike a cast this never aborts, which
+ * is the point of having it. */
+int __cm_isType(void *object, struct __catmint_rtti *target) {
+  struct __catmint_rtti *current;
+
+  if (object == NULL) {
+    return 0;
+  }
+  for (current = ((struct TObject *)object)->rtti; current;
+       current = current->parent) {
+    if (current == target) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 /* A checked downcast: walk the object's ancestry looking for the target. */
 void *__cm_cast(void *object, struct __catmint_rtti *target) {
   struct __catmint_rtti *actual;
