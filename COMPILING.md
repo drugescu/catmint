@@ -1,0 +1,191 @@
+# Compiling and running a catmint program
+
+Written for someone who has just cloned this repository and wants to get a
+program running, then understand what the compiler did with it.
+
+## 1. Install the toolchain
+
+You need flex, bison 3.x, cmake and LLVM 16 or newer. The system bison on macOS
+is 2.3, which is too old for this grammar, and Homebrew's LLVM and bison are
+keg-only, so they have to be put on `PATH` explicitly.
+
+```sh
+brew install bison flex cmake llvm
+export PATH=/opt/homebrew/opt/llvm@22/bin:/opt/homebrew/opt/bison/bin:$PATH
+```
+
+On Linux the distribution packages are usually already on `PATH`:
+
+```sh
+sudo apt install flex bison cmake llvm clang
+```
+
+Both makefiles find LLVM through `llvm-config`. If yours lives somewhere
+unusual, pass it in: `make LLVM_CONFIG=/path/to/llvm-config`.
+
+## 2. Build the compiler
+
+Three components, built in dependency order. The second and third build the
+first automatically, so in practice you run all three and let make sort it out.
+
+```sh
+cd catmint-ast && make -f GNUmakefile build   # libcatmint-ast.a: AST + JSON serialization
+cd ../catmint-lex && make                     # bin/catmint-parser: flex + bison front end
+cd ../catmint-gen && make                     # bin/catmint-gen: semantic analysis + LLVM IR
+```
+
+## 3. Compile a program
+
+```sh
+./catmintc --run examples/tour.cm
+```
+
+That prints:
+
+```
+Cat says meow
+Dog says woof
+Animal says ...
+fib(10) = 55
+sum of squares 1..4 = 30
+```
+
+`catmintc` writes a native executable named after the source file. Use `-o` to
+choose a different name, and drop `--run` to build without running.
+
+## 4. What the four stages actually do
+
+`catmintc` is a shell script over four steps. Running them by hand is the best
+way to see where a problem is.
+
+```sh
+# 1. Source to AST. The parser builds AST objects in its grammar actions and
+#    serializes them as JSON.
+catmint-lex/bin/catmint-parser examples/tour.cm /tmp/tour.ast
+
+# 2. AST to LLVM IR. Semantic analysis builds the type and symbol tables and
+#    annotates the tree; the generator then lowers it. Note it writes the .ll
+#    next to its input, so run it from the directory you want the output in.
+cd /tmp && /path/to/catmint-gen/bin/catmint-gen tour.ast tour.sem
+
+# 3. Link with the runtime, which supplies the object model and I/O.
+cd /path/to/catmint-gen
+./make-host-runtime.sh                              # runtime.ll -> runtime.host.ll
+llvm-link /tmp/tour.ast.ll runtime.host.ll -o /tmp/tour.bc
+
+# 4. Native executable.
+clang /tmp/tour.bc -o /tmp/tour && /tmp/tour
+```
+
+Step 3 needs explaining. `runtime.ll` is checked in as LLVM IR compiled for
+x86_64 Linux, and the C source it came from is not in the repository.
+`make-host-runtime.sh` derives a portable copy by stripping the target triple,
+the datalayout and the per-function x86 CPU attributes, and by rewriting the
+glibc-only `__isoc99_scanf` to plain `scanf`. Always link the generated
+`runtime.host.ll`, never `runtime.ll` directly.
+
+## 5. The language, as far as the compiler currently supports it
+
+```
+class Counter from IO        # 'from' names the parent; Object is the default
+  Int value = 0              # attribute with an initialiser
+
+  def Int bump(Int by):      # 'def <ReturnType> <name>(<params>):' ... 'end'
+    value = value + by
+    return value
+  end
+
+  def Int get:               # no parameters, so no parentheses
+    return value
+  end
+end
+
+class Main from IO
+  def main:                  # no return type means it returns nothing
+    Counter c                # declaring a variable of class type constructs it
+    c.bump(5)
+    out("value = ")
+    out(c.get())             # an Int argument to 'out' is converted to a String
+    out("\n")
+  end
+end
+```
+
+Things worth knowing, because they are not obvious:
+
+- **A declaration constructs.** There is no `new` in the grammar, so `Counter c`
+  is how you get an object. It allocates, zeroes and runs the initialisers.
+- **`Main.main` is the entry point.** If your file has statements outside any
+  class, the parser wraps them in a `Main` class and a `main` method for you.
+- **An unqualified call is a call on `self`**, which is how `fib` recurses and
+  how `out` works inside a class that inherits `IO`.
+- **`out` accepts an `Int`** and converts it with the runtime's integer-to-string
+  helper. There is no other way to print a number.
+- **A method without a declared return type returns nothing.** Write
+  `def Int square(Int n):` when you want a value back. Return-type inference is
+  not implemented, and `auto` is currently just a spelling of `Void`.
+- **`x = expr` on a name that already exists assigns to it**; on a new name it
+  declares it. The grammar produces the same node for both.
+
+Built-in methods, from `Object`, `IO` and `String` respectively: `abort()`,
+`type()`, `copy()`, `input()`, `out(String)`, `len()`, `toInt()`.
+
+## 6. Tests
+
+```sh
+cd catmint-lex && ./wtest.sh   # parser: AST output against committed references
+cd catmint-gen && ./ctest.sh   # code generation: program output against .expected
+```
+
+The code generation suite compiles and runs each `test_suite/*.cm` and diffs the
+program's stdout against the matching `.expected`. Run one test with
+`./ctest.sh test_suite/05_while.cm`. Add a case by dropping in the two files.
+
+The parser suite passes 9 of 11. `declarations.cm` and `dispatch_complex.cm`
+have failed since 2020 and are the known baseline, not something you broke.
+
+When a program fails to compile, `catmint-gen/dbg.sh <file.cm>` runs just the
+parse and generate steps and shows the error, which is otherwise buried in a
+very chatty debug trace.
+
+## 7. How code generation works
+
+Worth reading before changing `catmint-gen/IRGenerator.cpp`.
+
+The object model is fixed by `runtime.ll` and the generator has to match it
+exactly. Every object begins with a pointer to its run-time type information:
+
+```
+__catmint_rtti = { TString *name; int size; __catmint_rtti *parent; void *vtable[]; }
+TObject        = { __catmint_rtti *rtti; }
+TString        = { __catmint_rtti *rtti; int length; char *chars; }
+```
+
+`__catmint_new(rtti)` allocates `rtti->size` bytes, zeroes them and stores the
+rtti pointer, so each generated class publishes an accurate size.
+
+For each class the generator emits an LLVM struct laid out as
+`{ rtti, inherited fields..., own fields... }`, a `@N<Class>` name string, a
+`@R<Class>` RTTI record holding the virtual table, and a `<Class>_init` that
+chains to the parent's initialiser and then runs the attribute initialisers.
+
+Virtual table slots are the parent's slots followed by the class's new methods
+in declaration order; an override reuses the parent's slot. The built-in
+classes are seeded to match the order already baked into `runtime.ll`, which is
+why `Object` occupies slots 0 to 2 and `IO` adds `input` and `out` at 3 and 4.
+
+Methods are named `M<length><Class>_<method>`, take `self` as their first
+parameter, and are called by loading the function pointer out of the receiver's
+vtable. Built-in methods are the exception: their runtime names predate the
+catmint spellings, so `type`, `len` and `input` map explicitly to
+`M6_Object_typeName`, `M6_String_length` and `M2_IO_in`.
+
+## 8. What is still missing
+
+- `for` loops and slice vectors parse but are not deserialized, so a program
+  using them aborts in `ASTSerialization.cpp`.
+- `Float` arithmetic is generated, but the runtime cannot print a float.
+- Return-type inference, as described above.
+- Lists and dictionaries parse but have no representation in the runtime.
+- Attribute assignment through another object, as in `c.name = "x"`, has no
+  grammar rule.

@@ -40,7 +40,13 @@ void TypeTable::addBuiltinTypes(Program *p) {
   typeTable[strings::Null] = new Type(strings::Null);
   typeTable[strings::Void] = new Type(strings::Void);
   typeTable[strings::Float] = new Type(strings::Float);
-  
+
+  // `def name:` with no declared return type parses as the type "auto". Until
+  // real return-type inference exists, such a method returns nothing, so the
+  // spelling is an alias for Void. A method that returns a value must declare
+  // its type: `def Int square(Int n):`.
+  typeTable["auto"] = typeTable[strings::Void];
+
   // Add additional types
   addBuiltinClasses(p);
 }

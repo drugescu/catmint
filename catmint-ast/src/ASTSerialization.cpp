@@ -980,14 +980,14 @@ ASTDeserializer::parseExpression(rapidjson::Value &tree) {
     return parseLocalDefinition(tree);
   } else if (nodeType == keys::AssignmentNodeType) {
     return parseAssignment(tree);
-  } /*else if (nodeType == keys::ForStatementNodeType) {
-    return parseForStatement(tree);
   } else if (nodeType == keys::ReturnNodeType) {
     return parseReturn(tree);
+  } /*else if (nodeType == keys::ForStatementNodeType) {
+    return parseForStatement(tree);
   } else if (nodeType == keys::SlicevectorNodeType) {
     return parseSlicevector(tree);
   } */
-  // Add for, return, slicevector
+  // Add for, slicevector
 
   assert(false && "Unknown expression kind, or unimplemented (for, return, slicevector)");
   return nullptr;
@@ -1376,6 +1376,24 @@ ASTDeserializer::parseIfStatement(rapidjson::Value &tree) {
 
   return createNode<IfStatement>(tree, parseLineNumber(tree), std::move(cond),
                                  std::move(then), std::move(elseOrNull));
+}
+
+std::unique_ptr<ReturnExpression>
+ASTDeserializer::parseReturn(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::ReturnNodeType &&
+         "Expected return object");
+
+  // ASTSerializer::visit(ReturnExpression *) writes the returned expression
+  // under the "Object" key.
+  assert(tree.HasMember(keys::Object) && "Return without an expression");
+  assert(tree[keys::Object].IsObject() && "Invalid expression for return");
+
+  auto retExpr = parseExpression(tree[keys::Object]);
+  assert(retExpr && "Expected non-null expression node");
+
+  return createNode<ReturnExpression>(tree, parseLineNumber(tree),
+                                      std::move(retExpr));
 }
 
 std::unique_ptr<WhileStatement>

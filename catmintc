@@ -1,0 +1,65 @@
+#!/bin/sh
+# catmintc - compile a .cm program to a native executable.
+#
+#   ./catmintc examples/tour.cm            -> ./tour
+#   ./catmintc examples/tour.cm -o mytour  -> ./mytour
+#   ./catmintc --run examples/tour.cm      -> compile, then run it
+#
+# Set LLVM_BIN if llvm-link/clang are not on PATH.
+set -e
+
+ROOT=$(cd "$(dirname "$0")" && pwd)
+PARSER="$ROOT/catmint-lex/bin/catmint-parser"
+GEN="$ROOT/catmint-gen/bin/catmint-gen"
+GENDIR="$ROOT/catmint-gen"
+
+LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v llvm-link 2>/dev/null || echo /opt/homebrew/opt/llvm@22/bin/llvm-link)")}
+LLVM_LINK="$LLVM_BIN/llvm-link"
+CLANG="$LLVM_BIN/clang"
+
+RUN=0
+OUT=""
+SRC=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --run) RUN=1; shift ;;
+    -o)    OUT="$2"; shift 2 ;;
+    -*)    echo "catmintc: unknown option $1" >&2; exit 2 ;;
+    *)     SRC="$1"; shift ;;
+  esac
+done
+
+if [ -z "$SRC" ]; then
+  echo "usage: catmintc [--run] [-o output] <program.cm>" >&2
+  exit 2
+fi
+for tool in "$PARSER" "$GEN"; do
+  [ -x "$tool" ] || { echo "catmintc: $tool is missing - run 'make' in catmint-lex and catmint-gen first" >&2; exit 1; }
+done
+
+BASE=$(basename "$SRC" .cm)
+[ -n "$OUT" ] || OUT="./$BASE"
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+# 1. Source -> AST (flex/bison front end).
+"$PARSER" "$SRC" "$WORK/$BASE.ast" >"$WORK/parse.log" 2>&1 || {
+  echo "catmintc: parse failed" >&2; cat "$WORK/parse.log" >&2; exit 1; }
+[ -s "$WORK/$BASE.ast" ] || {
+  echo "catmintc: parse produced no AST" >&2; tail -20 "$WORK/parse.log" >&2; exit 1; }
+
+# 2. AST -> LLVM IR (semantic analysis + code generation). catmint-gen writes
+#    <input>.ll beside the input, so run it inside the work directory.
+( cd "$WORK" && "$GEN" "$BASE.ast" "$BASE.sem" >gen.log 2>gen.err ) || {
+  echo "catmintc: compilation failed" >&2; cat "$WORK/gen.err" >&2; exit 1; }
+
+# 3. Link against the runtime, made portable for this host.
+"$GENDIR/make-host-runtime.sh" "$GENDIR/runtime.ll" "$WORK/runtime.host.ll" >/dev/null
+"$LLVM_LINK" "$WORK/$BASE.ast.ll" "$WORK/runtime.host.ll" -o "$WORK/$BASE.bc"
+
+# 4. Bitcode -> native executable.
+"$CLANG" -Wno-override-module "$WORK/$BASE.bc" -o "$OUT"
+echo "catmintc: wrote $OUT"
+
+[ "$RUN" -eq 1 ] && exec "$OUT"
+exit 0

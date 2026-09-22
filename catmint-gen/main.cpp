@@ -41,21 +41,21 @@ int main(int argc, char **argv) {
     semanticAnalysis.symbolTable.print(std::cout);
 
     try {
-          std::string OutputFile = llvm::sys::path::filename(argv[1]);
+          std::string OutputFile = llvm::sys::path::filename(argv[1]).str();
           catmint::IRGenerator Generator(OutputFile, program.get(),
                                       semanticAnalysis.getTypeTable(),
                                       semanticAnalysis.getSymbolDefinitions());
           auto Module = Generator.runGenerator();
           if (!Module) {
-            llvm::report_fatal_error("Couldn't generate module");
+            llvm::report_fatal_error(llvm::Twine("Couldn't generate module"));
           }
 
           std::string filename(Module->getName().str() + ".ll");
           std::error_code err;
-          llvm::raw_fd_ostream output(filename, err, llvm::sys::fs::F_Text);
+          llvm::raw_fd_ostream output(filename, err, llvm::sys::fs::OF_Text);
 
           if (err) {
-            llvm::report_fatal_error("Couldn't open output file: " + filename + "\n");
+            llvm::report_fatal_error(llvm::Twine("Couldn't open output file: ") + filename + "\n");
           }
 
           std::cout << "---------- Code Generation & Execution ----------" << std::endl;
@@ -65,11 +65,13 @@ int main(int argc, char **argv) {
             return -3;
     }
     }
-    catch (std::exception e) {
-      std::cout << e.what() << std::endl;
+    catch (const std::exception &e) {
+      std::cerr << e.what() << std::endl;
+      return -4;
     }
   }  catch (catmint::SemanticException &e) {
-    std::cout << e.what() << std::endl;
+    std::cerr << e.what() << std::endl;
+    return -2;
   }
 
   std::cout << "[ LOG ] : Semantic analysis complete.\n";

@@ -1,0 +1,68 @@
+# A short tour of what catmint compiles today: classes, inheritance,
+# dynamic dispatch, recursion, loops and the built-in Object/IO methods.
+
+class Animal from IO
+
+  def String speak:
+    return "..."
+  end
+
+  # 'type' comes from Object and returns this object's class name, so
+  # 'introduce' works for every subclass without being overridden. The call to
+  # 'speak' below goes through the virtual table, so each subclass answers for
+  # itself even though this method is only defined once, here.
+  def Void introduce:
+    out(type())
+    out(" says ")
+    out(speak())
+    out("\n")
+  end
+end
+
+class Cat from Animal
+  def String speak:
+    return "meow"
+  end
+end
+
+class Dog from Animal
+  def String speak:
+    return "woof"
+  end
+end
+
+class Main from IO
+
+  # Recursion: an unqualified call is a call on self.
+  def Int fib(Int n):
+    if n < 2:
+      return n
+    else
+      return fib(n - 1) + fib(n - 2)
+    end
+  end
+
+  def main:
+    # Declaring a variable of class type also constructs it.
+    Cat c
+    c.introduce()
+    Dog d
+    d.introduce()
+    Animal a
+    a.introduce()
+
+    out("fib(10) = ")
+    out(fib(10))
+    out("\n")
+
+    Int i = 1
+    Int total = 0
+    while i <= 4:
+      total = total + i * i
+      i = i + 1
+    end
+    out("sum of squares 1..4 = ")
+    out(total)
+    out("\n")
+  end
+end

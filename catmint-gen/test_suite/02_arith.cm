@@ -1,0 +1,15 @@
+class Main from IO
+  def main:
+    Int a = 6
+    Int b = 7
+    out("6 * 7 = ")
+    out(a * b)
+    out("\n")
+    out("13 % 5 = ")
+    out(13 % 5)
+    out("\n")
+    out("2 ** 10 = ")
+    out(2 ** 10)
+    out("\n")
+  end
+end

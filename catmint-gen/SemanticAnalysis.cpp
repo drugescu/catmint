@@ -166,6 +166,9 @@ bool SemanticAnalysis::visit(Feature *f) { return ASTVisitor::visit(f); }
 
 bool SemanticAnalysis::visit(Attribute *a) {
   auto attrType = typeTable.getType(a->getType());
+  // Record the type on the node: a Symbol that resolves to this attribute (or
+  // to this method parameter) asks the type table for the definition's type.
+  typeTable.setType(a, attrType);
 
   auto init = a->getInit();
   if (!init) {
@@ -233,6 +236,9 @@ bool SemanticAnalysis::visit(Method *m) {
     if (!visit(param)) {
       return false;
     }
+
+    // Bind the parameter in the method's scope so the body can refer to it.
+    symbolTable.insert(param);
   }
 
   auto returnType = typeTable.getType(m->getReturnType());
@@ -616,14 +622,45 @@ bool SemanticAnalysis::visit(WhileStatement *w) {
   return true;
 }
 
-bool SemanticAnalysis::visit(LocalDefinition *local) {
-  symbolTable.insert(local);
-  typeTable.setType(local, typeTable.getType(local->getType()));
+bool SemanticAnalysis::visit(ReturnExpression *r) {
+  // A return carries the type of the expression it returns, so that the
+  // enclosing block -- and through it the method's return-type check -- sees
+  // a type rather than asserting on an unannotated node.
+  auto ret = r->getRet();
+  if (!ret) {
+    typeTable.setType(r, typeTable.getVoidType());
+    return true;
+  }
 
+  if (!visit(ret)) {
+    return false;
+  }
+
+  typeTable.setType(r, typeTable.getType(ret));
+  return true;
+}
+
+bool SemanticAnalysis::visit(LocalDefinition *local) {
+  // The initialiser is analysed before the name is bound. `x = expr` parses as
+  // a definition with the type "auto", so binding first would make `a = a + 1`
+  // resolve the right-hand `a` to the new, still-untyped definition instead of
+  // the existing variable.
   if (local->getInit()) {
     if (!visit(local->getInit())) {
       return false;
     }
+  }
+
+  symbolTable.insert(local);
+
+  if (local->getType() == "auto") {
+    // Inferred from the initialiser; with no initialiser there is nothing to
+    // infer from and the definition carries no value.
+    typeTable.setType(local, local->getInit()
+                                 ? typeTable.getType(local->getInit())
+                                 : typeTable.getVoidType());
+  } else {
+    typeTable.setType(local, typeTable.getType(local->getType()));
   }
 
   return true;

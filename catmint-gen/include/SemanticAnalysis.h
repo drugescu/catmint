@@ -49,6 +49,7 @@ private:
   bool visit(IfStatement *i) override;
   bool visit(WhileStatement *w) override;
   bool visit(LocalDefinition *local) override;
+  bool visit(ReturnExpression *r) override;
 
 public:
   TypeTable typeTable;

@@ -1,0 +1,28 @@
+class Shape from IO
+  def Int area:
+    return 0
+  end
+
+  def Void describe:
+    out("area = ")
+    out(area())
+    out("\n")
+  end
+end
+
+class Square from Shape
+  Int side = 4
+
+  def Int area:
+    return side * side
+  end
+end
+
+class Main from IO
+  def main:
+    Square s
+    s.describe()
+    Shape p
+    p.describe()
+  end
+end
