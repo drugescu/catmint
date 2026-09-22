@@ -136,12 +136,29 @@ working on it.
 `__catmint_rtti` type-info struct, `__catmint_new`, and the built-in methods. `build-runtime.sh` compiles it for the host into
 `runtime.host.ll`, which is what programs link against.
 
-The original `runtime.ll` was committed without its source and built for
-x86_64 Linux. `runtime.c` was reconstructed from it, verified to be a drop-in
-replacement, and is now the only source: the pre-built `.ll` and the
-`make-host-runtime.sh` that patched its target triple were deleted once the
-object model moved past it, because a stale copy of the runtime is a silent
-miscompile rather than a link error. Building therefore needs a C compiler.
+`runtime.c` is the source of truth and `runtime.ll` is a checked-in copy of
+what it compiles to, with the target triple, the data layout and the build
+path stripped, so that one copy serves every 64-bit host -- the runtime uses
+only pointers, `int`, `long long` and `double`, whose layouts agree
+everywhere this compiler runs.
+
+`build-runtime.sh` keeps the two honest. With a C compiler it compiles the
+`.c` fresh, and refreshes the checked-in `.ll` whenever `runtime.c` is newer,
+so the copy in the repository never falls behind the source that a
+contributor with a compiler is editing. Without a C compiler it uses the
+`.ll` as it stands and warns if it looks stale. **If you change `runtime.c`,
+commit the regenerated `runtime.ll` with it** -- running the test suite will
+have regenerated it for you.
+
+That staleness is not a theoretical worry: the original `runtime.ll` was
+committed without its source, built for x86_64 Linux, and drifted far enough
+from the object model that using it would have been a silent miscompile
+rather than a link error. Hence the refresh-on-build.
+
+A C compiler is still needed to produce a *native executable*, because
+`catmintc` ends by calling clang; what the checked-in IR removes is the need
+for one to have a usable runtime, which is enough to run programs under
+`lli`.
 
 The layouts and the virtual table slot order in `runtime.c` are fixed by
 agreement with `IRGenerator.cpp`; changing one without the other silently

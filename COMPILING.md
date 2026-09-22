@@ -23,6 +23,16 @@ sudo apt install flex bison cmake llvm clang
 Both makefiles find LLVM through `llvm-config`. If yours lives somewhere
 unusual, pass it in: `make LLVM_CONFIG=/path/to/llvm-config`.
 
+### The runtime
+
+`catmint-gen/runtime.c` is the object model and the built-in classes, and
+`catmint-gen/runtime.ll` is a checked-in copy of its LLVM IR with the target
+triple and data layout stripped, so it works on any 64-bit host. You do not
+need a C compiler to get a usable runtime; `build-runtime.sh` will use the
+checked-in IR when there is none. With a compiler it rebuilds from the `.c`
+and refreshes the checked-in copy whenever the source is newer, so if you
+edit `runtime.c`, commit the regenerated `runtime.ll` alongside it.
+
 ## 2. Build the compiler
 
 Three components, built in dependency order. The second and third build the
