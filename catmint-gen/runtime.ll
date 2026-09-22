@@ -450,7 +450,7 @@ declare dso_local i32 @strncmp(i8*, i8*, i64) #5
 declare void @llvm.memset.p0i8.i64(i8* nocapture writeonly, i8, i64, i1 immarg) #3
 
 ; Function Attrs: noinline nounwind optnone uwtable
-define dso_local void @__lcpl_checkNull(i8* %0) #0 {
+define dso_local void @__cm_checkNull(i8* %0) #0 {
   %2 = alloca i8*, align 8
   store i8* %0, i8** %2, align 8
   %3 = load i8*, i8** %2, align 8
@@ -467,7 +467,7 @@ define dso_local void @__lcpl_checkNull(i8* %0) #0 {
 }
 
 ; Function Attrs: noinline nounwind optnone uwtable
-define dso_local i8* @__lcpl_cast(i8* %0, %struct.__catmint_rtti* %1) #0 {
+define dso_local i8* @__cm_cast(i8* %0, %struct.__catmint_rtti* %1) #0 {
   %3 = alloca i8*, align 8
   %4 = alloca i8*, align 8
   %5 = alloca %struct.__catmint_rtti*, align 8
@@ -537,7 +537,7 @@ define dso_local i8* @__lcpl_cast(i8* %0, %struct.__catmint_rtti* %1) #0 {
 }
 
 ; Function Attrs: noinline nounwind optnone uwtable
-define dso_local %struct.TString* @__lcpl_intToString(i32 %0) #0 {
+define dso_local %struct.TString* @__cm_intToString(i32 %0) #0 {
   %2 = alloca i32, align 4
   %3 = alloca [32 x i8], align 16
   %4 = alloca %struct.TString*, align 8

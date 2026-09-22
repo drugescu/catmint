@@ -361,7 +361,14 @@ bool SemanticAnalysis::visit(BinaryOperator *bo) {
     throw IncompatibleOperandsException(bo, lhsType, rhsType);
   }
 
-  typeTable.setType(bo, typeTable.getCommonType(lhsType, rhsType));
+  // A comparison yields a truth value, which catmint represents as an Int.
+  // Without this it took the common type of its operands, so comparing two
+  // objects produced an Object and could not be used as a condition.
+  if (bo->isComparison()) {
+    typeTable.setType(bo, typeTable.getIntType());
+  } else {
+    typeTable.setType(bo, typeTable.getCommonType(lhsType, rhsType));
+  }
 
   return true;
 }
@@ -647,10 +654,14 @@ bool SemanticAnalysis::visit(ForStatement *f) {
     elementType = typeTable.getIntType();
   } else if (contType->getName() == strings::String) {
     elementType = typeTable.getStringType();
+  } else if (contType->getName() == strings::List) {
+    // A List holds object references, so the loop variable is an Object;
+    // assigning it to a typed variable gets the element back out.
+    elementType = typeTable.getObjectType();
   } else {
     throw SemanticException("cannot iterate over a value of type '" +
                             contType->getName() +
-                            "'; 'for' takes an Int count or a String");
+                            "'; 'for' takes an Int count, a String or a List");
   }
 
   SymbolTable::Scope forScope(symbolTable, "for");

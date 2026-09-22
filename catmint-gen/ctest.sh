@@ -34,7 +34,7 @@ for file in ${*:-test_suite/*.cm}; do
   # compiled to its own object and the objects are linked. Same source, same
   # expected output, so the two builds are checked against each other.
   if [ -f "test_suite/$name.separate" ]; then
-    if ! ../catmintc --separate -I test_suite/modules "$file" -o "$WORK/$name.bin" \
+    if ! ../catmintc --separate -I test_suite/modules -I ../lib "$file" -o "$WORK/$name.bin" \
           >"$WORK/$name.sep.log" 2>&1; then
       printf "${RED}FAIL${NC} (separate build; see $WORK/$name.sep.log)\n"
       errors=$((errors+1)); failed="$failed $name"; continue
@@ -55,7 +55,7 @@ for file in ${*:-test_suite/*.cm}; do
   fi
 
   # 1. parse. test_suite/modules holds the .cmm files that tests import.
-  if ! $PARSER -I test_suite/modules "$file" "$WORK/$name.ast" >"$WORK/$name.parse.log" 2>&1; then
+  if ! $PARSER -I test_suite/modules -I ../lib "$file" "$WORK/$name.ast" >"$WORK/$name.parse.log" 2>&1; then
     printf "${RED}FAIL${NC} (parser)\n"; errors=$((errors+1)); failed="$failed $name"; continue
   fi
   if [ ! -s "$WORK/$name.ast" ]; then

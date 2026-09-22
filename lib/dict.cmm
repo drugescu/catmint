@@ -1,0 +1,62 @@
+# Dict: a String-keyed dictionary, written in catmint on top of List.
+#
+# Lookup is a linear scan. For a language at this stage that is the right
+# trade: it needs no hash function, no char-code accessor and no rehashing,
+# and it is about thirty lines instead of two hundred. Swapping in buckets
+# later changes this file and nothing else.
+
+class Dict from Object
+  List keys
+  List values
+
+  def Int size:
+    return keys.len()
+  end
+
+  # -1 when the key is absent.
+  def Int indexOf(String key):
+    Int i = 0
+    while i < keys.len():
+      String candidate = keys.get(i)
+      if candidate == key:
+        return i
+      end
+      i = i + 1
+    end
+    return 0 - 1
+  end
+
+  def Int has(String key):
+    if indexOf(key) < 0:
+      return 0
+    else
+      return 1
+    end
+  end
+
+  # Replaces the value when the key is already present.
+  def Dict put(String key, Object value):
+    Int at = indexOf(key)
+    if at < 0:
+      keys.append(key)
+      values.append(value)
+    else
+      values.set(at, value)
+    end
+    return self
+  end
+
+  # Null when the key is absent, so check with has() when null is a legal value.
+  def Object get(String key):
+    Int at = indexOf(key)
+    if at < 0:
+      return null
+    else
+      return values.get(at)
+    end
+  end
+
+  def List keyList:
+    return keys
+  end
+end

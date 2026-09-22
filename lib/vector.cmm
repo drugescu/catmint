@@ -1,0 +1,64 @@
+# Vector: a List with the operations you keep writing by hand.
+#
+# This is a standard library module, written in catmint rather than in the
+# runtime. The runtime provides exactly one container, List, because a growable
+# array needs raw memory and nothing else here does. Everything above it is
+# expressible in the language itself, which keeps the compiler small.
+
+class Vector from Object
+  List items
+
+  def Int size:
+    return items.len()
+  end
+
+  def Object get(Int index):
+    return items.get(index)
+  end
+
+  def Vector push(Object value):
+    items.append(value)
+    return self
+  end
+
+  def Int isEmpty:
+    if items.len() == 0:
+      return 1
+    else
+      return 0
+    end
+  end
+
+  # -1 when absent. '==' on two object references asks the runtime, which
+  # compares strings and boxed integers by value and everything else by
+  # identity.
+  def Int indexOf(Object value):
+    Int i = 0
+    while i < items.len():
+      Object current = items.get(i)
+      if current == value:
+        return i
+      end
+      i = i + 1
+    end
+    return 0 - 1
+  end
+
+  def Int contains(Object value):
+    if indexOf(value) < 0:
+      return 0
+    else
+      return 1
+    end
+  end
+
+  def Vector reversed:
+    Vector result
+    Int i = items.len() - 1
+    while i >= 0:
+      result.push(items.get(i))
+      i = i - 1
+    end
+    return result
+  end
+end

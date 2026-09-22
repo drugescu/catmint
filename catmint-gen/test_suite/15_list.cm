@@ -1,0 +1,46 @@
+class Main from IO
+  def main:
+    List xs
+    xs.append(10)
+    xs.append(20)
+    xs.append(30)
+
+    out("len = ")
+    out(xs.len())
+    out("\n")
+
+    Int first = xs.get(0)
+    out("first = ")
+    out(first)
+    out("\n")
+
+    xs.set(1, 99)
+
+    Int total = 0
+    for item in xs:
+      Int n = item
+      total = total + n
+    end
+    out("total = ")
+    out(total)
+    out("\n")
+
+    List part = xs.slice(1, 3)
+    out("slice len = ")
+    out(part.len())
+    out(" first = ")
+    Int p = part.get(0)
+    out(p)
+    out("\n")
+
+    List names
+    names.append("cat")
+    names.append("mint")
+    for n in names:
+      String s = n
+      out(s)
+      out(" ")
+    end
+    out("\n")
+  end
+end

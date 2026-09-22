@@ -44,14 +44,20 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
   CatmintNew =
       M.getOrInsertFunction("__catmint_new", llvm::FunctionType::get(Ptr, {Ptr}, false));
   IntToString = M.getOrInsertFunction(
-      "__lcpl_intToString", llvm::FunctionType::get(Ptr, {I32}, false));
+      "__cm_intToString", llvm::FunctionType::get(Ptr, {I32}, false));
   FloatToString = M.getOrInsertFunction(
-      "__lcpl_floatToString",
+      "__cm_floatToString",
       llvm::FunctionType::get(Ptr, {llvm::Type::getDoubleTy(Context)}, false));
+  BoxInt = M.getOrInsertFunction("__cm_boxInt",
+                                 llvm::FunctionType::get(Ptr, {I32}, false));
+  UnboxInt = M.getOrInsertFunction("__cm_unboxInt",
+                                   llvm::FunctionType::get(I32, {Ptr}, false));
+  ObjectEquals = M.getOrInsertFunction(
+      "__cm_equals", llvm::FunctionType::get(I32, {Ptr, Ptr}, false));
   CheckNull = M.getOrInsertFunction(
-      "__lcpl_checkNull", llvm::FunctionType::get(Void, {Ptr}, false));
+      "__cm_checkNull", llvm::FunctionType::get(Void, {Ptr}, false));
   DynamicCast = M.getOrInsertFunction(
-      "__lcpl_cast", llvm::FunctionType::get(Ptr, {Ptr, Ptr}, false));
+      "__cm_cast", llvm::FunctionType::get(Ptr, {Ptr, Ptr}, false));
   StringSubstring = M.getOrInsertFunction(
       "M6_String_substring", llvm::FunctionType::get(Ptr, {Ptr, I32, I32}, false));
   StringConcat = M.getOrInsertFunction(
@@ -118,6 +124,15 @@ std::string IRGenerator::runtimeSymbol(ClassInfo *CI,
   } else if (C == strings::String) {
     if (MethodName == strings::Length) return "M6_String_length";
     if (MethodName == strings::ToInt)  return "M6_String_toInt";
+  } else if (C == strings::List) {
+    if (MethodName == strings::Length) return "M4_List_len";
+    if (MethodName == strings::Get)    return "M4_List_get";
+    if (MethodName == strings::Set)    return "M4_List_set";
+    if (MethodName == strings::Append) return "M4_List_append";
+    if (MethodName == strings::Slice)  return "M4_List_slice";
+  } else if (C == strings::Integer) {
+    if (MethodName == strings::Get) return "M7_Integer_get";
+    if (MethodName == strings::Set) return "M7_Integer_set";
   }
   return mangle(C, MethodName);
 }
@@ -168,7 +183,8 @@ bool IRGenerator::collectClasses() {
     CI.AST = C;
     const std::string Name = C->getName();
     CI.Builtin = (Name == strings::Object || Name == strings::Io ||
-                  Name == strings::String);
+                  Name == strings::String || Name == strings::List ||
+                  Name == strings::Integer);
     Classes[Name] = CI;
   }
 
@@ -231,6 +247,18 @@ bool IRGenerator::layoutClass(ClassInfo *CI) {
     } else if (Name == strings::Io) {
       CI->Ty = Runtime.ioType();
       CI->Elements = {llvm::PointerType::getUnqual(Context)};
+    } else if (Name == strings::List) {
+      // { rtti, int length, int capacity, void **items }
+      CI->Elements = {llvm::PointerType::getUnqual(Context),
+                      llvm::Type::getInt32Ty(Context),
+                      llvm::Type::getInt32Ty(Context),
+                      llvm::PointerType::getUnqual(Context)};
+      CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TList");
+    } else if (Name == strings::Integer) {
+      // { rtti, int value }
+      CI->Elements = {llvm::PointerType::getUnqual(Context),
+                      llvm::Type::getInt32Ty(Context)};
+      CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TInteger");
     } else {
       CI->Ty = Runtime.stringType();
       CI->Elements = {llvm::PointerType::getUnqual(Context),
@@ -318,7 +346,12 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
   if (CI->Builtin) {
     if (Name == strings::Object)      CI->RTTI = Runtime.objectRTTI();
     else if (Name == strings::Io)     CI->RTTI = Runtime.ioRTTI();
-    else                              CI->RTTI = Runtime.stringRTTI();
+    else if (Name == strings::String) CI->RTTI = Runtime.stringRTTI();
+    else
+      // List and Integer are defined in runtime.c like the rest, so their
+      // metadata is simply referenced here.
+      CI->RTTI = llvm::cast<llvm::GlobalVariable>(
+          Module.getOrInsertGlobal("R" + Name, Runtime.rttiType()));
     return;
   }
 
@@ -418,8 +451,41 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
 
   for (auto *F : *CI->AST) {
     auto *A = dynamic_cast<Attribute *>(F);
-    if (!A || !A->getInit())
+    if (!A)
       continue;
+
+    if (!A->getInit()) {
+      // An attribute of class type is constructed, exactly as a local of that
+      // type is. There is no `new` in the grammar, so without this an
+      // attribute could never hold an object and calling a method on it would
+      // fail with a null receiver.
+      //
+      // The exception is an attribute whose type is the enclosing class or an
+      // ancestor of it: constructing that would recurse forever. Such an
+      // attribute starts null, which is what a linked structure wants anyway.
+      ClassInfo *FieldClass = lookupClass(A->getType());
+      if (!FieldClass || isSubclassOf(CI->AST->getName(), A->getType()))
+        continue;
+
+      auto *Obj = Builder.CreateCall(Runtime.catmintNew(), {FieldClass->RTTI},
+                                     A->getName() + ".obj");
+      if (FieldClass->Init) {
+        Builder.CreateCall(FieldClass->Init, {Obj});
+      } else {
+        auto *InitFT = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(Context),
+            {llvm::PointerType::getUnqual(Context)}, false);
+        Builder.CreateCall(
+            Module.getOrInsertFunction(A->getType() + "_init", InitFT), {Obj});
+      }
+      auto *Slot = Builder.CreateGEP(
+          CI->Ty, CI->Init->getArg(0),
+          {Builder.getInt32(0), Builder.getInt32(CI->FieldIndex[A->getName()])},
+          A->getName() + ".addr");
+      Builder.CreateStore(Obj, Slot);
+      continue;
+    }
+
     llvm::Value *V = emit(A->getInit());
     if (!V)
       continue;
@@ -703,8 +769,29 @@ llvm::Value *IRGenerator::coerce(llvm::Value *V, const std::string &From,
     return Builder.CreateSIToFP(V, llvm::Type::getDoubleTy(Context), "int.fp");
   if (From == strings::Float && To == strings::Int)
     return Builder.CreateFPToSI(V, llvm::Type::getInt32Ty(Context), "fp.int");
+  const bool FromIsValue = (From == strings::Int || From == strings::Float);
+  const bool ToIsValue = (To == strings::Int || To == strings::Float);
+
+  // An Int put where object references live is boxed into an Integer, and
+  // taken back out it is unboxed, checked. This is what lets a List hold
+  // numbers when the language has no generics.
+  if (From == strings::Int && !ToIsValue && To != strings::Void)
+    return Builder.CreateCall(Runtime.boxInt(), {V}, "box");
+  if (!FromIsValue && From != strings::Void && To == strings::Int)
+    return Builder.CreateCall(Runtime.unboxInt(), {V}, "unbox");
+
   // Reference types are all `ptr` under opaque pointers, so widening to a base
-  // class or to Object needs no instruction.
+  // class needs no instruction. Narrowing does need one: assigning an Object
+  // taken out of a container to a variable of a more specific type inserts a
+  // checked downcast, which aborts at run time if the object is not of that
+  // type. That keeps containers usable without cast syntax, at the cost of
+  // the check being a run-time one.
+  if (!FromIsValue && !ToIsValue) {
+    ClassInfo *ToClass = lookupClass(To);
+    if (ToClass && lookupClass(From) && isSubclassOf(To, From) && To != From)
+      return Builder.CreateCall(Runtime.dynamicCast(), {V, ToClass->RTTI},
+                                "downcast");
+  }
   return V;
 }
 
@@ -901,9 +988,18 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
   // Store only when the initialiser actually yields this type; when the
   // grammar has folded an unrelated following statement in here, it is
   // evaluated for its effect and discarded.
-  if (InitType == DeclaredType || isSubclassOf(InitType, DeclaredType) ||
+  //
+  // `InitType == Object` is the container case: a value coming out of a List
+  // is typed Object, and the declared type narrows it with a checked cast.
+  // The last clause is the unboxing one, `Int n = list.get(i)`. Neither can be
+  // confused with a folded statement, whose value is always some concrete
+  // class such as IO.
+  const bool Assignable =
+      InitType == DeclaredType || isSubclassOf(InitType, DeclaredType) ||
       InitType == strings::Int || InitType == strings::Float ||
-      InitType == strings::Null) {
+      InitType == strings::Null || InitType == strings::Object ||
+      (DeclaredType == strings::Int && lookupClass(InitType) != nullptr);
+  if (Assignable) {
     llvm::Value *Stored = coerce(V, InitType, DeclaredType, LD->getLineNumber());
     if (Stored->getType() == Lowered)
       for (auto *Slot : Slots)
@@ -960,6 +1056,18 @@ llvm::Value *IRGenerator::emitBinaryOperator(BinaryOperator *BO) {
     }
     fail(BO->getLineNumber(), "operator '" + BO->getName() +
                                   "' is not defined for String operands");
+  }
+
+  // Two object references: identity would be wrong for strings and boxed
+  // integers, so the runtime decides.
+  if ((Op == BK::Equal || Op == BK::NotEqual) && L->getType()->isPointerTy() &&
+      R->getType()->isPointerTy()) {
+    auto *Eq = Builder.CreateCall(Runtime.objectEquals(), {L, R}, "objeq");
+    if (Op == BK::Equal)
+      return Eq;
+    return Builder.CreateZExt(
+        Builder.CreateICmpEQ(Eq, Builder.getInt32(0)),
+        llvm::Type::getInt32Ty(Context), "objne");
   }
 
   const bool Floating = (LT == strings::Float || RT == strings::Float);
@@ -1139,9 +1247,11 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
 
   const std::string ContType = staticTypeOf(F->getCont());
   const bool OverString = (ContType == strings::String);
-  if (!OverString && ContType != strings::Int)
-    fail(F->getLineNumber(), "cannot iterate over a value of type '" +
-                                 ContType + "'; 'for' takes an Int or a String");
+  const bool OverList = (ContType == strings::List);
+  if (!OverString && !OverList && ContType != strings::Int)
+    fail(F->getLineNumber(),
+         "cannot iterate over a value of type '" + ContType +
+             "'; 'for' takes an Int, a String or a List");
 
   llvm::Value *Cont = emit(F->getCont());
   if (!Cont)
@@ -1153,7 +1263,14 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
   // The bound is the count itself, or the string's length.
   llvm::Value *Bound = Cont;
   llvm::Value *StrSlot = nullptr;
-  if (OverString) {
+  if (OverList) {
+    StrSlot = createEntryAlloca(Ptr, "for.list");
+    Builder.CreateStore(Cont, StrSlot);
+    auto ListLen = Module.getOrInsertFunction(
+        "M4_List_len", llvm::FunctionType::get(I32, {Ptr}, false));
+    Builder.CreateCall(Runtime.checkNull(), {Cont});
+    Bound = Builder.CreateCall(ListLen, {Cont}, "for.count");
+  } else if (OverString) {
     StrSlot = createEntryAlloca(Ptr, "for.str");
     Builder.CreateStore(Cont, StrSlot);
     auto StrLen = Module.getOrInsertFunction(
@@ -1170,7 +1287,11 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
   // The loop variable lives in its own scope, so it does not leak out and does
   // not collide with a variable of the same name outside the loop.
   Scopes.emplace_back();
-  const std::string ElemType = OverString ? strings::String : strings::Int;
+  // A List holds object references, so the loop variable is an Object; assign
+  // it to a typed variable to get the element back out.
+  const std::string ElemType = OverList     ? strings::Object
+                               : OverString ? strings::String
+                                            : strings::Int;
   auto *VarSlot = createEntryAlloca(lowerType(ElemType), IterSym->getName());
   Scopes.back()[IterSym->getName()] = {VarSlot, ElemType};
 
@@ -1188,7 +1309,13 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
                        EndBB);
 
   Builder.SetInsertPoint(BodyBB);
-  if (OverString) {
+  if (OverList) {
+    auto *List = Builder.CreateLoad(Ptr, StrSlot, "for.l");
+    auto ListGet = Module.getOrInsertFunction(
+        "M4_List_get", llvm::FunctionType::get(Ptr, {Ptr, I32}, false));
+    Builder.CreateStore(Builder.CreateCall(ListGet, {List, Idx}, "for.item"),
+                        VarSlot);
+  } else if (OverString) {
     // substring is a half-open range, so one character at i is [i, i+1).
     auto *Str = Builder.CreateLoad(Ptr, StrSlot, "for.s");
     auto *Next = Builder.CreateAdd(Idx, Builder.getInt32(1), "for.i1");

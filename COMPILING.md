@@ -225,6 +225,52 @@ being compiled on its own.
 What is still missing is namespacing. All classes share one global namespace,
 so two modules cannot both define a `Point`, in either mode.
 
+## 5b. Lists, and the standard library
+
+The runtime provides exactly one container, `List`: a growable array of object
+references. Everything richer is written in catmint on top of it, in `lib/`.
+
+```
+List xs
+xs.append(10)
+xs.append(20)
+Int first = xs.get(0)     # unboxed on the way out
+for item in xs:
+  Int n = item
+  out(n)
+end
+List part = xs.slice(0, 1)
+```
+
+Because there are no generics, a `List` holds `Object`. Two conversions make
+that usable and the compiler inserts both. An `Int` stored into a list is
+boxed into an `Integer`, and taken back out into an `Int` it is unboxed. A
+value assigned from an `Object` to a variable of a more specific type gets a
+checked downcast, which aborts at run time if the object is not of that type.
+That is deliberately a run-time check: it means containers work without cast
+syntax, which the grammar does not have.
+
+`==` on two object references asks the runtime, which compares strings and
+boxed integers by value and everything else by identity.
+
+`lib/vector.cmm` and `lib/dict.cmm` are the standard library, written in
+catmint:
+
+```sh
+./catmintc --run -I lib myprogram.cm
+```
+
+`Vector` adds `size`, `push`, `indexOf`, `contains` and `reversed` over a
+`List`. `Dict` is a String-keyed dictionary with `put`, `get`, `has` and
+`size`, backed by two parallel lists and a linear scan. A linear scan needs no
+hash function and no character-code accessor, and it is thirty lines rather
+than two hundred; replacing it with buckets later changes that one file and
+nothing else.
+
+This split is the point. A growable array needs raw memory, so it belongs in
+the runtime. A dictionary does not, so it belongs in the language, where it
+costs the compiler nothing.
+
 ## 6. Tests
 
 ```sh

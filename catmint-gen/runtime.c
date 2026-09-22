@@ -47,6 +47,24 @@ struct TIO {
   struct __catmint_rtti *rtti;
 };
 
+/* A growable array of object references. This is the one container the
+ * runtime provides; richer ones (a dictionary, say) are written in catmint on
+ * top of it, because everything they need beyond raw memory is expressible in
+ * the language. */
+struct TList {
+  struct __catmint_rtti *rtti;
+  int length;
+  int capacity;
+  void **items;
+};
+
+/* A boxed Int, so that an Int can be stored in a List. The generated code
+ * boxes and unboxes automatically where a conversion is needed. */
+struct TInteger {
+  struct __catmint_rtti *rtti;
+  int value;
+};
+
 /* A flexible array member cannot be initialised, so each class's RTTI gets a
  * named struct with its vtable sized exactly, and is cast where it is used.
  * The layout up to the vtable is identical in all of them, which is what makes
@@ -61,6 +79,8 @@ struct TIO {
 
 CATMINT_RTTI_TYPE(catmint_rtti3, 3);
 CATMINT_RTTI_TYPE(catmint_rtti7, 7);
+CATMINT_RTTI_TYPE(catmint_rtti8_list, 8);
+CATMINT_RTTI_TYPE(catmint_rtti5, 5);
 CATMINT_RTTI_TYPE(catmint_rtti8, 8);
 
 #define RTTI(x) ((struct __catmint_rtti *)&(x))
@@ -80,6 +100,15 @@ struct TIO *M2_IO_out(struct TIO *self, struct TString *message);
 struct TString *M2_IO_readLine(struct TIO *self);
 int M2_IO_eof(struct TIO *self);
 
+int M4_List_len(struct TList *self);
+void *M4_List_get(struct TList *self, int index);
+void *M4_List_set(struct TList *self, int index, void *value);
+struct TList *M4_List_append(struct TList *self, void *value);
+struct TList *M4_List_slice(struct TList *self, int start, int end);
+
+int M7_Integer_get(struct TInteger *self);
+struct TInteger *M7_Integer_set(struct TInteger *self, int value);
+
 void *__catmint_new(struct __catmint_rtti *rtti);
 void String_init(struct TString *self);
 
@@ -88,7 +117,9 @@ extern catmint_rtti8 RString;
 /* Class names. Each is itself a String, so its rtti is RString. */
 struct TString NObject = { RTTI(RString), 6, "Object" };
 struct TString NString = { RTTI(RString), 6, "String" };
-struct TString NIO     = { RTTI(RString), 2, "IO" };
+struct TString NIO      = { RTTI(RString), 2, "IO" };
+struct TString NList    = { RTTI(RString), 4, "List" };
+struct TString NInteger = { RTTI(RString), 7, "Integer" };
 
 catmint_rtti3 RObject = {
   &NObject, sizeof(struct TObject), NULL,
@@ -110,6 +141,19 @@ catmint_rtti7 RIO = {
   { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
     (void *)M2_IO_in, (void *)M2_IO_out,
     (void *)M2_IO_readLine, (void *)M2_IO_eof }
+};
+
+catmint_rtti8_list RList = {
+  &NList, sizeof(struct TList), RTTI(RObject),
+  { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
+    (void *)M4_List_len, (void *)M4_List_get, (void *)M4_List_set,
+    (void *)M4_List_append, (void *)M4_List_slice }
+};
+
+catmint_rtti5 RInteger = {
+  &NInteger, sizeof(struct TInteger), RTTI(RObject),
+  { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
+    (void *)M7_Integer_get, (void *)M7_Integer_set }
 };
 
 /* -------------------------------------------------------------------------
@@ -137,6 +181,16 @@ void IO_init(struct TIO *self) {
 void String_init(struct TString *self) {
   self->string = "";
   self->length = 0;
+}
+
+void List_init(struct TList *self) {
+  self->length = 0;
+  self->capacity = 0;
+  self->items = NULL;
+}
+
+void Integer_init(struct TInteger *self) {
+  self->value = 0;
 }
 
 /* Build a catmint String from a NUL-terminated buffer. */
@@ -287,11 +341,85 @@ struct TIO *M2_IO_out(struct TIO *self, struct TString *message) {
 }
 
 /* -------------------------------------------------------------------------
+ * List
+ * ------------------------------------------------------------------------- */
+
+static void list_bounds(struct TList *self, int index) {
+  if (index < 0 || index >= self->length) {
+    printf("Runtime error : List index out of bounds.\n");
+    exit(1);
+  }
+}
+
+int M4_List_len(struct TList *self) {
+  return self->length;
+}
+
+void *M4_List_get(struct TList *self, int index) {
+  list_bounds(self, index);
+  return self->items[index];
+}
+
+void *M4_List_set(struct TList *self, int index, void *value) {
+  list_bounds(self, index);
+  self->items[index] = value;
+  return value;
+}
+
+/* Doubling growth, so appending n items costs O(n) in total. */
+struct TList *M4_List_append(struct TList *self, void *value) {
+  if (self->length == self->capacity) {
+    int capacity = self->capacity == 0 ? 4 : self->capacity * 2;
+    void **items = realloc(self->items, (size_t)capacity * sizeof(void *));
+    if (!items) {
+      printf("Runtime error : Out of memory growing a List.\n");
+      exit(1);
+    }
+    self->items = items;
+    self->capacity = capacity;
+  }
+  self->items[self->length] = value;
+  self->length += 1;
+  return self;
+}
+
+/* A half-open range [start, end), matching String.substring. */
+struct TList *M4_List_slice(struct TList *self, int start, int end) {
+  struct TList *result;
+  int i;
+
+  if (start < 0 || start > end || end > self->length) {
+    printf("Runtime error : List slice indices out of bounds.\n");
+    exit(1);
+  }
+
+  result = (struct TList *)__catmint_new(RTTI(RList));
+  List_init(result);
+  for (i = start; i < end; ++i) {
+    M4_List_append(result, self->items[i]);
+  }
+  return result;
+}
+
+/* -------------------------------------------------------------------------
+ * Integer, the box that lets an Int live in a List
+ * ------------------------------------------------------------------------- */
+
+int M7_Integer_get(struct TInteger *self) {
+  return self->value;
+}
+
+struct TInteger *M7_Integer_set(struct TInteger *self, int value) {
+  self->value = value;
+  return self;
+}
+
+/* -------------------------------------------------------------------------
  * Helpers the generated code calls directly
  * ------------------------------------------------------------------------- */
 
 /* Called before every dispatch. */
-void __lcpl_checkNull(void *object) {
+void __cm_checkNull(void *object) {
   if (object == NULL) {
     printf("Runtime error : Calling a method of a void object.\n");
     exit(1);
@@ -299,7 +427,7 @@ void __lcpl_checkNull(void *object) {
 }
 
 /* A checked downcast: walk the object's ancestry looking for the target. */
-void *__lcpl_cast(void *object, struct __catmint_rtti *target) {
+void *__cm_cast(void *object, struct __catmint_rtti *target) {
   struct __catmint_rtti *actual;
   struct __catmint_rtti *current;
 
@@ -319,9 +447,57 @@ void *__lcpl_cast(void *object, struct __catmint_rtti *target) {
   exit(1);
 }
 
-/* The float counterpart of __lcpl_intToString. %g keeps short values short
+/* Boxing and unboxing, inserted by the generator where an Int meets a place
+ * that holds object references, and on the way back out. */
+void *__cm_boxInt(int value) {
+  struct TInteger *box = (struct TInteger *)__catmint_new(RTTI(RInteger));
+  Integer_init(box);
+  box->value = value;
+  return box;
+}
+
+int __cm_unboxInt(void *object) {
+  __cm_checkNull(object);
+  if (((struct TObject *)object)->rtti != RTTI(RInteger)) {
+    printf("Runtime error : Expected an Integer, found %s.\n",
+           ((struct TObject *)object)->rtti->name->string);
+    exit(1);
+  }
+  return ((struct TInteger *)object)->value;
+}
+
+/* Equality for two object references, used when the static types are not
+ * specific enough to know better. Strings compare by content and boxed Ints
+ * by value, because comparing either by identity would surprise everyone;
+ * anything else compares by identity. */
+int __cm_equals(void *a, void *b) {
+  struct __catmint_rtti *ra;
+  struct __catmint_rtti *rb;
+
+  if (a == b) {
+    return 1;
+  }
+  if (a == NULL || b == NULL) {
+    return 0;
+  }
+
+  ra = ((struct TObject *)a)->rtti;
+  rb = ((struct TObject *)b)->rtti;
+  if (ra != rb) {
+    return 0;
+  }
+  if (ra == RTTI(RString)) {
+    return M6_String_equal((struct TString *)a, (struct TString *)b);
+  }
+  if (ra == RTTI(RInteger)) {
+    return ((struct TInteger *)a)->value == ((struct TInteger *)b)->value;
+  }
+  return 0;
+}
+
+/* The float counterpart of __cm_intToString. %g keeps short values short
  * instead of printing a tail of zeroes. */
-struct TString *__lcpl_floatToString(double value) {
+struct TString *__cm_floatToString(double value) {
   char buffer[64];
 
   memset(buffer, 0, sizeof(buffer));
@@ -330,7 +506,7 @@ struct TString *__lcpl_floatToString(double value) {
 }
 
 /* What makes out(someInt) work: the generated code inserts this call. */
-struct TString *__lcpl_intToString(int value) {
+struct TString *__cm_intToString(int value) {
   char buffer[32];
 
   memset(buffer, 0, sizeof(buffer));

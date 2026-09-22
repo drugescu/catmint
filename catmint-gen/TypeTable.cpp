@@ -52,7 +52,9 @@ void TypeTable::addBuiltinTypes(Program *p) {
 }
 
 bool TypeTable::isBuiltinType(Type *t) const {
-  return t == getIntType() || t == getNullType() || t == getVoidType() || t == getFloatType() ||
+  const std::string &name = t->getName();
+  return name == strings::Int || name == strings::Null ||
+         name == strings::Void || name == strings::Float ||
          isBuiltinClass(t->getClass());
 }
 
@@ -143,11 +145,88 @@ void TypeTable::addBuiltinClasses(Program *p) {
       new Class(0, strings::String, strings::Object, builtinMethods));
   (void)createNewType(stringClass.get());
   p->addClass(std::move(stringClass));
+
+  builtinMethods.clear();
+  builtinMethodsParams.clear();
+
+  // ---------------------------------------------------------------------------
+  // Add built-in class - 'List'
+  //
+  // The one container the runtime provides: a growable array of object
+  // references. Declaration order is virtual table slot order and must match
+  // RList in runtime.c.
+  // ---------------------------------------------------------------------------
+
+  // 'len()' returning an 'Int'
+  builtinMethods.push_back(new Method(0, strings::Length, strings::Int, nullptr,
+                                      builtinMethodsParams));
+
+  // Method takes ownership of each Attribute it is given, so every method
+  // needs its own freshly allocated parameters. Reusing one vector across two
+  // methods would hand the same object to two owners.
+
+  // 'get(Int index)' returning an 'Object'
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "index", strings::Int));
+  builtinMethods.push_back(new Method(0, strings::Get, strings::Object, nullptr,
+                                      builtinMethodsParams));
+
+  // 'set(Int index, Object value)' returning the value
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "index", strings::Int));
+  builtinMethodsParams.push_back(new Attribute(0, "value", strings::Object));
+  builtinMethods.push_back(new Method(0, strings::Set, strings::Object, nullptr,
+                                      builtinMethodsParams));
+
+  // 'append(Object value)' returning the list
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "value", strings::Object));
+  builtinMethods.push_back(new Method(0, strings::Append, strings::List,
+                                      nullptr, builtinMethodsParams));
+
+  // 'slice(Int start, Int end)' returning a new 'List'
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "start", strings::Int));
+  builtinMethodsParams.push_back(new Attribute(0, "end", strings::Int));
+  builtinMethods.push_back(new Method(0, strings::Slice, strings::List, nullptr,
+                                      builtinMethodsParams));
+
+  std::unique_ptr<Class> listClass(
+      new Class(0, strings::List, strings::Object, builtinMethods));
+  (void)createNewType(listClass.get());
+  p->addClass(std::move(listClass));
+
+  builtinMethods.clear();
+  builtinMethodsParams.clear();
+
+  // ---------------------------------------------------------------------------
+  // Add built-in class - 'Integer', the box that lets an Int live in a List
+  // ---------------------------------------------------------------------------
+
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(new Method(0, strings::Get, strings::Int, nullptr,
+                                      builtinMethodsParams));
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "value", strings::Int));
+  builtinMethods.push_back(new Method(0, strings::Set, strings::Integer,
+                                      nullptr, builtinMethodsParams));
+
+  std::unique_ptr<Class> integerClass(
+      new Class(0, strings::Integer, strings::Object, builtinMethods));
+  (void)createNewType(integerClass.get());
+  p->addClass(std::move(integerClass));
 }
 
 bool TypeTable::isBuiltinClass(Class *c) const {
-  return c == getObjectType()->getClass() || c == getStringType()->getClass() ||
-         c == getIOType()->getClass();
+  if (!c) {
+    return false;
+  }
+  // Compare by name: a built-in's methods have no body, so missing one here
+  // sends it down the user-class path and the body-less methods are rejected.
+  const std::string &name = c->getName();
+  return name == strings::Object || name == strings::String ||
+         name == strings::Io || name == strings::List ||
+         name == strings::Integer;
 }
 
 Type *TypeTable::getType(const std::string &name) const {
@@ -232,6 +311,23 @@ Type *TypeTable::getCommonType(Type *T, Type *U) const {
     if (UN == strings::Int) return getFloatType();
   }
 
+  // null belongs to every reference type, so a branch returning null and one
+  // returning an object agree on the object's type rather than on nothing.
+  if (TN == strings::Null && isReferenceType(UN)) return U;
+  if (UN == strings::Null && isReferenceType(TN)) return T;
+
+  // Two classes meet at their nearest shared ancestor. Object is the root, so
+  // any two classes have one.
+  if (isReferenceType(TN) && isReferenceType(UN)) {
+    for (auto *c = getType(TN)->getClass(); c;) {
+      if (isDerivedFrom(UN, c->getName())) {
+        return getType(c->getName());
+      }
+      auto parent = parentTable.find(c);
+      c = parent == parentTable.end() ? nullptr : parent->second;
+    }
+  }
+
   return getVoidType();
 }
 
@@ -252,14 +348,45 @@ std::string TypeTable::getCommonTypeStr(std::string T, std::string U) const {
   if (T == strings::Float) {
     if (U == strings::Int) return strings::Float;
     // Printing a Float goes through the same conversion as printing an Int;
-    // the generator inserts __lcpl_floatToString.
+    // the generator inserts __cm_floatToString.
     if (U == strings::String) return strings::String;
   }
+
+  if (T == strings::Null && isReferenceType(U)) return U;
+  if (U == strings::Null && isReferenceType(T)) return T;
 
   return strings::Void;
 }
 
 // Careful here
+bool TypeTable::isDerivedFrom(const std::string &derived,
+                              const std::string &base) const {
+  if (derived == base) {
+    return true;
+  }
+  auto it = typeTable.find(derived);
+  if (it == typeTable.end()) {
+    return false;
+  }
+  for (Class *c = it->second->getClass(); c;) {
+    if (c->getName() == base) {
+      return true;
+    }
+    auto parent = parentTable.find(c);
+    c = parent == parentTable.end() ? nullptr : parent->second;
+  }
+  return false;
+}
+
+bool TypeTable::isReferenceType(const std::string &name) const {
+  if (name == strings::Int || name == strings::Float ||
+      name == strings::Void) {
+    return false;
+  }
+  auto it = typeTable.find(name);
+  return it != typeTable.end() && it->second->getClass() != nullptr;
+}
+
 bool TypeTable::isEqualOrImplicitlyConvertibleTo(Type *fromType, Type *toType) {
   
   // Cover case of void and void, though why this would happen beats me
@@ -269,11 +396,31 @@ bool TypeTable::isEqualOrImplicitlyConvertibleTo(Type *fromType, Type *toType) {
   
   if (getCommonTypeStr(fromType->getName(), toType->getName()) != strings::Void)
     return true;
-  else
-  {
-    return false;
+
+  // Null stands in for any object.
+  if (from == strings::Null && isReferenceType(to)) {
+    return true;
   }
-  
+
+  // An Int boxes into an Integer wherever object references are held, and
+  // unboxes on the way back out. This is what lets a List hold numbers in a
+  // language with no generics; the generator inserts the conversion.
+  if (from == strings::Int && isReferenceType(to)) {
+    return true;
+  }
+  if (isReferenceType(from) && to == strings::Int) {
+    return true;
+  }
+
+  // Up the hierarchy is free. Down it is allowed too, and checked at run time
+  // by the generated cast, so that a value taken out of an Object-typed
+  // container can be assigned to a variable of its real type without cast
+  // syntax.
+  if (isReferenceType(from) && isReferenceType(to)) {
+    return isDerivedFrom(from, to) || isDerivedFrom(to, from);
+  }
+
+  return false;
 }
 
 bool TypeTable::isEqualOrImplicitlyConvertibleToStr(std::string from, std::string to) {

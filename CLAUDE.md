@@ -150,7 +150,7 @@ are seeded to match the order already fixed in `runtime.ll`, so `Object` holds
 slots 0-2 and `IO` adds `input` and `out` at 3 and 4.
 
 Dispatch loads the function pointer from the receiver's vtable, after a
-`__lcpl_checkNull`. Static dispatch calls the implementation directly.
+`__cm_checkNull`. Static dispatch calls the implementation directly.
 
 Two details that are easy to trip over, both forced by the grammar:
 
@@ -177,6 +177,35 @@ means `Void`), and lists and dictionaries.
 
 `catmint-gen/ASTCodeGen.cpp.old` and `include/ASTCodeGen.h` are a superseded
 earlier attempt, not built and not included by anything.
+
+## Traps that have already cost time
+
+Each of these produced a crash or a silent miscompile during development.
+
+- **A built-in method's virtual table slot is fixed by `runtime.c`.** Its
+  declaration order in `TypeTable::addBuiltinClasses` *is* that slot order.
+  Append a new built-in method, never insert one: inserting renumbers the
+  slots after it and every already-compiled caller then calls the wrong
+  function, with no error anywhere.
+- **`Method` takes ownership of the `Attribute`s passed as its parameters.**
+  Reusing one `builtinMethodsParams` vector across two methods hands the same
+  object to two owners and double-frees it. Clear the vector and allocate
+  fresh parameters for every method.
+- **`TypeTable::isBuiltinClass` decides whether a class is checked as user
+  code.** A new built-in that is missing from it goes down the user path,
+  where its body-less methods are rejected with a confusing type error.
+- **`TypeTable::getType(TreeNode *)` returns a freshly allocated `Type` for
+  constants.** Compare types by `getName()`, never by pointer, or the
+  comparison silently fails for literals.
+- **`Builder.CreateGlobalString` takes the module from the current insert
+  block.** Class metadata is emitted with no insert point set, so the module
+  must be passed explicitly or it segfaults.
+- **Catching an exception by value slices it.** `main.cpp` did this and every
+  code generation error printed a useless generic message for years. Catch by
+  reference and exit non-zero.
+- **The grammar produces no `Assignment` node.** `x = expr` is always a
+  `LocalDefinition` with the type `auto`; the generator decides between
+  assignment and declaration by whether the name already resolves.
 
 ## Conventions
 

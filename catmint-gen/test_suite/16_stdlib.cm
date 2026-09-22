@@ -1,0 +1,35 @@
+using vector
+using dict
+
+class Main from IO
+  def main:
+    Vector v
+    v.push("a")
+    v.push("b")
+    v.push("c")
+    out("size ")
+    out(v.size())
+    out(" indexOf b = ")
+    out(v.indexOf("b"))
+    out("\n")
+
+    Vector r = v.reversed()
+    out("reversed first = ")
+    String f = r.get(0)
+    out(f)
+    out("\n")
+
+    Dict d
+    d.put("one", 1)
+    d.put("two", 2)
+    d.put("one", 11)
+    out("dict size ")
+    out(d.size())
+    out(" one = ")
+    Int one = d.get("one")
+    out(one)
+    out(" has three = ")
+    out(d.has("three"))
+    out("\n")
+  end
+end
