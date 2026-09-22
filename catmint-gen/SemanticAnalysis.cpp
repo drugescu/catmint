@@ -622,6 +622,58 @@ bool SemanticAnalysis::visit(WhileStatement *w) {
   return true;
 }
 
+bool SemanticAnalysis::visit(ForStatement *f) {
+  // `for <var> in <container>:` iterates either a count (an Int, giving
+  // 0..n-1) or a String (giving its characters, one-character Strings).
+  // There is no list type in the runtime yet, so nothing else can be iterated.
+  auto cont = f->getCont();
+  if (!cont) {
+    throw SemanticException("'for' without a container");
+  }
+  if (!visit(cont)) {
+    return false;
+  }
+
+  // Compare by name: getType(TreeNode *) hands back a freshly allocated Type
+  // for constants, so the pointers are not interchangeable.
+  auto contType = typeTable.getType(cont);
+  Type *elementType = nullptr;
+  if (contType->getName() == strings::Int) {
+    elementType = typeTable.getIntType();
+  } else if (contType->getName() == strings::String) {
+    elementType = typeTable.getStringType();
+  } else {
+    throw SemanticException("cannot iterate over a value of type '" +
+                            contType->getName() +
+                            "'; 'for' takes an Int count or a String");
+  }
+
+  SymbolTable::Scope forScope(symbolTable, "for");
+
+  auto iter = f->getIter();
+  if (auto sym = dynamic_cast<Symbol *>(iter)) {
+    // The loop variable is just a name in the tree; give it a definition so
+    // that references to it inside the body resolve like any other local.
+    std::vector<std::string> names{sym->getName()};
+    std::unique_ptr<LocalDefinition> def(new LocalDefinition(
+        f->getLineNumber(), names, elementType->getName()));
+    symbolTable.insert(def.get());
+    typeTable.setType(def.get(), elementType);
+    typeTable.setType(sym, elementType);
+    definitionsMap[sym] = def.get();
+    syntheticDefinitions.push_back(std::move(def));
+  } else if (!visit(iter)) {
+    return false;
+  }
+
+  if (!visit(f->getBody())) {
+    return false;
+  }
+
+  typeTable.setType(f, typeTable.getVoidType());
+  return true;
+}
+
 bool SemanticAnalysis::visit(ReturnExpression *r) {
   // A return carries the type of the expression it returns, so that the
   // enclosing block -- and through it the method's return-type check -- sees

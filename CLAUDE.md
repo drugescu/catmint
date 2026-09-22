@@ -131,10 +131,13 @@ Two details that are easy to trip over, both forced by the grammar:
   resolves, and as a declaration otherwise. Without that, `sum = sum + i`
   inside a loop body would bind a fresh `sum` that dies with the body's scope.
 
-Not yet supported: `for` and slice vectors (they parse but have no
-deserializer, so they abort in `ASTSerialization.cpp`), printing a `Float`,
-return-type inference (`auto` on a method means `Void`), and lists and
-dictionaries.
+`for v in n:` counts from `0` to `n - 1`; `for c in str:` walks a string's
+characters as one-character strings. Both lower to the same counted loop.
+There is no list type in the runtime, so nothing else can be iterated.
+
+Not yet supported: slice vectors (they parse but have no deserializer, so they
+abort in `ASTSerialization.cpp`), printing a `Float`, return-type inference
+(`auto` on a method means `Void`), and lists and dictionaries.
 
 `catmint-gen/ASTCodeGen.cpp.old` and `include/ASTCodeGen.h` are a superseded
 earlier attempt, not built and not included by anything.

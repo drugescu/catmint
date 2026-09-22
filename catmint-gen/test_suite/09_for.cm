@@ -1,0 +1,14 @@
+class Main from IO
+  def main:
+    Int total = 0
+    for i in 5:
+      out("i = ")
+      out(i)
+      out("\n")
+      total = total + i
+    end
+    out("total = ")
+    out(total)
+    out("\n")
+  end
+end

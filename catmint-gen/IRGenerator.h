@@ -173,6 +173,7 @@ private:
   llvm::Value *emitUnaryOperator(UnaryOperator *UO);
   llvm::Value *emitIf(IfStatement *If);
   llvm::Value *emitWhile(WhileStatement *W);
+  llvm::Value *emitFor(ForStatement *F);
   llvm::Value *emitReturn(ReturnExpression *R);
   llvm::Value *emitDispatch(Dispatch *D);
   llvm::Value *emitStaticDispatch(StaticDispatch *SD);

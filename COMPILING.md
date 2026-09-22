@@ -126,6 +126,10 @@ Things worth knowing, because they are not obvious:
   not implemented, and `auto` is currently just a spelling of `Void`.
 - **`x = expr` on a name that already exists assigns to it**; on a new name it
   declares it. The grammar produces the same node for both.
+- **`for v in n:` counts**, giving `v` the values `0` to `n - 1`, and
+  **`for c in someString:`** walks the characters, giving `c` a one-character
+  `String` each time. There is no list type in the runtime, so nothing else can
+  be iterated yet. The loop variable is scoped to the loop.
 
 Built-in methods, from `Object`, `IO` and `String` respectively: `abort()`,
 `type()`, `copy()`, `input()`, `out(String)`, `len()`, `toInt()`.
@@ -182,8 +186,8 @@ catmint spellings, so `type`, `len` and `input` map explicitly to
 
 ## 8. What is still missing
 
-- `for` loops and slice vectors parse but are not deserialized, so a program
-  using them aborts in `ASTSerialization.cpp`.
+- Slice vectors (`a[1:2]`) parse but are not deserialized, so a program using
+  them aborts in `ASTSerialization.cpp`.
 - `Float` arithmetic is generated, but the runtime cannot print a float.
 - Return-type inference, as described above.
 - Lists and dictionaries parse but have no representation in the runtime.

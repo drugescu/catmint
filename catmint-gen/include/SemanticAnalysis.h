@@ -50,6 +50,7 @@ private:
   bool visit(WhileStatement *w) override;
   bool visit(LocalDefinition *local) override;
   bool visit(ReturnExpression *r) override;
+  bool visit(ForStatement *f) override;
 
 public:
   TypeTable typeTable;
@@ -68,6 +69,10 @@ public:
 
 private:
   Program *program;
+  /// A `for` binds its loop variable, which has no definition node of its own
+  /// in the tree. The synthesised definitions are owned here so that they
+  /// outlive the symbol table entries pointing at them.
+  std::vector<std::unique_ptr<LocalDefinition>> syntheticDefinitions;
 
   void checkMainClassAndMethod();
   void checkInheritanceGraph();

@@ -624,6 +624,7 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
     return T;
   }
   if (dynamic_cast<WhileStatement *>(E))        return strings::Void;
+  if (dynamic_cast<ForStatement *>(E))          return strings::Void;
 
   if (auto *D = dynamic_cast<Dispatch *>(E)) {
     std::string RecvType = D->getObject() ? staticTypeOf(D->getObject())
@@ -685,6 +686,7 @@ llvm::Value *IRGenerator::emit(Expression *E) {
   if (auto *N = dynamic_cast<UnaryOperator *>(E))    return emitUnaryOperator(N);
   if (auto *N = dynamic_cast<IfStatement *>(E))      return emitIf(N);
   if (auto *N = dynamic_cast<WhileStatement *>(E))   return emitWhile(N);
+  if (auto *N = dynamic_cast<ForStatement *>(E))     return emitFor(N);
   if (auto *N = dynamic_cast<ReturnExpression *>(E)) return emitReturn(N);
   if (auto *N = dynamic_cast<StaticDispatch *>(E))   return emitStaticDispatch(N);
   if (auto *N = dynamic_cast<Dispatch *>(E))         return emitDispatch(N);
@@ -1081,6 +1083,91 @@ llvm::Value *IRGenerator::emitWhile(WhileStatement *W) {
   if (!blockTerminated())
     Builder.CreateBr(CondBB);
 
+  Builder.SetInsertPoint(EndBB);
+  return nullptr;
+}
+
+/// `for <var> in <container>:` over an Int count (0..n-1) or over a String
+/// (each character as a one-character String). Both lower to the same counted
+/// loop; only what gets stored into the loop variable differs.
+llvm::Value *IRGenerator::emitFor(ForStatement *F) {
+  auto *IterSym = dynamic_cast<Symbol *>(F->getIter());
+  if (!IterSym)
+    fail(F->getLineNumber(),
+         "the loop variable of a 'for' must be a plain name");
+
+  const std::string ContType = staticTypeOf(F->getCont());
+  const bool OverString = (ContType == strings::String);
+  if (!OverString && ContType != strings::Int)
+    fail(F->getLineNumber(), "cannot iterate over a value of type '" +
+                                 ContType + "'; 'for' takes an Int or a String");
+
+  llvm::Value *Cont = emit(F->getCont());
+  if (!Cont)
+    return nullptr;
+
+  auto *I32 = llvm::Type::getInt32Ty(Context);
+  auto Ptr = llvm::PointerType::getUnqual(Context);
+
+  // The bound is the count itself, or the string's length.
+  llvm::Value *Bound = Cont;
+  llvm::Value *StrSlot = nullptr;
+  if (OverString) {
+    StrSlot = createEntryAlloca(Ptr, "for.str");
+    Builder.CreateStore(Cont, StrSlot);
+    auto StrLen = Module.getOrInsertFunction(
+        "M6_String_length", llvm::FunctionType::get(I32, {Ptr}, false));
+    Builder.CreateCall(Runtime.checkNull(), {Cont});
+    Bound = Builder.CreateCall(StrLen, {Cont}, "for.len");
+  }
+
+  auto *BoundSlot = createEntryAlloca(I32, "for.bound");
+  Builder.CreateStore(Bound, BoundSlot);
+  auto *IdxSlot = createEntryAlloca(I32, "for.idx");
+  Builder.CreateStore(Builder.getInt32(0), IdxSlot);
+
+  // The loop variable lives in its own scope, so it does not leak out and does
+  // not collide with a variable of the same name outside the loop.
+  Scopes.emplace_back();
+  const std::string ElemType = OverString ? strings::String : strings::Int;
+  auto *VarSlot = createEntryAlloca(lowerType(ElemType), IterSym->getName());
+  Scopes.back()[IterSym->getName()] = {VarSlot, ElemType};
+
+  auto *CondBB = llvm::BasicBlock::Create(Context, "for.cond", CurrentFunction);
+  auto *BodyBB = llvm::BasicBlock::Create(Context, "for.body", CurrentFunction);
+  auto *StepBB = llvm::BasicBlock::Create(Context, "for.step", CurrentFunction);
+  auto *EndBB = llvm::BasicBlock::Create(Context, "for.end", CurrentFunction);
+
+  Builder.CreateBr(CondBB);
+
+  Builder.SetInsertPoint(CondBB);
+  auto *Idx = Builder.CreateLoad(I32, IdxSlot, "for.i");
+  auto *Limit = Builder.CreateLoad(I32, BoundSlot, "for.n");
+  Builder.CreateCondBr(Builder.CreateICmpSLT(Idx, Limit, "for.more"), BodyBB,
+                       EndBB);
+
+  Builder.SetInsertPoint(BodyBB);
+  if (OverString) {
+    // substring is a half-open range, so one character at i is [i, i+1).
+    auto *Str = Builder.CreateLoad(Ptr, StrSlot, "for.s");
+    auto *Next = Builder.CreateAdd(Idx, Builder.getInt32(1), "for.i1");
+    auto *Ch = Builder.CreateCall(Runtime.stringSubstring(), {Str, Idx, Next},
+                                  "for.ch");
+    Builder.CreateStore(Ch, VarSlot);
+  } else {
+    Builder.CreateStore(Idx, VarSlot);
+  }
+  (void)emit(F->getBody());
+  if (!blockTerminated())
+    Builder.CreateBr(StepBB);
+
+  Builder.SetInsertPoint(StepBB);
+  auto *Cur = Builder.CreateLoad(I32, IdxSlot, "for.i.cur");
+  Builder.CreateStore(Builder.CreateAdd(Cur, Builder.getInt32(1), "for.i.next"),
+                      IdxSlot);
+  Builder.CreateBr(CondBB);
+
+  Scopes.pop_back();
   Builder.SetInsertPoint(EndBB);
   return nullptr;
 }

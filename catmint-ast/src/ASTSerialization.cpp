@@ -982,12 +982,12 @@ ASTDeserializer::parseExpression(rapidjson::Value &tree) {
     return parseAssignment(tree);
   } else if (nodeType == keys::ReturnNodeType) {
     return parseReturn(tree);
-  } /*else if (nodeType == keys::ForStatementNodeType) {
+  } else if (nodeType == keys::ForStatementNodeType) {
     return parseForStatement(tree);
-  } else if (nodeType == keys::SlicevectorNodeType) {
+  } /*else if (nodeType == keys::SlicevectorNodeType) {
     return parseSlicevector(tree);
   } */
-  // Add for, slicevector
+  // Add slicevector
 
   assert(false && "Unknown expression kind, or unimplemented (for, return, slicevector)");
   return nullptr;
@@ -1376,6 +1376,32 @@ ASTDeserializer::parseIfStatement(rapidjson::Value &tree) {
 
   return createNode<IfStatement>(tree, parseLineNumber(tree), std::move(cond),
                                  std::move(then), std::move(elseOrNull));
+}
+
+std::unique_ptr<ForStatement>
+ASTDeserializer::parseForStatement(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::ForStatementNodeType &&
+         "Expected for statement object");
+
+  assert(tree.HasMember(keys::Iterator) && "For statement without iterator");
+  assert(tree[keys::Iterator].IsObject() && "Invalid iterator for for statement");
+  auto iter = parseExpression(tree[keys::Iterator]);
+  assert(iter && "Expected non-null expression node");
+
+  assert(tree.HasMember(keys::Container) && "For statement without container");
+  assert(tree[keys::Container].IsObject() &&
+         "Invalid container for for statement");
+  auto cont = parseExpression(tree[keys::Container]);
+  assert(cont && "Expected non-null expression node");
+
+  assert(tree.HasMember(keys::Body) && "For statement without body");
+  assert(tree[keys::Body].IsObject() && "Invalid body for for statement");
+  auto body = parseExpression(tree[keys::Body]);
+  assert(body && "Expected non-null expression node");
+
+  return createNode<ForStatement>(tree, parseLineNumber(tree), std::move(iter),
+                                  std::move(cont), std::move(body));
 }
 
 std::unique_ptr<ReturnExpression>
