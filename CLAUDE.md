@@ -118,17 +118,22 @@ from the repository root; `COMPILING.md` documents the four underlying stages.
 
 ## The runtime, and why it needs a build step
 
-`catmint-gen/runtime.ll` is the object model and I/O library: `TObject`,
+`catmint-gen/runtime.c` is the object model and I/O library: `TObject`,
 `TString`, `TIO`, the `__catmint_rtti` type-info struct, `__catmint_new`, and
-the built-in methods. It was produced by clang from a `catmint_runtime.c` that
-**is not in this repository** — the `.ll` is the only copy, so changing the
-runtime means hand-editing LLVM IR.
+the built-in methods. `build-runtime.sh` compiles it for the host into
+`runtime.host.ll`, which is what programs link against.
 
-It is also hardcoded to x86_64 Linux. `make-host-runtime.sh` derives a portable
-`runtime.host.ll` by stripping the target triple, datalayout and per-function
-x86 `target-cpu`/`target-features` attributes, and rewriting the glibc-only
-`__isoc99_scanf` to `scanf`. Always link against the generated `runtime.host.ll`,
-never `runtime.ll` directly.
+The original `runtime.ll` was committed without its source and built for
+x86_64 Linux. `runtime.c` was reconstructed from it and verified to be a
+drop-in replacement: identical function and global sets, and the whole
+codegen suite passes against either. The old `.ll` and the
+`make-host-runtime.sh` that patched its target triple and glibc-only
+`__isoc99_scanf` are kept as a fallback for a machine without a C compiler,
+and `build-runtime.sh` picks whichever is available.
+
+The layouts and the virtual table slot order in `runtime.c` are fixed by
+agreement with `IRGenerator.cpp`; changing one without the other silently
+miscompiles.
 
 ## State of code generation
 

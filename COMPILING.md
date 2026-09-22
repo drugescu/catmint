@@ -70,19 +70,19 @@ cd /tmp && /path/to/catmint-gen/bin/catmint-gen tour.ast tour.sem
 
 # 3. Link with the runtime, which supplies the object model and I/O.
 cd /path/to/catmint-gen
-./make-host-runtime.sh                              # runtime.ll -> runtime.host.ll
+./build-runtime.sh                                  # runtime.c -> runtime.host.ll
 llvm-link /tmp/tour.ast.ll runtime.host.ll -o /tmp/tour.bc
 
 # 4. Native executable.
 clang /tmp/tour.bc -o /tmp/tour && /tmp/tour
 ```
 
-Step 3 needs explaining. `runtime.ll` is checked in as LLVM IR compiled for
-x86_64 Linux, and the C source it came from is not in the repository.
-`make-host-runtime.sh` derives a portable copy by stripping the target triple,
-the datalayout and the per-function x86 CPU attributes, and by rewriting the
-glibc-only `__isoc99_scanf` to plain `scanf`. Always link the generated
-`runtime.host.ll`, never `runtime.ll` directly.
+Step 3 needs explaining. The runtime is `catmint-gen/runtime.c`, and
+`build-runtime.sh` compiles it for whatever host you are on. The repository
+also still carries the original `runtime.ll`, which was committed without its
+source and built for x86_64 Linux; `runtime.c` was reconstructed from it and
+verified to behave identically. `build-runtime.sh` uses the C source when it
+is there and falls back to patching the old IR when it is not.
 
 ## 5. The language, as far as the compiler currently supports it
 

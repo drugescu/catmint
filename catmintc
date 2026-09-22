@@ -121,8 +121,8 @@ else
 fi
 OBJECTS="$OBJECTS $WORK/$BASE.ast.ll"
 
-# Link against the runtime, made portable for this host.
-"$GENDIR/make-host-runtime.sh" "$GENDIR/runtime.ll" "$WORK/runtime.host.ll" >/dev/null
+# Link against the runtime, compiled for this host from runtime.c.
+"$GENDIR/build-runtime.sh" "$WORK/runtime.host.ll"
 # shellcheck disable=SC2086
 "$LLVM_LINK" $OBJECTS "$WORK/runtime.host.ll" -o "$WORK/$BASE.bc"
 

@@ -24,7 +24,7 @@ ir="$base.ast.ll"
 bc="$base.bc"
 
 # The committed runtime.ll is x86_64 Linux; derive a host-portable copy.
-./make-host-runtime.sh runtime.ll runtime.host.ll >/dev/null
+./build-runtime.sh runtime.host.ll
 
 echo
 echo "Linking $ir with the runtime..."

@@ -17,7 +17,7 @@ GREEN='\033[1;32m'; RED='\033[1;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-./make-host-runtime.sh runtime.ll "$WORK/runtime.host.ll" >/dev/null
+./build-runtime.sh "$WORK/runtime.host.ll"
 
 tests=0; errors=0; failed=""
 for file in ${*:-test_suite/*.cm}; do
