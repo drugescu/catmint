@@ -38,6 +38,29 @@
 	// module in a program would define one.
 	bool gCreateMain = true;
 
+	// The namespace the text being parsed belongs to, set by the #namespace
+	// directives the preprocessor emits around an aliased module. Empty means
+	// the global namespace.
+	std::string gCurrentNamespace;
+
+	// Inside a namespace, an unqualified class name means one of that module's
+	// own classes. The built-in and primitive names are the exception: they are
+	// global, and there is a fixed list of them.
+	static bool isGlobalTypeName(const std::string &name) {
+		return name == "Int" || name == "Float" || name == "Void" ||
+		       name == "Null" || name == "Object" || name == "String" ||
+		       name == "IO" || name == "List" || name == "Integer" ||
+		       name == "auto" || name.rfind("_uuid_generic_", 0) == 0;
+	}
+
+	static std::string qualifyTypeName(const std::string &name) {
+		if (gCurrentNamespace.empty() || isGlobalTypeName(name) ||
+		    name.find("::") != std::string::npos) {
+			return name;
+		}
+		return gCurrentNamespace + "::" + name;
+	}
+
 	int  yylex ();
 	void yyerror(const char *error)
 	{
@@ -132,7 +155,7 @@ expression
 %type <feature> attribute method
 %type <catmintClass> catmint_class
 %type <catmintClasses> catmint_classes
-%type <stringValue> 		inherits_class
+%type <stringValue> 		inherits_class type_name
 
 // Precedence increases downward
 //%right '[' ']'
@@ -180,23 +203,24 @@ catmint_classes : catmint_class {
 
 // Class definition
 catmint_class : KW_CLASS IDENTIFIER features KW_END {
-			$$ = new catmint::Class(@1.first_line, *$2, "", *$3);
+			// A class declared inside a namespaced module carries that namespace.
+			$$ = new catmint::Class(@1.first_line, qualifyTypeName(*$2), "", *$3);
 		}
 		// Inherits from other classes
 		| KW_CLASS IDENTIFIER inherits_class features KW_END {
-		  $$ = new catmint::Class(@1.first_line, *$2, *$3, *$4);
+		  $$ = new catmint::Class(@1.first_line, qualifyTypeName(*$2), *$3, *$4);
 
 		  delete $2; delete $3; delete $4;
 		}
 		// Inherits from other classes but is empty
 		| KW_CLASS IDENTIFIER inherits_class KW_END {
-		  $$ = new catmint::Class(@1.first_line, *$2, *$3, std::vector<catmint::Feature*>());
+		  $$ = new catmint::Class(@1.first_line, qualifyTypeName(*$2), *$3, std::vector<catmint::Feature*>());
 
 		  delete $2; delete $3;
 		}
 		// Empty class
 		| KW_CLASS IDENTIFIER KW_END {
-			$$ = new catmint::Class(@1.first_line, *$2, "", std::vector<catmint::Feature*>());
+			$$ = new catmint::Class(@1.first_line, qualifyTypeName(*$2), "", std::vector<catmint::Feature*>());
 
 			delete $2;
 		}
@@ -207,7 +231,7 @@ inherits_class
 		// no inheritance (the default parent Object is not inserted in AST)
 		$$ = new std::string("");
 	}
-	| KW_FROM IDENTIFIER {
+	| KW_FROM type_name {
 		// found parent class
 		$$ = $2;
 	}
@@ -245,22 +269,22 @@ attribute_definitions : attribute {
 	}
 	;
 
-method_arguments : IDENTIFIER IDENTIFIER {
+method_arguments : type_name IDENTIFIER {
 		$$ = new std::vector<catmint::Feature*>();
 		auto attrib = new catmint::Attribute(@1.first_line, *$2, *$1);
 		$$->push_back(attrib);
 	}
-	| attribute_definitions ',' IDENTIFIER IDENTIFIER {
+	| attribute_definitions ',' type_name IDENTIFIER {
 		$$ = $1;
 		auto attrib = new catmint::Attribute(@1.first_line, *$4, *$3);
 		$$->push_back(attrib);
 	}
 	;
 
-attribute : IDENTIFIER IDENTIFIER {
+attribute : type_name IDENTIFIER {
 		$$ = new catmint::Attribute(@1.first_line, *$2, *$1);
 	}
-	| IDENTIFIER IDENTIFIER OP_ATTRIB value_expression {
+	| type_name IDENTIFIER OP_ATTRIB value_expression {
 		// initialized attribute
 		$$ = new catmint::Attribute(@1.first_line, *$2, *$1, Expression($4));
 
@@ -294,7 +318,7 @@ method
 	}
 	//| KW_DEF IDENTIFIER IDENTIFIER OP_COLON formals block KW_END {
 	
-	| KW_DEF IDENTIFIER IDENTIFIER OP_COLON block KW_END {
+	| KW_DEF type_name IDENTIFIER OP_COLON block KW_END {
     auto& name  	   = *$3;
     //auto& params 	   = *$5;
 		auto params 	   = new std::vector<catmint::Attribute*>();
@@ -310,7 +334,7 @@ method
 
 		delete $2; delete $3; //delete $5;
 	}
-	| KW_DEF IDENTIFIER IDENTIFIER OP_OPAREN method_arguments OP_CPAREN OP_COLON block KW_END {
+	| KW_DEF type_name IDENTIFIER OP_OPAREN method_arguments OP_CPAREN OP_COLON block KW_END {
 
     auto& name  	   = *$3;
 		auto& returnType = *$2;
@@ -354,7 +378,7 @@ local
 local_expr
   :
   // Int a
-  IDENTIFIER IDENTIFIER {
+  type_name IDENTIFIER {
 	  std::cout << "local: ID ID\n";
 	  fflush(stdout);
     auto ld_name = new std::vector<std::string>();
@@ -365,7 +389,7 @@ local_expr
 	}
 	|
 	// Int a, b, c
-	IDENTIFIER IDENTIFIER id_list {
+	type_name IDENTIFIER id_list {
 	  std::cout << "local: ID ID id_list\n";
 	  fflush(stdout);
     auto ld_name = new std::vector<std::string>();
@@ -379,7 +403,7 @@ local_expr
 
 	}
 	// Int a = 3
-	| IDENTIFIER IDENTIFIER OP_ATTRIB value_expression {
+	| type_name IDENTIFIER OP_ATTRIB value_expression {
 	  std::cout << "local: ID ID = value_expression\n";
 	  fflush(stdout);
 		// initialized attribute
@@ -463,6 +487,18 @@ local_expr
       $$ = new catmint::LocalDefinition(@1.first_line, *ld_name, ld_type);
 	}
 	;
+
+// A type name. A qualified one such as 'm::Vector' arrives as a single
+// IDENTIFIER: the lexer joins it, because letting the grammar see
+// IDENTIFIER '::' IDENTIFIER here is ambiguous with static dispatch
+// ('Program::run.execute(...)'), which starts the same way. An unqualified
+// name inside a namespaced module is qualified with that namespace.
+type_name
+  : IDENTIFIER {
+      $$ = new std::string(qualifyTypeName(*$1));
+      delete $1;
+    }
+  ;
 
 id_list 
 : ',' IDENTIFIER {
@@ -688,8 +724,23 @@ dispatch_expression
 		auto& name = *$3;
 		auto& args = *$5;
 
-		// dispatch using object		
-		$$ = new catmint::Dispatch(@1.first_line, name, Expression(obj), args);
+		// 'A::B.m(...)' is static dispatch. The lexer joins 'A::B' into one
+		// identifier so that a qualified type name can be written wherever a
+		// type is named, so split it apart again here.
+		auto sym = dynamic_cast<catmint::Symbol*>(obj);
+		auto sep = sym ? sym->getName().find("::") : std::string::npos;
+		if (sep != std::string::npos) {
+			auto full     = sym->getName();
+			auto objName  = full.substr(0, sep);
+			auto typeName = full.substr(sep + 2);
+			delete obj;
+			$$ = new catmint::StaticDispatch(@1.first_line,
+					Expression(new catmint::Symbol(@1.first_line, objName)),
+					typeName, name, args);
+		} else {
+			// dispatch using object
+			$$ = new catmint::Dispatch(@1.first_line, name, Expression(obj), args);
+		}
 
 		delete $3; delete $5;						
 	}
@@ -968,6 +1019,8 @@ void printUsage() {
             << std::endl;
   std::cout << "  --module     compile a .cmm library: no Main is synthesised"
             << std::endl;
+  std::cout << "  --namespace <n>  declare this file's classes in namespace n"
+            << std::endl;
 }
 
 // ----------------------------------------------------------------------------
@@ -1004,14 +1057,25 @@ std::string directoryOf(const std::string &path) {
   return slash == std::string::npos ? std::string(".") : path.substr(0, slash);
 }
 
-/// The module name on a `using` line, or an empty string if this is not one.
-std::string moduleNameOn(const std::string &line) {
-  static const std::regex usingLine(R"(^[ \t]*using[ \t]+([A-Za-z_][A-Za-z_0-9]*)[ \t\r]*$)");
+/// The module named on a `using` line, and the namespace alias if the line
+/// says `using <module> as <alias>`. Returns an empty name when the line is
+/// not a using directive.
+struct UsingDirective {
+  std::string module;
+  std::string alias;
+};
+
+UsingDirective usingDirectiveOn(const std::string &line) {
+  static const std::regex usingLine(
+      R"(^[ \t]*using[ \t]+([A-Za-z_][A-Za-z_0-9]*)([ \t]+as[ \t]+([A-Za-z_][A-Za-z_0-9]*))?[ \t\r]*$)");
   std::smatch match;
+  UsingDirective result;
   if (!std::regex_match(line, match, usingLine)) {
-    return std::string();
+    return result;
   }
-  return match[1].str();
+  result.module = match[1].str();
+  result.alias = match[3].matched ? match[3].str() : std::string();
+  return result;
 }
 
 /// Search <dir of the including file>, then every -I directory, then the
@@ -1039,12 +1103,20 @@ void emitLineDirective(std::ostringstream &out, int line,
   out << "#line " << line << " \"" << file << "\"\n";
 }
 
+/// Tells the parser which namespace the following text belongs to. An empty
+/// name means the global namespace.
+void emitNamespaceDirective(std::ostringstream &out, const std::string &ns) {
+  out << "#namespace " << (ns.empty() ? "-" : ns) << "\n";
+}
+
 bool expandFile(const std::string &path, std::ostringstream &out,
-                std::vector<std::string> &includeStack);
+                std::vector<std::string> &includeStack,
+                const std::string &ns = std::string());
 
 bool expandModule(const std::string &name, const std::string &fromDir,
                   std::ostringstream &out,
-                  std::vector<std::string> &includeStack) {
+                  std::vector<std::string> &includeStack,
+                  const std::string &alias, const std::string &enclosingNs) {
   std::string path = findModule(name, fromDir);
   if (path.empty()) {
     std::cout << "[ ERROR ] Could not find module << " << name << ".cmm >>"
@@ -1074,11 +1146,18 @@ bool expandModule(const std::string &name, const std::string &fromDir,
   std::cout << "[ LOG ] Opening and adding module << " << path << " >>"
             << std::endl;
   gIncludedModules.insert(key);
-  return expandFile(path, out, includeStack);
+
+  // `using math as m` puts everything the module declares into namespace m.
+  // Without an alias the module's classes are global, as before.
+  emitNamespaceDirective(out, alias);
+  bool ok = expandFile(path, out, includeStack, alias);
+  emitNamespaceDirective(out, enclosingNs);
+  return ok;
 }
 
 bool expandFile(const std::string &path, std::ostringstream &out,
-                std::vector<std::string> &includeStack) {
+                std::vector<std::string> &includeStack,
+                const std::string &ns) {
   std::ifstream in(path);
   if (!in.good()) {
     std::cout << "[ ERROR ] Could not open << " << path << " >>" << std::endl;
@@ -1095,13 +1174,15 @@ bool expandFile(const std::string &path, std::ostringstream &out,
   while (std::getline(in, line)) {
     ++lineNumber;
 
-    std::string moduleName = moduleNameOn(line);
-    if (moduleName.empty()) {
+    UsingDirective directive = usingDirectiveOn(line);
+    if (directive.module.empty()) {
       out << line << "\n";
       continue;
     }
 
-    std::cout << "Found module inclusion: using " << moduleName << std::endl;
+    std::cout << "Found module inclusion: using " << directive.module
+              << (directive.alias.empty() ? "" : " as " + directive.alias)
+              << std::endl;
     if (!gExpandModules) {
       // Separate compilation: record nothing here and splice nothing in. The
       // driver compiles the module on its own and hands its interface to this
@@ -1109,7 +1190,8 @@ bool expandFile(const std::string &path, std::ostringstream &out,
       out << "\n";
       continue;
     }
-    if (!expandModule(moduleName, dir, out, includeStack)) {
+    if (!expandModule(directive.module, dir, out, includeStack, directive.alias,
+                      ns)) {
       includeStack.pop_back();
       return false;
     }
@@ -1150,6 +1232,12 @@ int main(int argc, char** argv) {
       gExpandModules = false;
     } else if (arg == "--module") {
       gCreateMain = false;
+    } else if (arg == "--namespace") {
+      if (i + 1 >= argc) {
+        std::cout << "[ ERROR ] --namespace needs a name" << std::endl;
+        return 1;
+      }
+      gCurrentNamespace = argv[++i];
     } else {
       positional.push_back(arg);
     }
@@ -1165,7 +1253,8 @@ int main(int argc, char** argv) {
 
   std::ostringstream expanded;
   std::vector<std::string> includeStack;
-  if (!expandFile(positional[0], expanded, includeStack)) {
+  const std::string topNamespace = gCurrentNamespace;
+  if (!expandFile(positional[0], expanded, includeStack, topNamespace)) {
     return 1;
   }
 

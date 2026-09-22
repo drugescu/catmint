@@ -5,6 +5,7 @@
 #include <string>
 
 extern std::string gCurrentFile;
+extern std::string gCurrentNamespace;
 
 void countColumns();
 
@@ -24,6 +25,17 @@ static int gColumnNumber = 1;
   /* A #line directive from the module preprocessor: re-point the lexer at the
      original file and line so diagnostics are reported against what the
      programmer wrote, not the spliced text. */
+  /* Which namespace the following text declares into. '-' means global. */
+^[ \t]*"#namespace"[ \t]+[A-Za-z_0-9-]+[ \t]*\r?\n {
+	char directiveNs[256] = {0};
+	if (sscanf(yytext, " #namespace %255s", directiveNs) == 1) {
+		gCurrentNamespace = (directiveNs[0] == '-' && directiveNs[1] == '\0')
+		                        ? std::string()
+		                        : std::string(directiveNs);
+	}
+	gColumnNumber = 1;
+}
+
 ^[ \t]*"#line"[ \t]+[0-9]+[ \t]+\"[^\"]*\"[ \t]*\r?\n {
 	int directiveLine = 0;
 	char directiveFile[1024] = {0};
@@ -79,6 +91,17 @@ static int gColumnNumber = 1;
 
 "#"[^\r\n]*	{}
 
+
+  /* A namespace-qualified name, 'm::Vector', is lexed as a single identifier
+     so that the grammar can use it wherever a type is named without becoming
+     ambiguous with static dispatch. When it turns out to be static dispatch
+     after all ('Program::run.execute(...)'), the dispatch rule splits it back
+     apart. */
+[a-zA-Z_]([0-9a-zA-Z_])*"::"[a-zA-Z_]([0-9a-zA-Z_])* {
+	countColumns();
+	yylval.stringValue = new std::string(yytext);
+	return IDENTIFIER;
+}
 
 [a-zA-Z_]([0-9a-zA-Z_])* {
 	countColumns();

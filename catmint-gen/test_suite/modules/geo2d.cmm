@@ -1,0 +1,15 @@
+# Two modules that both define a Point. Without namespaces this is the
+# collision the compiler now rejects; imported under an alias each one lives
+# in its own namespace.
+class Point from IO
+  Int x = 1
+  Int y = 2
+
+  def Void show:
+    out("2d(")
+    out(x)
+    out(",")
+    out(y)
+    out(")")
+  end
+end

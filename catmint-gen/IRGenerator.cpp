@@ -97,10 +97,22 @@ void IRGenerator::fail(int Line, const std::string &Message) {
 // Name mangling
 // ---------------------------------------------------------------------------
 
+/// '::' is not valid in an unquoted LLVM symbol, so a namespaced class
+/// contributes '$' instead. '$' cannot appear in a catmint identifier, so no
+/// global class can collide with a namespaced one.
+static std::string symbolName(const std::string &ClassName) {
+  std::string result = ClassName;
+  for (size_t at = result.find("::"); at != std::string::npos;
+       at = result.find("::", at + 1)) {
+    result.replace(at, 2, "$");
+  }
+  return result;
+}
+
 std::string IRGenerator::mangle(const std::string &ClassName,
                                 const std::string &MethodName) {
-  return "M" + std::to_string(ClassName.size()) + "_" + ClassName + "_" +
-         MethodName;
+  const std::string symbol = symbolName(ClassName);
+  return "M" + std::to_string(symbol.size()) + "_" + symbol + "_" + MethodName;
 }
 
 /// Built-in methods live in runtime.ll under names that predate the catmint
@@ -361,7 +373,7 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
       // List and Integer are defined in runtime.c like the rest, so their
       // metadata is simply referenced here.
       CI->RTTI = llvm::cast<llvm::GlobalVariable>(
-          Module.getOrInsertGlobal("R" + Name, Runtime.rttiType()));
+          Module.getOrInsertGlobal("R" + symbolName(Name), Runtime.rttiType()));
     return;
   }
 
@@ -373,9 +385,9 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
     // they are only referenced. An external declaration carries no body, so
     // the vtable length does not matter to the linker.
     CI->NameGlobal = llvm::cast<llvm::GlobalVariable>(
-        Module.getOrInsertGlobal("N" + Name, Runtime.stringType()));
+        Module.getOrInsertGlobal("N" + symbolName(Name), Runtime.stringType()));
     CI->RTTI = llvm::cast<llvm::GlobalVariable>(
-        Module.getOrInsertGlobal("R" + Name, Runtime.rttiType()));
+        Module.getOrInsertGlobal("R" + symbolName(Name), Runtime.rttiType()));
     return;
   }
 
@@ -389,7 +401,7 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
        llvm::cast<llvm::Constant>(Chars)});
   CI->NameGlobal = new llvm::GlobalVariable(
       Module, Runtime.stringType(), /*isConstant=*/false,
-      llvm::GlobalValue::ExternalLinkage, NameInit, "N" + Name);
+      llvm::GlobalValue::ExternalLinkage, NameInit, "N" + symbolName(Name));
 
   // The virtual table, as function pointers in slot order.
   std::vector<llvm::Constant *> Slots;
@@ -415,7 +427,7 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
                llvm::ConstantArray::get(VTableTy, Slots)});
   CI->RTTI = new llvm::GlobalVariable(Module, RTTITy, /*isConstant=*/false,
                                       llvm::GlobalValue::ExternalLinkage,
-                                      RTTIInit, "R" + Name);
+                                      RTTIInit, "R" + symbolName(Name));
 }
 
 /// <Class>_init runs the parent initialiser and then this class's attribute
@@ -427,16 +439,17 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
   const std::string Name = CI->AST->getName();
   auto Ptr = llvm::PointerType::getUnqual(Context);
   auto *FT = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {Ptr}, false);
+  const std::string InitName = symbolName(Name) + "_init";
 
   if (isExternal(CI)) {
     // Declared, not defined: the initialiser is compiled with its own module.
     CI->Init = llvm::cast<llvm::Function>(
-        Module.getOrInsertFunction(Name + "_init", FT).getCallee());
+        Module.getOrInsertFunction(InitName, FT).getCallee());
     return true;
   }
 
   CI->Init = llvm::Function::Create(FT, llvm::GlobalValue::ExternalLinkage,
-                                    Name + "_init", &Module);
+                                    InitName, &Module);
 
   auto *Entry = llvm::BasicBlock::Create(Context, "entry", CI->Init);
   Builder.SetInsertPoint(Entry);
@@ -454,7 +467,7 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
   // Chain to the parent initialiser (Object_init / IO_init / String_init are
   // provided by the runtime; user parents get the one we generate).
   if (CI->Parent) {
-    std::string ParentInit = CI->Parent->AST->getName() + "_init";
+    std::string ParentInit = symbolName(CI->Parent->AST->getName()) + "_init";
     auto Callee = Module.getOrInsertFunction(ParentInit, FT);
     Builder.CreateCall(Callee, {CI->Init->getArg(0)});
   }
@@ -486,7 +499,7 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
             llvm::Type::getVoidTy(Context),
             {llvm::PointerType::getUnqual(Context)}, false);
         Builder.CreateCall(
-            Module.getOrInsertFunction(A->getType() + "_init", InitFT), {Obj});
+            Module.getOrInsertFunction(symbolName(A->getType()) + "_init", InitFT), {Obj});
       }
       auto *Slot = Builder.CreateGEP(
           CI->Ty, CI->Init->getArg(0),
@@ -971,7 +984,7 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
             llvm::Type::getVoidTy(Context),
             {llvm::PointerType::getUnqual(Context)}, false);
         Builder.CreateCall(
-            Module.getOrInsertFunction(DeclaredType + "_init", FT), {Obj});
+            Module.getOrInsertFunction(symbolName(DeclaredType) + "_init", FT), {Obj});
       }
       Builder.CreateStore(Obj, Slot);
     } else if (Lowered->isPointerTy()) {
@@ -1488,7 +1501,7 @@ llvm::Value *IRGenerator::emitNewObject(NewObject *NO) {
                                        {llvm::PointerType::getUnqual(Context)},
                                        false);
     Builder.CreateCall(
-        Module.getOrInsertFunction(CI->AST->getName() + "_init", FT), {Obj});
+        Module.getOrInsertFunction(symbolName(CI->AST->getName()) + "_init", FT), {Obj});
   }
   return Obj;
 }

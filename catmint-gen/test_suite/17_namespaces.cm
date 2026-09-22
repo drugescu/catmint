@@ -1,0 +1,13 @@
+using geo2d as flat
+using geo3d as space
+
+class Main from IO
+  def main:
+    flat::Point a
+    space::Point b
+    a.show()
+    out(" ")
+    b.show()
+    out("\n")
+  end
+end
