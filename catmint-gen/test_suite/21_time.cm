@@ -1,0 +1,35 @@
+using time as t
+
+class Main from IO
+  def main:
+    t::Clock c
+
+    # Known timestamps, so the calendar arithmetic is pinned rather than
+    # merely plausible.
+    out(c.format(c.at(0)))
+    out("\n")
+    out(c.format(c.at(1000000000)))
+    out("\n")
+    out(c.format(c.at(951782400)))
+    out("\n")
+    out(c.format(c.at(1709164800)))
+    out("\n")
+
+    # ticks is monotonic, so elapsed time can never be negative.
+    Int before = c.millis()
+    c.pause(20)
+    Int after = c.millis()
+    out("elapsed at least 10ms ")
+    out(after - before >= 10)
+    out("\n")
+
+    # epoch is well past the year 2000 and entropy stays in range.
+    out("epoch sane ")
+    out(epoch() > 1600000000)
+    out("\n")
+    out("entropy sane ")
+    Int e = entropy()
+    out(e >= 0)
+    out("\n")
+  end
+end

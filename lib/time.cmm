@@ -1,0 +1,110 @@
+# Time and dates, written in catmint.
+#
+# The runtime supplies three readings and nothing else: ticks() for elapsed
+# milliseconds, epoch() for seconds since 1970, and localOffset() for the
+# seconds between UTC and local time. Turning a timestamp into a calendar date
+# is plain integer arithmetic, so it belongs here where it can be read and
+# tested against known values rather than buried in C.
+
+class Date from Object
+  Int y
+  Int mo
+  Int d
+  Int h
+  Int mi
+  Int s
+
+  def Date fill(Int year, Int month, Int day, Int hour, Int minute, Int second):
+    y = year
+    mo = month
+    d = day
+    h = hour
+    mi = minute
+    s = second
+    return self
+  end
+
+  def Int year:   return y  end
+  def Int month:  return mo end
+  def Int day:    return d  end
+  def Int hour:   return h  end
+  def Int minute: return mi end
+  def Int second: return s  end
+end
+
+class Clock from IO
+
+  # Two digits, so 9 prints as "09".
+  def String pad(Int value):
+    if value < 10:
+      return "0" + value
+    end
+    return "" + value
+  end
+
+  # Days since 1970-01-01 to a calendar date, by Howard Hinnant's
+  # civil-from-days. It is exact for every date from 1970 onwards; before that
+  # it would need floor division, and catmint's '/' truncates towards zero.
+  def Date fromDays(Int days):
+    Int z = days + 719468
+    Int era = z / 146097
+    Int doe = z - era * 146097
+    Int yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    Int year = yoe + era * 400
+    Int doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    Int mp = (5 * doy + 2) / 153
+    Int day = doy - (153 * mp + 2) / 5 + 1
+
+    Int month = mp + 3
+    if mp >= 10:
+      month = mp - 9
+    end
+    if month <= 2:
+      year = year + 1
+    end
+
+    Date result
+    return result.fill(year, month, day, 0, 0, 0)
+  end
+
+  # A count of seconds since 1970 to a full date.
+  def Date at(Int seconds):
+    Int days = seconds / 86400
+    Int rest = seconds - days * 86400
+    Date date = fromDays(days)
+    # The parentheses are load-bearing: in catmint '%' binds less tightly than
+    # '/', so 'rest % 3600 / 60' would mean 'rest % (3600 / 60)'.
+    return date.fill(date.year(), date.month(), date.day(),
+                     rest / 3600, (rest % 3600) / 60, rest % 60)
+  end
+
+  def Date utcNow:
+    return at(epoch())
+  end
+
+  def Date localNow:
+    return at(epoch() + localOffset())
+  end
+
+  # "2001-09-09 01:46:40"
+  def String format(Date date):
+    String out = "" + date.year()
+    out = out + "-" + pad(date.month())
+    out = out + "-" + pad(date.day())
+    out = out + " " + pad(date.hour())
+    out = out + ":" + pad(date.minute())
+    out = out + ":" + pad(date.second())
+    return out
+  end
+
+  # Milliseconds since the program started. Monotonic, so this is the one to
+  # measure with; epoch() can jump when the system clock is set.
+  def Int millis:
+    return ticks()
+  end
+
+  def Clock pause(Int milliseconds):
+    sleep(milliseconds)
+    return self
+  end
+end

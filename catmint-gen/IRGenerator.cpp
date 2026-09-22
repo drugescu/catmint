@@ -135,7 +135,11 @@ std::string IRGenerator::runtimeSymbol(ClassInfo *CI,
     if (MethodName == strings::Out)      return "M2_IO_out";
     if (MethodName == strings::ReadLine) return "M2_IO_readLine";
     if (MethodName == strings::Eof)      return "M2_IO_eof";
-    if (MethodName == strings::Entropy)  return "M2_IO_entropy";
+    if (MethodName == strings::Entropy)     return "M2_IO_entropy";
+    if (MethodName == strings::Ticks)       return "M2_IO_ticks";
+    if (MethodName == strings::Epoch)       return "M2_IO_epoch";
+    if (MethodName == strings::LocalOffset) return "M2_IO_localOffset";
+    if (MethodName == strings::Sleep)       return "M2_IO_sleep";
   } else if (C == strings::String) {
     if (MethodName == strings::Length) return "M6_String_length";
     if (MethodName == strings::ToInt)  return "M6_String_toInt";

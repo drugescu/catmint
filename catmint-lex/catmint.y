@@ -274,7 +274,10 @@ method_arguments : type_name IDENTIFIER {
 		auto attrib = new catmint::Attribute(@1.first_line, *$2, *$1);
 		$$->push_back(attrib);
 	}
-	| attribute_definitions ',' type_name IDENTIFIER {
+	// Recurses on itself, not on attribute_definitions. Chaining the wrong
+	// nonterminal here meant a method could take at most two parameters: the
+	// third comma had nothing to reduce to.
+	| method_arguments ',' type_name IDENTIFIER {
 		$$ = $1;
 		auto attrib = new catmint::Attribute(@1.first_line, *$4, *$3);
 		$$->push_back(attrib);

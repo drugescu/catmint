@@ -80,7 +80,7 @@ struct TInteger {
 
 CATMINT_RTTI_TYPE(catmint_rtti3, 3);
 CATMINT_RTTI_TYPE(catmint_rtti7, 7);
-CATMINT_RTTI_TYPE(catmint_rtti8_io, 8);
+CATMINT_RTTI_TYPE(catmint_rtti12_io, 12);
 CATMINT_RTTI_TYPE(catmint_rtti8_list, 8);
 CATMINT_RTTI_TYPE(catmint_rtti5, 5);
 CATMINT_RTTI_TYPE(catmint_rtti8, 8);
@@ -104,6 +104,10 @@ struct TIO *M2_IO_out(struct TIO *self, struct TString *message);
 struct TString *M2_IO_readLine(struct TIO *self);
 int M2_IO_eof(struct TIO *self);
 int M2_IO_entropy(struct TIO *self);
+int M2_IO_ticks(struct TIO *self);
+int M2_IO_epoch(struct TIO *self);
+int M2_IO_localOffset(struct TIO *self);
+struct TIO *M2_IO_sleep(struct TIO *self, int milliseconds);
 
 int M4_List_len(struct TList *self);
 void *M4_List_get(struct TList *self, int index);
@@ -141,11 +145,13 @@ catmint_rtti9 RString = {
 
 /* The two new slots go on the end. Inserting anywhere else would renumber
  * `in` and `out` and silently break every already-compiled caller. */
-catmint_rtti8_io RIO = {
+catmint_rtti12_io RIO = {
   &NIO, sizeof(struct TIO), RTTI(RObject),
   { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
     (void *)M2_IO_in, (void *)M2_IO_out,
-    (void *)M2_IO_readLine, (void *)M2_IO_eof, (void *)M2_IO_entropy }
+    (void *)M2_IO_readLine, (void *)M2_IO_eof, (void *)M2_IO_entropy,
+    (void *)M2_IO_ticks, (void *)M2_IO_epoch, (void *)M2_IO_localOffset,
+    (void *)M2_IO_sleep }
 };
 
 catmint_rtti8_list RList = {
@@ -353,10 +359,112 @@ int M2_IO_eof(struct TIO *self) {
 /* A seed for a random number generator. This is the whole of the runtime's
  * involvement in randomness: the generator itself is written in catmint, in
  * lib/random.cmm, where it can be read and tested. Only the unpredictable
- * part has to come from outside the language. */
+ * part has to come from outside the language.
+ *
+ * /dev/urandom when it is there, which it is on every system this compiler
+ * targets. The fallback mixes the wall clock with the CPU clock so that two
+ * runs started in the same second still differ. */
 int M2_IO_entropy(struct TIO *self) {
+  unsigned int value = 0;
+  FILE *source;
+
   (void)self;
-  return (int)(time(NULL) ^ (long)(size_t)&self);
+
+  source = fopen("/dev/urandom", "rb");
+  if (source) {
+    size_t got = fread(&value, sizeof(value), 1, source);
+    fclose(source);
+    if (got == 1) {
+      return (int)(value & 0x7fffffffu);
+    }
+  }
+
+  value = (unsigned int)time(NULL) * 2654435761u;
+  value ^= (unsigned int)clock() * 40503u;
+  return (int)(value & 0x7fffffffu);
+}
+
+/* -------------------------------------------------------------------------
+ * Time
+ *
+ * Three primitives, deliberately few. Breaking a timestamp into a date is
+ * plain integer arithmetic, so it lives in lib/time.cmm rather than here.
+ * ------------------------------------------------------------------------- */
+
+/* Milliseconds since the first call, which is close enough to program start.
+ * Monotonic, so it is the one to use for measuring how long something took;
+ * epoch() can jump when the clock is set. */
+int M2_IO_ticks(struct TIO *self) {
+  static int started = 0;
+  static struct timespec origin;
+  struct timespec now;
+  long seconds;
+  long millis;
+
+  (void)self;
+
+  if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+    return 0;
+  }
+  if (!started) {
+    origin = now;
+    started = 1;
+  }
+
+  seconds = (long)(now.tv_sec - origin.tv_sec);
+  millis = (now.tv_nsec - origin.tv_nsec) / 1000000L;
+  return (int)(seconds * 1000L + millis);
+}
+
+/* Seconds since 1970-01-01 UTC. An Int is 32 bits, so this is good until
+ * 2038; widening it means widening catmint's Int. */
+int M2_IO_epoch(struct TIO *self) {
+  (void)self;
+  return (int)time(NULL);
+}
+
+/* Seconds to add to UTC to get local time, daylight saving included. Keeping
+ * this separate is what lets the date arithmetic stay in catmint. */
+int M2_IO_localOffset(struct TIO *self) {
+  time_t now;
+  struct tm local;
+  struct tm utc;
+  int localSeconds;
+  int utcSeconds;
+  int dayDifference;
+
+  (void)self;
+
+  now = time(NULL);
+  if (!localtime_r(&now, &local) || !gmtime_r(&now, &utc)) {
+    return 0;
+  }
+
+  localSeconds = local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
+  utcSeconds = utc.tm_hour * 3600 + utc.tm_min * 60 + utc.tm_sec;
+
+  /* The two may fall on different days, in which case the difference is out
+   * by a day in one direction or the other. */
+  dayDifference = local.tm_yday - utc.tm_yday;
+  if (dayDifference > 1) {
+    dayDifference = -1; /* local is in the next year */
+  } else if (dayDifference < -1) {
+    dayDifference = 1; /* utc is in the next year */
+  }
+
+  return localSeconds - utcSeconds + dayDifference * 86400;
+}
+
+struct TIO *M2_IO_sleep(struct TIO *self, int milliseconds) {
+  struct timespec request;
+
+  if (milliseconds <= 0) {
+    return self;
+  }
+  request.tv_sec = milliseconds / 1000;
+  request.tv_nsec = (long)(milliseconds % 1000) * 1000000L;
+  nanosleep(&request, NULL);
+  return self;
 }
 
 struct TIO *M2_IO_out(struct TIO *self, struct TString *message) {

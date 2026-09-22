@@ -214,6 +214,11 @@ Each of these produced a crash or a silent miscompile during development.
 - **Catching an exception by value slices it.** `main.cpp` did this and every
   code generation error printed a useless generic message for years. Catch by
   reference and exit non-zero.
+- **`%` binds less tightly than `/` and `*`.** It sits with `+` and `-` in
+  `additive_expression`, so `a % b / c` means `a % (b / c)`. Every other
+  C-like language puts them on one level. Fixing it would change the meaning
+  of existing programs and the AST of `dispatch_logic_math.cm`, so it is left
+  alone deliberately; parenthesise.
 - **The grammar produces no `Assignment` node.** `x = expr` is always a
   `LocalDefinition` with the type `auto`; the generator decides between
   assignment and declaration by whether the name already resolves.

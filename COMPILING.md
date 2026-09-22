@@ -265,10 +265,18 @@ catmint:
 and `keyList`, using djb2 over `String.at` and sixteen buckets of collision
 chains. `Random` is a seedable generator with `next`, `below` and `between`.
 
-None of the three needs the runtime. `Random` borrows exactly one primitive,
-`IO.entropy()`, for an unpredictable seed, because that is the only part a
-language cannot produce by itself. The algorithm stays in catmint so that
-`seed(42)` gives the same sequence every run and can be tested.
+`Time` gives `Date`, and a `Clock` with `utcNow`, `localNow`, `at(seconds)`,
+`format`, `millis` and `pause`.
+
+None of them needs much from the runtime. `Random` borrows `IO.entropy()` for
+an unpredictable seed, because that is the only part a language cannot produce
+by itself; the algorithm stays in catmint so that `seed(42)` reproduces and can
+be tested. `Time` borrows three readings, `ticks()`, `epoch()` and
+`localOffset()`, and does the calendar arithmetic itself, so the conversion is
+readable and pinned against known timestamps rather than buried in C.
+
+Use `millis()` to measure how long something took: it is monotonic, where
+`epoch()` can jump when the system clock is set.
 
 ## 5c. Namespaces
 

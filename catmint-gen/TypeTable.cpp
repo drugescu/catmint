@@ -121,6 +121,21 @@ void TypeTable::addBuiltinClasses(Program *p) {
   // number generator, the only unpredictable thing the runtime supplies.
   builtinMethods.push_back(new Method(0, strings::Entropy, strings::Int,
                                       nullptr, builtinMethodsParams));
+
+  // Time. Only these three readings come from the runtime; turning a
+  // timestamp into a date is integer arithmetic and lives in lib/time.cmm.
+  builtinMethods.push_back(
+      new Method(0, strings::Ticks, strings::Int, nullptr, builtinMethodsParams));
+  builtinMethods.push_back(
+      new Method(0, strings::Epoch, strings::Int, nullptr, builtinMethodsParams));
+  builtinMethods.push_back(new Method(0, strings::LocalOffset, strings::Int,
+                                      nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "milliseconds", strings::Int));
+  builtinMethods.push_back(
+      new Method(0, strings::Sleep, strings::Io, nullptr, builtinMethodsParams));
+  builtinMethodsParams.clear();
   
   // Add these methods to class 'IO' which inherits 'Object', add class to typeTable,  park it in the program
   // Class(int, const std::string &name, const std::string &parentClassName, const std::vector<...> &features = {})
