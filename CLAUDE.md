@@ -166,6 +166,17 @@ Two details that are easy to trip over, both forced by the grammar:
 characters as one-character strings. Both lower to the same counted loop.
 There is no list type in the runtime, so nothing else can be iterated.
 
+Namespaces: `using math as m` declares that module's classes as `m::Name`.
+A qualified name is joined into a single `IDENTIFIER` by the lexer, because
+letting the grammar see `IDENTIFIER :: IDENTIFIER` where a type is named is
+ambiguous with static dispatch (`Program::run.execute(...)`), which begins
+identically; the dispatch rule splits it apart again. In symbols `::` becomes
+`$`, which cannot appear in a catmint identifier, so nothing can collide.
+
+`expr is Type` reuses `StaticDispatch` with the method name `is`, since that
+node already carries both an object and a type name. No new AST node, so no
+serializer work.
+
 A built-in method's virtual table slot is fixed by `runtime.c`; its
 declaration order in `TypeTable::addBuiltinClasses` is that slot order. A new
 built-in method must be appended, never inserted, or every already-compiled

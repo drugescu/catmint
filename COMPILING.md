@@ -261,11 +261,48 @@ catmint:
 ```
 
 `Vector` adds `size`, `push`, `indexOf`, `contains` and `reversed` over a
-`List`. `Dict` is a String-keyed dictionary with `put`, `get`, `has` and
-`size`, backed by two parallel lists and a linear scan. A linear scan needs no
-hash function and no character-code accessor, and it is thirty lines rather
-than two hundred; replacing it with buckets later changes that one file and
-nothing else.
+`List`. `Dict` is a String-keyed hash table with `put`, `get`, `has`, `size`
+and `keyList`, using djb2 over `String.at` and sixteen buckets of collision
+chains. `Random` is a seedable generator with `next`, `below` and `between`.
+
+None of the three needs the runtime. `Random` borrows exactly one primitive,
+`IO.entropy()`, for an unpredictable seed, because that is the only part a
+language cannot produce by itself. The algorithm stays in catmint so that
+`seed(42)` gives the same sequence every run and can be tested.
+
+## 5c. Namespaces
+
+Two modules may both define a `Point`. Import them under aliases and say which
+one you mean:
+
+```
+using geo2d as flat
+using geo3d as space
+
+flat::Point a
+space::Point b
+```
+
+`using math as m` puts everything `math.cmm` declares into namespace `m`.
+Inside a namespaced module an unqualified class name means that module's own
+class; the built-in names stay global. Importing without `as` leaves the
+module's classes global, as before. Defining one name twice in the same
+namespace is an error rather than a silent overwrite.
+
+## 5d. Asking an object its type
+
+`expr is Type` gives `1` when the object is of that type or inherits from it,
+and `0` otherwise, including for `null`. Unlike an assignment's implicit
+downcast it never aborts, which is what makes it useful as a guard:
+
+```
+for item in things:
+  if item is Integer:
+    Int n = item
+    out(n)
+  end
+end
+```
 
 This split is the point. A growable array needs raw memory, so it belongs in
 the runtime. A dictionary does not, so it belongs in the language, where it
