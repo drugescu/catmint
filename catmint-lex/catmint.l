@@ -8,6 +8,7 @@ extern std::string gCurrentFile;
 extern std::string gCurrentNamespace;
 
 void countColumns();
+static std::string decodeEscapes(const std::string &text);
 
 static int gColumnNumber = 1;
 
@@ -123,10 +124,9 @@ static int gColumnNumber = 1;
 }
 
 ["]([^"]|(\\\"))*["] {
-	std::string s = std::string(yytext);
-	s = s.substr(1, s.size() - 2);
-
-	yylval.stringValue = new std::string(s);
+	countColumns();
+	yylval.stringValue = new std::string(decodeEscapes(
+		std::string(yytext).substr(1, std::string(yytext).size() - 2)));
 	return STRING_CONSTANT;
 }
 
@@ -149,6 +149,43 @@ static int gColumnNumber = 1;
 
 int yywrap(void) {
 	return 1;
+}
+
+
+/* Turn the escape sequences in a string literal into the characters they
+ * stand for. This used to be left to the AST's JSON encoding, which happened
+ * to decode \n, \t and \\ because JSON spells them the same way. That was an
+ * accident, and it broke on \": the quote reached the JSON writer still
+ * escaped and closed the string early, producing an AST file the compiler
+ * could not read back. */
+static std::string decodeEscapes(const std::string &text) {
+	std::string out;
+	out.reserve(text.size());
+
+	for (size_t i = 0; i < text.size(); ++i) {
+		if (text[i] != '\\' || i + 1 == text.size()) {
+			out.push_back(text[i]);
+			continue;
+		}
+
+		++i;
+		switch (text[i]) {
+		case 'n':  out.push_back('\n'); break;
+		case 't':  out.push_back('\t'); break;
+		case 'r':  out.push_back('\r'); break;
+		case '0':  out.push_back('\0'); break;
+		case '\\': out.push_back('\\'); break;
+		case '"':  out.push_back('"');  break;
+		case '\'': out.push_back('\''); break;
+		/* An unknown escape keeps both characters, so nothing is silently lost. */
+		default:
+			out.push_back('\\');
+			out.push_back(text[i]);
+			break;
+		}
+	}
+
+	return out;
 }
 
 void countColumns() {

@@ -219,6 +219,12 @@ Each of these produced a crash or a silent miscompile during development.
   C-like language puts them on one level. Fixing it would change the meaning
   of existing programs and the AST of `dispatch_logic_math.cm`, so it is left
   alone deliberately; parenthesise.
+- **String escapes are decoded in the lexer**, not by the AST's JSON round
+  trip. They used to be decoded by accident, because JSON spells `\n` and
+  `\t` the same way; a quote or a backslash then produced an AST file the
+  compiler could not read back. The vendored rapidjson's escape table had also
+  lost its backslash entry and wrote one raw, which is fixed in
+  `catmint-ast/include/rapidjson/writer.h`.
 - **The grammar produces no `Assignment` node.** `x = expr` is always a
   `LocalDefinition` with the type `auto`; the generator decides between
   assignment and declaration by whether the name already resolves.

@@ -75,15 +75,18 @@ public:
   /// \brief Get the type of \p node or assert (we don't throw an exception
   ///        because we don't intend to catch semantic errors with this)
   Type *getType(TreeNode *node) {
-    // For integer/float/string nodes there is no type
+    // Constants are typed by their kind. These must be the registered types,
+    // not fresh ones: a fresh Type carries no Class, so anything inferred from
+    // a literal -- `s = ""` and then `s.len()` -- would be rejected as a call
+    // on a non-class object. Returning fresh ones also leaked.
     if(dynamic_cast<catmint::IntConstant *>(node)) {
-      return new catmint::Type(strings::Int);
+      return getType(std::string(strings::Int));
     }
     if(dynamic_cast<catmint::StringConstant *>(node)) {
-      return new catmint::Type(strings::String);
+      return getType(std::string(strings::String));
     }
     if(dynamic_cast<catmint::FloatConstant *>(node)) {
-      return new catmint::Type(strings::Float);
+      return getType(std::string(strings::Float));
     }
     
 
