@@ -117,6 +117,10 @@ void TypeTable::addBuiltinClasses(Program *p) {
   // Method - 'IO_object.eof()' returning an 'Int'
   builtinMethods.push_back(
       new Method(0, strings::Eof, strings::Int, nullptr, builtinMethodsParams));
+  // Method - 'IO_object.entropy()' returning an 'Int': a seed for a random
+  // number generator, the only unpredictable thing the runtime supplies.
+  builtinMethods.push_back(new Method(0, strings::Entropy, strings::Int,
+                                      nullptr, builtinMethodsParams));
   
   // Add these methods to class 'IO' which inherits 'Object', add class to typeTable,  park it in the program
   // Class(int, const std::string &name, const std::string &parentClassName, const std::vector<...> &features = {})
@@ -138,6 +142,32 @@ void TypeTable::addBuiltinClasses(Program *p) {
   // Method - 'String_object.toInt()' returning an 'Int'
   builtinMethods.push_back(new Method(0, strings::ToInt, strings::Int, nullptr,
                                       builtinMethodsParams));
+
+  // The next three were always in runtime.c's virtual table but were never
+  // declared here, so slots 5 to 7 existed without a way to call them.
+  // Declaration order is slot order, so they go in exactly this sequence.
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "start", strings::Int));
+  builtinMethodsParams.push_back(new Attribute(0, "end", strings::Int));
+  builtinMethods.push_back(new Method(0, strings::Substr, strings::String,
+                                      nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "other", strings::String));
+  builtinMethods.push_back(new Method(0, strings::Concat, strings::String,
+                                      nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "other", strings::String));
+  builtinMethods.push_back(new Method(0, strings::Equals, strings::Int, nullptr,
+                                      builtinMethodsParams));
+
+  // New slot 8: the character code at an index, which is what a hash needs.
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "index", strings::Int));
+  builtinMethods.push_back(
+      new Method(0, strings::At, strings::Int, nullptr, builtinMethodsParams));
+  builtinMethodsParams.clear();
   
   // Add these methods to class 'String' which inherits 'Object', add class to typeTable,  park it in the program
   // Class(int, const std::string &name, const std::string &parentClassName, const std::vector<...> &features = {})
@@ -311,6 +341,10 @@ Type *TypeTable::getCommonType(Type *T, Type *U) const {
     if (UN == strings::Int) return getFloatType();
   }
 
+  if (TN == strings::String && (UN == strings::Int || UN == strings::Float)) {
+    return getStringType();
+  }
+
   // null belongs to every reference type, so a branch returning null and one
   // returning an object agree on the object's type rather than on nothing.
   if (TN == strings::Null && isReferenceType(UN)) return U;
@@ -350,6 +384,13 @@ std::string TypeTable::getCommonTypeStr(std::string T, std::string U) const {
     // Printing a Float goes through the same conversion as printing an Int;
     // the generator inserts __cm_floatToString.
     if (U == strings::String) return strings::String;
+  }
+
+  // The numeric-to-String rules were only written one way round, so
+  // '1 + "a"' was allowed and '"a" + 1' was not.
+  if (T == strings::String &&
+      (U == strings::Int || U == strings::Float)) {
+    return strings::String;
   }
 
   if (T == strings::Null && isReferenceType(U)) return U;

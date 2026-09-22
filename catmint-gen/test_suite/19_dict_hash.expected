@@ -1,0 +1,6 @@
+size 40
+key7 -> 49
+key39 -> 1521
+after replace size 40 key7 -> 1000
+has key0 1  has nope 0
+keys 40

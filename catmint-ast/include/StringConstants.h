@@ -29,12 +29,17 @@ const auto Out = "out";
 const auto In = "input";
 const auto ReadLine = "readLine";
 const auto Eof = "eof";
+const auto Entropy = "entropy";
 const auto List = "List";
 const auto Integer = "Integer";
 const auto Get = "get";
 const auto Set = "set";
 const auto Append = "append";
 const auto Slice = "slice";
+const auto Substr = "substr";
+const auto Concat = "concat";
+const auto Equals = "equals";
+const auto At = "at";
 
 const auto Symbol = "Symbol";
 const auto ComplexType = "ComplexType";

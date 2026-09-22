@@ -1,62 +1,131 @@
-# Dict: a String-keyed dictionary, written in catmint on top of List.
+# Dict: a String-keyed hash table, written in catmint on top of List.
 #
-# Lookup is a linear scan. For a language at this stage that is the right
-# trade: it needs no hash function, no char-code accessor and no rehashing,
-# and it is about thirty lines instead of two hundred. Swapping in buckets
-# later changes this file and nothing else.
+# Nothing here needs the runtime. The one primitive it borrows is
+# String.at, which gives a character's code so the hash can be computed in
+# the language rather than in C.
 
-class Dict from Object
-  List keys
-  List values
+class DictEntry from Object
+  String k
+  Object v
 
-  def Int size:
-    return keys.len()
+  # catmint has no constructor arguments, so an object is made by declaring it
+  # and then handed its fields.
+  def DictEntry fill(String key, Object value):
+    k = key
+    v = value
+    return self
   end
 
-  # -1 when the key is absent.
-  def Int indexOf(String key):
-    Int i = 0
-    while i < keys.len():
-      String candidate = keys.get(i)
-      if candidate == key:
-        return i
+  def String key:
+    return k
+  end
+
+  def Object value:
+    return v
+  end
+
+  def DictEntry setValue(Object value):
+    v = value
+    return self
+  end
+end
+
+class Dict from Object
+  List buckets
+  Int count
+
+  def Int bucketCount:
+    return 16
+  end
+
+  # An attribute initialiser is a single expression, so the buckets cannot be
+  # built there. They are built on first use instead.
+  def Void ensure:
+    if buckets.len() == 0:
+      Int i = 0
+      while i < bucketCount():
+        List b
+        buckets.append(b)
+        i = i + 1
       end
+    end
+  end
+
+  # djb2. The multiply wraps at 32 bits, which is fine for a hash; the result
+  # is forced non-negative so it can index a bucket.
+  def Int hash(String key):
+    Int h = 5381
+    Int i = 0
+    while i < key.len():
+      h = h * 33 + key.at(i)
       i = i + 1
     end
-    return 0 - 1
+    if h < 0:
+      h = 0 - h
+    end
+    return h
+  end
+
+  def List bucketFor(String key):
+    ensure()
+    Int index = hash(key) % bucketCount()
+    return buckets.get(index)
+  end
+
+  def Int size:
+    return count
+  end
+
+  # Null when the key is absent. Use has() when null is a legal value.
+  def Object get(String key):
+    List bucket = bucketFor(key)
+    for e in bucket:
+      DictEntry entry = e
+      if entry.key() == key:
+        return entry.value()
+      end
+    end
+    return null
   end
 
   def Int has(String key):
-    if indexOf(key) < 0:
-      return 0
-    else
-      return 1
+    List bucket = bucketFor(key)
+    for e in bucket:
+      DictEntry entry = e
+      if entry.key() == key:
+        return 1
+      end
     end
+    return 0
   end
 
   # Replaces the value when the key is already present.
   def Dict put(String key, Object value):
-    Int at = indexOf(key)
-    if at < 0:
-      keys.append(key)
-      values.append(value)
-    else
-      values.set(at, value)
+    List bucket = bucketFor(key)
+    for e in bucket:
+      DictEntry entry = e
+      if entry.key() == key:
+        entry.setValue(value)
+        return self
+      end
     end
+    DictEntry fresh
+    fresh.fill(key, value)
+    bucket.append(fresh)
+    count = count + 1
     return self
   end
 
-  # Null when the key is absent, so check with has() when null is a legal value.
-  def Object get(String key):
-    Int at = indexOf(key)
-    if at < 0:
-      return null
-    else
-      return values.get(at)
-    end
-  end
-
   def List keyList:
-    return keys
+    ensure()
+    List out
+    for b in buckets:
+      List bucket = b
+      for e in bucket:
+        DictEntry entry = e
+        out.append(entry.key())
+      end
+    end
+    return out
   end
 end

@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 struct TString;
 
@@ -79,9 +80,11 @@ struct TInteger {
 
 CATMINT_RTTI_TYPE(catmint_rtti3, 3);
 CATMINT_RTTI_TYPE(catmint_rtti7, 7);
+CATMINT_RTTI_TYPE(catmint_rtti8_io, 8);
 CATMINT_RTTI_TYPE(catmint_rtti8_list, 8);
 CATMINT_RTTI_TYPE(catmint_rtti5, 5);
 CATMINT_RTTI_TYPE(catmint_rtti8, 8);
+CATMINT_RTTI_TYPE(catmint_rtti9, 9);
 
 #define RTTI(x) ((struct __catmint_rtti *)&(x))
 
@@ -94,11 +97,13 @@ int M6_String_toInt(struct TString *self);
 struct TString *M6_String_substring(struct TString *self, int start, int end);
 struct TString *M6_String_concat(struct TString *self, struct TString *other);
 int M6_String_equal(struct TString *self, struct TString *other);
+int M6_String_at(struct TString *self, int index);
 
 struct TString *M2_IO_in(struct TIO *self);
 struct TIO *M2_IO_out(struct TIO *self, struct TString *message);
 struct TString *M2_IO_readLine(struct TIO *self);
 int M2_IO_eof(struct TIO *self);
+int M2_IO_entropy(struct TIO *self);
 
 int M4_List_len(struct TList *self);
 void *M4_List_get(struct TList *self, int index);
@@ -112,7 +117,7 @@ struct TInteger *M7_Integer_set(struct TInteger *self, int value);
 void *__catmint_new(struct __catmint_rtti *rtti);
 void String_init(struct TString *self);
 
-extern catmint_rtti8 RString;
+extern catmint_rtti9 RString;
 
 /* Class names. Each is itself a String, so its rtti is RString. */
 struct TString NObject = { RTTI(RString), 6, "Object" };
@@ -126,21 +131,21 @@ catmint_rtti3 RObject = {
   { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy }
 };
 
-catmint_rtti8 RString = {
+catmint_rtti9 RString = {
   &NString, sizeof(struct TString), RTTI(RObject),
   { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
     (void *)M6_String_length, (void *)M6_String_toInt,
     (void *)M6_String_substring, (void *)M6_String_concat,
-    (void *)M6_String_equal }
+    (void *)M6_String_equal, (void *)M6_String_at }
 };
 
 /* The two new slots go on the end. Inserting anywhere else would renumber
  * `in` and `out` and silently break every already-compiled caller. */
-catmint_rtti7 RIO = {
+catmint_rtti8_io RIO = {
   &NIO, sizeof(struct TIO), RTTI(RObject),
   { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
     (void *)M2_IO_in, (void *)M2_IO_out,
-    (void *)M2_IO_readLine, (void *)M2_IO_eof }
+    (void *)M2_IO_readLine, (void *)M2_IO_eof, (void *)M2_IO_entropy }
 };
 
 catmint_rtti8_list RList = {
@@ -285,6 +290,16 @@ int M6_String_equal(struct TString *self, struct TString *other) {
   return strncmp(self->string, other->string, self->length) == 0;
 }
 
+/* The character code at an index. Catmint has no character type, so this
+ * gives the byte as an Int, which is what a hash function needs. */
+int M6_String_at(struct TString *self, int index) {
+  if (index < 0 || index >= self->length) {
+    printf("Runtime error : String index out of bounds.\n");
+    exit(1);
+  }
+  return (int)(unsigned char)self->string[index];
+}
+
 /* -------------------------------------------------------------------------
  * IO
  * ------------------------------------------------------------------------- */
@@ -333,6 +348,15 @@ int M2_IO_eof(struct TIO *self) {
   }
   ungetc(c, stdin);
   return 0;
+}
+
+/* A seed for a random number generator. This is the whole of the runtime's
+ * involvement in randomness: the generator itself is written in catmint, in
+ * lib/random.cmm, where it can be read and tested. Only the unpredictable
+ * part has to come from outside the language. */
+int M2_IO_entropy(struct TIO *self) {
+  (void)self;
+  return (int)(time(NULL) ^ (long)(size_t)&self);
 }
 
 struct TIO *M2_IO_out(struct TIO *self, struct TString *message) {

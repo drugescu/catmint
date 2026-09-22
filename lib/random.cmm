@@ -1,0 +1,52 @@
+# Random: a pseudo-random number generator, written in catmint.
+#
+# The algorithm is here rather than in the runtime so that it can be read,
+# tested and seeded deterministically. The only thing the runtime supplies is
+# IO.entropy(), a seed that is not predictable, which is the one part the
+# language cannot produce by itself.
+#
+# This is a linear congruential generator, the same one the C standard
+# describes. It is fine for shuffling, sampling and games, and is not
+# suitable for anything security related.
+
+class Random from IO
+  Int state
+
+  # A fixed seed gives the same sequence every run, which is what tests want.
+  def Random seed(Int value):
+    state = value
+    if state == 0:
+      state = 1
+    end
+    return self
+  end
+
+  # An unpredictable seed, for when you actually want different runs to differ.
+  def Random randomize:
+    return seed(entropy())
+  end
+
+  # The next value in 0 .. 32767. The multiply wraps at 32 bits; the high bits
+  # are the ones worth keeping, so the low sixteen are shifted away.
+  def Int next:
+    state = state * 1103515245 + 12345
+    Int value = state >> 16
+    return value & 32767
+  end
+
+  # 0 .. limit - 1.
+  def Int below(Int limit):
+    if limit <= 0:
+      return 0
+    end
+    return next() % limit
+  end
+
+  # low .. high inclusive.
+  def Int between(Int low, Int high):
+    if high <= low:
+      return low
+    end
+    return low + below(high - low + 1)
+  end
+end
