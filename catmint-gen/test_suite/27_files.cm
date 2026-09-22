@@ -1,0 +1,40 @@
+# Files: open, write, read back line by line, read whole, exists, remove.
+
+class Main from IO
+  def main:
+    File f
+    String path = "/tmp/catmint_test_files.txt"
+
+    if f.open(path, "w") == 0:
+      out("could not open for writing\n")
+    else
+      f.write("alpha\n")
+      f.write("beta\n")
+      f.write("gamma\n")
+      f.close()
+    end
+
+    out("exists " + f.exists(path) + "\n")
+
+    File reader
+    reader.open(path, "r")
+    while reader.eof() == 0:
+      String line = reader.readLine()
+      out("line: " + line + "\n")
+    end
+    reader.close()
+
+    File whole
+    whole.open(path, "r")
+    String all = whole.readAll()
+    whole.close()
+    out("bytes " + all.len() + "\n")
+
+    # Opening something that is not there fails rather than aborting.
+    File missing
+    out("missing opens " + missing.open("/tmp/catmint_no_such_file", "r") + "\n")
+
+    out("removed " + f.remove(path) + "\n")
+    out("exists now " + f.exists(path) + "\n")
+  end
+end

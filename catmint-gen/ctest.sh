@@ -4,7 +4,8 @@
 # For every test_suite/*.cm: parse -> semantic analysis -> IR -> link with the
 # runtime -> execute, and diff the program's stdout against test_suite/<name>.expected.
 #
-# A test may supply stdin via test_suite/<name>.stdin.
+# A test may supply stdin via test_suite/<name>.stdin, and command-line
+# arguments via test_suite/<name>.args (one line, whitespace separated).
 # Run a single test:  ./ctest.sh test_suite/01_hello.cm
 LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v llvm-link 2>/dev/null || echo /opt/homebrew/opt/llvm@22/bin/llvm-link)")}
 LLVM_LINK="$LLVM_BIN/llvm-link"
@@ -26,6 +27,16 @@ for file in ${*:-test_suite/*.cm}; do
   expected="test_suite/$name.expected"
   printf "%-28s " "$name"
 
+  # Command-line arguments for the program under test, if it wants any.
+  if [ -f "test_suite/$name.args" ]; then
+    set -f
+    # shellcheck disable=SC2046
+    PROGRAM_ARGS=$(cat "test_suite/$name.args")
+    set +f
+  else
+    PROGRAM_ARGS=""
+  fi
+
   if [ ! -f "$expected" ]; then
     printf "${RED}NO .expected${NC}\n"; errors=$((errors+1)); failed="$failed $name"; continue
   fi
@@ -39,10 +50,11 @@ for file in ${*:-test_suite/*.cm}; do
       printf "${RED}FAIL${NC} (separate build; see $WORK/$name.sep.log)\n"
       errors=$((errors+1)); failed="$failed $name"; continue
     fi
+    # shellcheck disable=SC2086
     if [ -f "test_suite/$name.stdin" ]; then
-      "$WORK/$name.bin" <"test_suite/$name.stdin" >"$WORK/$name.out" 2>&1
+      "$WORK/$name.bin" $PROGRAM_ARGS <"test_suite/$name.stdin" >"$WORK/$name.out" 2>&1
     else
-      "$WORK/$name.bin" </dev/null >"$WORK/$name.out" 2>&1
+      "$WORK/$name.bin" $PROGRAM_ARGS </dev/null >"$WORK/$name.out" 2>&1
     fi
     if diff -q "$WORK/$name.out" "$expected" >/dev/null 2>&1; then
       printf "${GREEN}ok${NC} (separate)\n"
@@ -80,10 +92,11 @@ for file in ${*:-test_suite/*.cm}; do
     errors=$((errors+1)); failed="$failed $name"; continue
   fi
 
+  # shellcheck disable=SC2086
   if [ -f "test_suite/$name.stdin" ]; then
-    "$LLI" "$WORK/$name.bc" <"test_suite/$name.stdin" >"$WORK/$name.out" 2>"$WORK/$name.err"
+    "$LLI" "$WORK/$name.bc" $PROGRAM_ARGS <"test_suite/$name.stdin" >"$WORK/$name.out" 2>"$WORK/$name.err"
   else
-    "$LLI" "$WORK/$name.bc" </dev/null >"$WORK/$name.out" 2>"$WORK/$name.err"
+    "$LLI" "$WORK/$name.bc" $PROGRAM_ARGS </dev/null >"$WORK/$name.out" 2>"$WORK/$name.err"
   fi
   rc=$?
 

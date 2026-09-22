@@ -53,6 +53,7 @@
 		       name == "Float" || name == "Void" ||
 		       name == "Null" || name == "Object" || name == "String" ||
 		       name == "IO" || name == "List" || name == "Integer" ||
+		       name == "File" || name == "Math" ||
 		       name == "auto" || name.rfind("_uuid_generic_", 0) == 0;
 	}
 

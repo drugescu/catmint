@@ -213,7 +213,8 @@ bool IRGenerator::collectClasses() {
     const std::string Name = C->getName();
     CI.Builtin = (Name == strings::Object || Name == strings::Io ||
                   Name == strings::String || Name == strings::List ||
-                  Name == strings::Integer);
+                  Name == strings::Integer || Name == strings::File ||
+                  Name == strings::Math);
     // Two definitions of one name used to overwrite each other here, so a
     // program importing two modules that both define a Point silently got
     // whichever came last. Until there are namespaces, say so instead.
@@ -293,6 +294,15 @@ bool IRGenerator::layoutClass(ClassInfo *CI) {
                       llvm::Type::getInt32Ty(Context),
                       llvm::PointerType::getUnqual(Context)};
       CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TList");
+    } else if (Name == strings::File) {
+      // { rtti, FILE *handle }
+      CI->Elements = {llvm::PointerType::getUnqual(Context),
+                      llvm::PointerType::getUnqual(Context)};
+      CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TFile");
+    } else if (Name == strings::Math) {
+      // { rtti } -- Math has no state.
+      CI->Elements = {llvm::PointerType::getUnqual(Context)};
+      CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TMath");
     } else if (Name == strings::Integer) {
       // { rtti, long long value }
       CI->Elements = {llvm::PointerType::getUnqual(Context),
@@ -599,14 +609,25 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
   return true;
 }
 
-/// The program entry point: allocate a Main, run its initialiser, call main.
+/// The program entry point: hand the command line to the runtime, allocate a
+/// Main, run its initialiser, call main.
 void IRGenerator::emitProgramMain() {
   ClassInfo *MainCI = lookupClass(strings::MainClass);
-  auto *FT = llvm::FunctionType::get(llvm::Type::getInt32Ty(Context), false);
+  auto *I32 = llvm::Type::getInt32Ty(Context);
+  auto Ptr = llvm::PointerType::getUnqual(Context);
+  // main(int argc, char **argv), so that IO.args() and IO.arg(i) have
+  // something to report. A program that never asks still pays nothing.
+  auto *FT = llvm::FunctionType::get(I32, {I32, Ptr}, false);
   auto *F = llvm::Function::Create(FT, llvm::GlobalValue::ExternalLinkage,
                                    "main", &Module);
   auto *Entry = llvm::BasicBlock::Create(Context, "entry", F);
   Builder.SetInsertPoint(Entry);
+
+  auto SetArgs = Module.getOrInsertFunction(
+      "__cm_setArgs",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {I32, Ptr},
+                              false));
+  Builder.CreateCall(SetArgs, {F->getArg(0), F->getArg(1)});
 
   auto *Obj = Builder.CreateCall(Runtime.catmintNew(), {MainCI->RTTI}, "main.obj");
   if (MainCI->Init)

@@ -1,0 +1,29 @@
+# The Math class. Built in, like IO, so it needs no 'using'.
+
+class Main from IO
+  def main:
+    Math m
+
+    out("sqrt " + m.sqrt(2.0) + "\n")
+    out("sqrt squared " + m.sqrt(2.0) * m.sqrt(2.0) + "\n")
+    out("pow " + m.pow(2.0, 10.0) + "\n")
+    out("exp " + m.exp(1.0) + "\n")
+    out("log " + m.log(m.exp(1.0)) + "\n")
+    out("log10 " + m.log10(1000.0) + "\n")
+
+    out("sin " + m.sin(0.0) + "\n")
+    out("cos " + m.cos(0.0) + "\n")
+    out("atan2 " + m.atan2(1.0, 1.0) + "\n")
+
+    out("floor " + m.floor(3.7) + "\n")
+    out("ceil " + m.ceil(3.2) + "\n")
+    out("round " + m.round(2.5) + "\n")
+    out("absf " + m.absf(0.0 - 4.5) + "\n")
+
+    out("abs " + m.abs(0 - 7) + "\n")
+    out("min " + m.min(3, 9) + "\n")
+    out("max " + m.max(3, 9) + "\n")
+
+    out("pi " + m.pi() + "\n")
+  end
+end

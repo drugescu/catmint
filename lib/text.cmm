@@ -1,0 +1,85 @@
+# Text: the string operations that are built out of the primitives rather
+# than being primitives themselves.
+#
+# String already carries everything that needs C -- indexOf, trim, case
+# conversion, split, replace and chr. What is left is composition, and that
+# belongs here where it can be read.
+
+class Text from Object
+  String scratch
+
+  # String.chr does not use its receiver, but it has to be called on
+  # something. This is that something, so a program writes t.chr(65) rather
+  # than "".chr(65).
+  def String chr(Int code):
+    return scratch.chr(code)
+  end
+
+  def String join(List parts, String separator):
+    String out = ""
+    Int i = 0
+    while i < parts.len():
+      if i > 0:
+        out = out + separator
+      end
+      String part = parts.get(i)
+      out = out + part
+      i = i + 1
+    end
+    return out
+  end
+
+  def String repeat(String text, Int times):
+    String out = ""
+    Int i = 0
+    while i < times:
+      out = out + text
+      i = i + 1
+    end
+    return out
+  end
+
+  def String padLeft(String text, Int width, String fill):
+    String out = text
+    while out.len() < width:
+      out = fill + out
+    end
+    return out
+  end
+
+  def String padRight(String text, Int width, String fill):
+    String out = text
+    while out.len() < width:
+      out = out + fill
+    end
+    return out
+  end
+
+  def Int startsWith(String text, String prefix):
+    if prefix.len() > text.len():
+      return 0
+    end
+    return text.substr(0, prefix.len()) == prefix
+  end
+
+  def Int endsWith(String text, String suffix):
+    if suffix.len() > text.len():
+      return 0
+    end
+    return text.substr(text.len() - suffix.len(), text.len()) == suffix
+  end
+
+  # The words of a line, with empty runs between separators dropped, which is
+  # what split alone does not do.
+  def List words(String line):
+    List out
+    List pieces = line.split(" ")
+    for p in pieces:
+      String piece = p
+      if piece.len() > 0:
+        out.append(piece)
+      end
+    end
+    return out
+  end
+end

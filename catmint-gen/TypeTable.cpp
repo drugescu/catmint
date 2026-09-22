@@ -152,6 +152,26 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethodsParams.push_back(new Attribute(0, "milliseconds", strings::Int));
   builtinMethods.push_back(
       new Method(0, strings::Sleep, strings::Io, nullptr, builtinMethodsParams));
+
+  // Slots 12 to 15: the command line, standard error and the exit status.
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(
+      new Method(0, "args", strings::Int, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "index", strings::Int));
+  builtinMethods.push_back(
+      new Method(0, "arg", strings::String, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, strings::Message, strings::String));
+  builtinMethods.push_back(
+      new Method(0, "err", strings::Io, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "code", strings::Int));
+  builtinMethods.push_back(
+      new Method(0, "exit", strings::Void, nullptr, builtinMethodsParams));
   builtinMethodsParams.clear();
   
   // Add these methods to class 'IO' which inherits 'Object', add class to typeTable,  park it in the program
@@ -199,6 +219,42 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethodsParams.push_back(new Attribute(0, "index", strings::Int));
   builtinMethods.push_back(
       new Method(0, strings::At, strings::Int, nullptr, builtinMethodsParams));
+
+  // Slots 9 to 16: the text operations a program needs on its first page.
+  // These names are not remapped in IRGenerator::runtimeSymbol, so the C
+  // functions are named by the ordinary mangling, M6_String_<name>.
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "needle", strings::String));
+  builtinMethods.push_back(
+      new Method(0, "indexOf", strings::Int, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(
+      new Method(0, "trim", strings::String, nullptr, builtinMethodsParams));
+  builtinMethods.push_back(
+      new Method(0, "upper", strings::String, nullptr, builtinMethodsParams));
+  builtinMethods.push_back(
+      new Method(0, "lower", strings::String, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "separator", strings::String));
+  builtinMethods.push_back(
+      new Method(0, "split", strings::List, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "code", strings::Int));
+  builtinMethods.push_back(
+      new Method(0, "chr", strings::String, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "from", strings::String));
+  builtinMethodsParams.push_back(new Attribute(0, "to", strings::String));
+  builtinMethods.push_back(
+      new Method(0, "replace", strings::String, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(
+      new Method(0, "toFloat", strings::Float, nullptr, builtinMethodsParams));
   builtinMethodsParams.clear();
   
   // Add these methods to class 'String' which inherits 'Object', add class to typeTable,  park it in the program
@@ -282,6 +338,124 @@ void TypeTable::addBuiltinClasses(Program *p) {
       new Class(0, strings::Integer, strings::Object, builtinMethods));
   (void)createNewType(integerClass.get());
   p->addClass(std::move(integerClass));
+
+  builtinMethods.clear();
+  builtinMethodsParams.clear();
+
+  // ---------------------------------------------------------------------------
+  // Add built-in class - 'File'
+  //
+  // The handle is the whole of the state. open() answers 1 or 0 rather than
+  // aborting, because a missing file is something a program has an opinion
+  // about. Declaration order is virtual table slot order and must match
+  // RFile in runtime.c.
+  // ---------------------------------------------------------------------------
+
+  builtinMethodsParams.push_back(new Attribute(0, "path", strings::String));
+  builtinMethodsParams.push_back(new Attribute(0, "mode", strings::String));
+  builtinMethods.push_back(
+      new Method(0, "open", strings::Int, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(new Method(0, strings::ReadLine, strings::String,
+                                      nullptr, builtinMethodsParams));
+  builtinMethods.push_back(
+      new Method(0, "readAll", strings::String, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "text", strings::String));
+  builtinMethods.push_back(
+      new Method(0, "write", strings::File, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(
+      new Method(0, strings::Eof, strings::Int, nullptr, builtinMethodsParams));
+  builtinMethods.push_back(
+      new Method(0, "close", strings::File, nullptr, builtinMethodsParams));
+  builtinMethods.push_back(
+      new Method(0, "isOpen", strings::Int, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "path", strings::String));
+  builtinMethods.push_back(
+      new Method(0, "exists", strings::Int, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "path", strings::String));
+  builtinMethods.push_back(
+      new Method(0, "remove", strings::Int, nullptr, builtinMethodsParams));
+
+  std::unique_ptr<Class> fileClass(
+      new Class(0, strings::File, strings::Object, builtinMethods));
+  (void)createNewType(fileClass.get());
+  p->addClass(std::move(fileClass));
+
+  builtinMethods.clear();
+  builtinMethodsParams.clear();
+
+  // ---------------------------------------------------------------------------
+  // Add built-in class - 'Math'
+  //
+  // A shell over libm, with no state. The language has no free functions, so
+  // this is where they live. Declaration order must match RMath in runtime.c.
+  // ---------------------------------------------------------------------------
+
+  // One entry per slot, in RMath's order. Written out rather than generated
+  // from a table, because the order is the calling convention.
+  auto oneFloat = [&](const char *name) {
+    builtinMethodsParams.clear();
+    builtinMethodsParams.push_back(new Attribute(0, "x", strings::Float));
+    builtinMethods.push_back(
+        new Method(0, name, strings::Float, nullptr, builtinMethodsParams));
+  };
+  auto twoFloats = [&](const char *name, const char *first,
+                       const char *second) {
+    builtinMethodsParams.clear();
+    builtinMethodsParams.push_back(new Attribute(0, first, strings::Float));
+    builtinMethodsParams.push_back(new Attribute(0, second, strings::Float));
+    builtinMethods.push_back(
+        new Method(0, name, strings::Float, nullptr, builtinMethodsParams));
+  };
+  auto twoInts = [&](const char *name) {
+    builtinMethodsParams.clear();
+    builtinMethodsParams.push_back(new Attribute(0, "a", strings::Int));
+    builtinMethodsParams.push_back(new Attribute(0, "b", strings::Int));
+    builtinMethods.push_back(
+        new Method(0, name, strings::Int, nullptr, builtinMethodsParams));
+  };
+
+  oneFloat("sqrt");
+  twoFloats("pow", "x", "y");
+  oneFloat("exp");
+  oneFloat("log");
+  oneFloat("log10");
+  oneFloat("sin");
+  oneFloat("cos");
+  oneFloat("tan");
+  twoFloats("atan2", "y", "x");
+  oneFloat("floor");
+  oneFloat("ceil");
+  oneFloat("round");
+  oneFloat("absf");
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "x", strings::Int));
+  builtinMethods.push_back(
+      new Method(0, "abs", strings::Int, nullptr, builtinMethodsParams));
+
+  twoInts("min");
+  twoInts("max");
+
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(
+      new Method(0, "pi", strings::Float, nullptr, builtinMethodsParams));
+  builtinMethods.push_back(
+      new Method(0, "e", strings::Float, nullptr, builtinMethodsParams));
+
+  std::unique_ptr<Class> mathClass(
+      new Class(0, strings::Math, strings::Object, builtinMethods));
+  (void)createNewType(mathClass.get());
+  p->addClass(std::move(mathClass));
 }
 
 bool TypeTable::isBuiltinClass(Class *c) const {
@@ -293,7 +467,8 @@ bool TypeTable::isBuiltinClass(Class *c) const {
   const std::string &name = c->getName();
   return name == strings::Object || name == strings::String ||
          name == strings::Io || name == strings::List ||
-         name == strings::Integer;
+         name == strings::Integer || name == strings::File ||
+         name == strings::Math;
 }
 
 Type *TypeTable::getType(const std::string &name) const {

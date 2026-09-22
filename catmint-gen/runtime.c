@@ -20,6 +20,8 @@
  * Build:  clang -O0 -emit-llvm -S runtime.c -o runtime.host.ll
  */
 
+#include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,6 +70,19 @@ struct TInteger {
   long long value;
 };
 
+/* An open file. The handle is the only state; everything else about files is
+ * expressible in catmint on top of these methods. */
+struct TFile {
+  struct __catmint_rtti *rtti;
+  FILE *handle;
+};
+
+/* Math has no state at all: it exists so that the libm functions have
+ * somewhere to live, since the language has no free functions. */
+struct TMath {
+  struct __catmint_rtti *rtti;
+};
+
 /* A flexible array member cannot be initialised, so each class's RTTI gets a
  * named struct with its vtable sized exactly, and is cast where it is used.
  * The layout up to the vtable is identical in all of them, which is what makes
@@ -82,12 +97,15 @@ struct TInteger {
 
 CATMINT_RTTI_TYPE(catmint_rtti3, 3);
 CATMINT_RTTI_TYPE(catmint_rtti7, 7);
-CATMINT_RTTI_TYPE(catmint_rtti12_io, 12);
+CATMINT_RTTI_TYPE(catmint_rtti16_io, 16);
 CATMINT_RTTI_TYPE(catmint_rtti8_list, 8);
 CATMINT_RTTI_TYPE(catmint_rtti5, 5);
 CATMINT_RTTI_TYPE(catmint_rtti6, 6);
 CATMINT_RTTI_TYPE(catmint_rtti8, 8);
 CATMINT_RTTI_TYPE(catmint_rtti9, 9);
+CATMINT_RTTI_TYPE(catmint_rtti12_file, 12);
+CATMINT_RTTI_TYPE(catmint_rtti17_string, 17);
+CATMINT_RTTI_TYPE(catmint_rtti21_math, 21);
 
 #define RTTI(x) ((struct __catmint_rtti *)&(x))
 
@@ -101,6 +119,15 @@ struct TString *M6_String_substring(struct TString *self, int start, int end);
 struct TString *M6_String_concat(struct TString *self, struct TString *other);
 int M6_String_equal(struct TString *self, struct TString *other);
 int M6_String_at(struct TString *self, int index);
+int M6_String_indexOf(struct TString *self, struct TString *needle);
+struct TString *M6_String_trim(struct TString *self);
+struct TString *M6_String_upper(struct TString *self);
+struct TString *M6_String_lower(struct TString *self);
+struct TList *M6_String_split(struct TString *self, struct TString *separator);
+struct TString *M6_String_chr(struct TString *self, int code);
+struct TString *M6_String_replace(struct TString *self, struct TString *from,
+                                  struct TString *to);
+double M6_String_toFloat(struct TString *self);
 
 struct TString *M2_IO_in(struct TIO *self);
 struct TIO *M2_IO_out(struct TIO *self, struct TString *message);
@@ -111,6 +138,39 @@ int M2_IO_ticks(struct TIO *self);
 long long M2_IO_epoch(struct TIO *self);
 int M2_IO_localOffset(struct TIO *self);
 struct TIO *M2_IO_sleep(struct TIO *self, int milliseconds);
+int M2_IO_args(struct TIO *self);
+struct TString *M2_IO_arg(struct TIO *self, int index);
+struct TIO *M2_IO_err(struct TIO *self, struct TString *message);
+void M2_IO_exit(struct TIO *self, int code);
+
+int M4_File_open(struct TFile *self, struct TString *path, struct TString *mode);
+struct TString *M4_File_readLine(struct TFile *self);
+struct TString *M4_File_readAll(struct TFile *self);
+struct TFile *M4_File_write(struct TFile *self, struct TString *text);
+int M4_File_eof(struct TFile *self);
+struct TFile *M4_File_close(struct TFile *self);
+int M4_File_isOpen(struct TFile *self);
+int M4_File_exists(struct TFile *self, struct TString *path);
+int M4_File_remove(struct TFile *self, struct TString *path);
+
+double M4_Math_sqrt(struct TMath *self, double x);
+double M4_Math_pow(struct TMath *self, double x, double y);
+double M4_Math_exp(struct TMath *self, double x);
+double M4_Math_log(struct TMath *self, double x);
+double M4_Math_log10(struct TMath *self, double x);
+double M4_Math_sin(struct TMath *self, double x);
+double M4_Math_cos(struct TMath *self, double x);
+double M4_Math_tan(struct TMath *self, double x);
+double M4_Math_atan2(struct TMath *self, double y, double x);
+double M4_Math_floor(struct TMath *self, double x);
+double M4_Math_ceil(struct TMath *self, double x);
+double M4_Math_round(struct TMath *self, double x);
+double M4_Math_absf(struct TMath *self, double x);
+int M4_Math_abs(struct TMath *self, int x);
+int M4_Math_min(struct TMath *self, int a, int b);
+int M4_Math_max(struct TMath *self, int a, int b);
+double M4_Math_pi(struct TMath *self);
+double M4_Math_e(struct TMath *self);
 
 int M4_List_len(struct TList *self);
 void *M4_List_get(struct TList *self, int index);
@@ -125,7 +185,7 @@ long long M7_Integer_getLong(struct TInteger *self);
 void *__catmint_new(struct __catmint_rtti *rtti);
 void String_init(struct TString *self);
 
-extern catmint_rtti9 RString;
+extern catmint_rtti17_string RString;
 
 /* Class names. Each is itself a String, so its rtti is RString. */
 struct TString NObject = { RTTI(RString), 6, "Object" };
@@ -133,29 +193,56 @@ struct TString NString = { RTTI(RString), 6, "String" };
 struct TString NIO      = { RTTI(RString), 2, "IO" };
 struct TString NList    = { RTTI(RString), 4, "List" };
 struct TString NInteger = { RTTI(RString), 7, "Integer" };
+struct TString NFile    = { RTTI(RString), 4, "File" };
+struct TString NMath    = { RTTI(RString), 4, "Math" };
 
 catmint_rtti3 RObject = {
   &NObject, sizeof(struct TObject), NULL,
   { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy }
 };
 
-catmint_rtti9 RString = {
+catmint_rtti17_string RString = {
   &NString, sizeof(struct TString), RTTI(RObject),
   { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
     (void *)M6_String_length, (void *)M6_String_toInt,
     (void *)M6_String_substring, (void *)M6_String_concat,
-    (void *)M6_String_equal, (void *)M6_String_at }
+    (void *)M6_String_equal, (void *)M6_String_at,
+    (void *)M6_String_indexOf, (void *)M6_String_trim,
+    (void *)M6_String_upper, (void *)M6_String_lower,
+    (void *)M6_String_split, (void *)M6_String_chr,
+    (void *)M6_String_replace, (void *)M6_String_toFloat }
 };
 
 /* The two new slots go on the end. Inserting anywhere else would renumber
  * `in` and `out` and silently break every already-compiled caller. */
-catmint_rtti12_io RIO = {
+catmint_rtti16_io RIO = {
   &NIO, sizeof(struct TIO), RTTI(RObject),
   { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
     (void *)M2_IO_in, (void *)M2_IO_out,
     (void *)M2_IO_readLine, (void *)M2_IO_eof, (void *)M2_IO_entropy,
     (void *)M2_IO_ticks, (void *)M2_IO_epoch, (void *)M2_IO_localOffset,
-    (void *)M2_IO_sleep }
+    (void *)M2_IO_sleep,
+    (void *)M2_IO_args, (void *)M2_IO_arg, (void *)M2_IO_err,
+    (void *)M2_IO_exit }
+};
+
+catmint_rtti12_file RFile = {
+  &NFile, sizeof(struct TFile), RTTI(RObject),
+  { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
+    (void *)M4_File_open, (void *)M4_File_readLine, (void *)M4_File_readAll,
+    (void *)M4_File_write, (void *)M4_File_eof, (void *)M4_File_close,
+    (void *)M4_File_isOpen, (void *)M4_File_exists, (void *)M4_File_remove }
+};
+
+catmint_rtti21_math RMath = {
+  &NMath, sizeof(struct TMath), RTTI(RObject),
+  { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
+    (void *)M4_Math_sqrt, (void *)M4_Math_pow, (void *)M4_Math_exp,
+    (void *)M4_Math_log, (void *)M4_Math_log10, (void *)M4_Math_sin,
+    (void *)M4_Math_cos, (void *)M4_Math_tan, (void *)M4_Math_atan2,
+    (void *)M4_Math_floor, (void *)M4_Math_ceil, (void *)M4_Math_round,
+    (void *)M4_Math_absf, (void *)M4_Math_abs, (void *)M4_Math_min,
+    (void *)M4_Math_max, (void *)M4_Math_pi, (void *)M4_Math_e }
 };
 
 catmint_rtti8_list RList = {
@@ -207,6 +294,14 @@ void List_init(struct TList *self) {
 
 void Integer_init(struct TInteger *self) {
   self->value = 0;
+}
+
+void File_init(struct TFile *self) {
+  self->handle = NULL;
+}
+
+void Math_init(struct TMath *self) {
+  (void)self;
 }
 
 /* Build a catmint String from a NUL-terminated buffer. */
@@ -688,3 +783,359 @@ struct TString *__cm_longToString(long long value) {
 
   return make_string(buffer);
 }
+
+/* -------------------------------------------------------------------------
+ * String, part two
+ *
+ * Everything here could in principle be written in catmint on top of at() and
+ * substring(), but these are the operations every text-handling program needs
+ * on its first page, and chr() cannot be written in the language at all.
+ * ------------------------------------------------------------------------- */
+
+/* The index of the first occurrence, or -1. An empty needle is found at 0,
+ * which is what every other language's indexOf does. */
+int M6_String_indexOf(struct TString *self, struct TString *needle) {
+  int i;
+  int limit;
+
+  if (needle == NULL || needle->length == 0) {
+    return 0;
+  }
+  limit = self->length - needle->length;
+  for (i = 0; i <= limit; ++i) {
+    if (memcmp(self->string + i, needle->string, (size_t)needle->length) == 0) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+struct TString *M6_String_trim(struct TString *self) {
+  int start = 0;
+  int end = self->length;
+
+  while (start < end && isspace((unsigned char)self->string[start])) {
+    ++start;
+  }
+  while (end > start && isspace((unsigned char)self->string[end - 1])) {
+    --end;
+  }
+  return M6_String_substring(self, start, end);
+}
+
+static struct TString *string_mapped(struct TString *self, int upper) {
+  struct TString *result = M6_String_substring(self, 0, self->length);
+  int i;
+
+  for (i = 0; i < result->length; ++i) {
+    unsigned char c = (unsigned char)result->string[i];
+    result->string[i] = (char)(upper ? toupper(c) : tolower(c));
+  }
+  return result;
+}
+
+struct TString *M6_String_upper(struct TString *self) {
+  return string_mapped(self, 1);
+}
+
+struct TString *M6_String_lower(struct TString *self) {
+  return string_mapped(self, 0);
+}
+
+/* Split on a literal separator. A separator that never occurs gives a list of
+ * one, the whole string; an empty separator does the same, because splitting
+ * on nothing has no useful answer. */
+struct TList *M6_String_split(struct TString *self, struct TString *separator) {
+  struct TList *result = (struct TList *)__catmint_new(RTTI(RList));
+  int start = 0;
+  int i;
+
+  List_init(result);
+
+  if (separator == NULL || separator->length == 0) {
+    M4_List_append(result, M6_String_substring(self, 0, self->length));
+    return result;
+  }
+
+  for (i = 0; i + separator->length <= self->length;) {
+    if (memcmp(self->string + i, separator->string,
+               (size_t)separator->length) == 0) {
+      M4_List_append(result, M6_String_substring(self, start, i));
+      i += separator->length;
+      start = i;
+    } else {
+      ++i;
+    }
+  }
+  M4_List_append(result, M6_String_substring(self, start, self->length));
+  return result;
+}
+
+/* A character code as a one-character String: the inverse of at(), and the
+ * one string operation that cannot be written in catmint, because there is no
+ * way to build a character out of a number. The receiver is not used; call it
+ * on any String. */
+struct TString *M6_String_chr(struct TString *self, int code) {
+  char buffer[2];
+
+  (void)self;
+  buffer[0] = (char)(code & 0xff);
+  buffer[1] = '\0';
+  return make_string(buffer);
+}
+
+/* Every occurrence, left to right. Replacing an empty string would never
+ * terminate, so that gives the original back. */
+struct TString *M6_String_replace(struct TString *self, struct TString *from,
+                                  struct TString *to) {
+  struct TString *result;
+  char *out;
+  int written = 0;
+  int i = 0;
+  int occurrences = 0;
+  int growth;
+
+  if (from == NULL || from->length == 0 || to == NULL) {
+    return M6_String_substring(self, 0, self->length);
+  }
+
+  for (i = 0; i + from->length <= self->length;) {
+    if (memcmp(self->string + i, from->string, (size_t)from->length) == 0) {
+      ++occurrences;
+      i += from->length;
+    } else {
+      ++i;
+    }
+  }
+
+  growth = occurrences * (to->length - from->length);
+  result = (struct TString *)__catmint_new(RTTI(RString));
+  String_init(result);
+  result->length = self->length + growth;
+  out = calloc((size_t)result->length + 1, 1);
+  result->string = out;
+
+  for (i = 0; i < self->length;) {
+    if (i + from->length <= self->length &&
+        memcmp(self->string + i, from->string, (size_t)from->length) == 0) {
+      memcpy(out + written, to->string, (size_t)to->length);
+      written += to->length;
+      i += from->length;
+    } else {
+      out[written++] = self->string[i++];
+    }
+  }
+  return result;
+}
+
+/* Zero when the text is not entirely a number, matching toInt. */
+double M6_String_toFloat(struct TString *self) {
+  char *end;
+  double value = strtod(self->string, &end);
+
+  if (*end != '\0') {
+    return 0.0;
+  }
+  return value;
+}
+
+/* -------------------------------------------------------------------------
+ * IO, part two: the command line, standard error and the exit status
+ * ------------------------------------------------------------------------- */
+
+/* Stashed by the generated main() before anything else runs. */
+static int gArgCount = 0;
+static char **gArgValues = NULL;
+
+void __cm_setArgs(int argc, char **argv) {
+  gArgCount = argc;
+  gArgValues = argv;
+}
+
+/* The count includes the program itself at index 0, as C's argc does. */
+int M2_IO_args(struct TIO *self) {
+  (void)self;
+  return gArgCount;
+}
+
+/* An index outside the range gives an empty String rather than aborting, so a
+ * missing argument is handled with a test rather than a guard. */
+struct TString *M2_IO_arg(struct TIO *self, int index) {
+  (void)self;
+  if (index < 0 || index >= gArgCount || gArgValues == NULL) {
+    return make_string("");
+  }
+  return make_string(gArgValues[index]);
+}
+
+struct TIO *M2_IO_err(struct TIO *self, struct TString *message) {
+  fputs(message->string, stderr);
+  return self;
+}
+
+void M2_IO_exit(struct TIO *self, int code) {
+  (void)self;
+  exit(code);
+}
+
+/* -------------------------------------------------------------------------
+ * File
+ *
+ * The handle is the whole of the state. open() reports failure by returning 0
+ * instead of aborting, because a missing file is an ordinary thing for a
+ * program to have an opinion about.
+ * ------------------------------------------------------------------------- */
+
+int M4_File_open(struct TFile *self, struct TString *path,
+                 struct TString *mode) {
+  if (self->handle) {
+    fclose(self->handle);
+    self->handle = NULL;
+  }
+  self->handle = fopen(path->string, mode->string);
+  return self->handle != NULL;
+}
+
+struct TString *M4_File_readLine(struct TFile *self) {
+  char buffer[4096];
+  size_t length;
+
+  if (!self->handle || !fgets(buffer, (int)sizeof(buffer), self->handle)) {
+    return make_string("");
+  }
+
+  length = strlen(buffer);
+  if (length > 0 && buffer[length - 1] == '\n') {
+    buffer[length - 1] = '\0';
+  }
+  return make_string(buffer);
+}
+
+/* The rest of the file, from wherever it is now. */
+struct TString *M4_File_readAll(struct TFile *self) {
+  struct TString *result;
+  char *text = NULL;
+  size_t size = 0;
+  size_t capacity = 0;
+
+  if (!self->handle) {
+    return make_string("");
+  }
+
+  for (;;) {
+    size_t got;
+    if (size + 4096 + 1 > capacity) {
+      capacity = capacity == 0 ? 8192 : capacity * 2;
+      text = realloc(text, capacity);
+      if (!text) {
+        printf("Runtime error : Out of memory reading a file.\n");
+        exit(1);
+      }
+    }
+    got = fread(text + size, 1, 4096, self->handle);
+    size += got;
+    if (got < 4096) {
+      break;
+    }
+  }
+
+  if (!text) {
+    return make_string("");
+  }
+  text[size] = '\0';
+
+  result = (struct TString *)__catmint_new(RTTI(RString));
+  String_init(result);
+  result->length = (int)size;
+  result->string = text;
+  return result;
+}
+
+struct TFile *M4_File_write(struct TFile *self, struct TString *text) {
+  if (self->handle) {
+    fwrite(text->string, 1, (size_t)text->length, self->handle);
+  }
+  return self;
+}
+
+/* 1 once the file is exhausted, peeking rather than waiting for a read to
+ * fail, so a read loop stops in the right place. A file that is not open is
+ * at its end. */
+int M4_File_eof(struct TFile *self) {
+  int c;
+
+  if (!self->handle) {
+    return 1;
+  }
+  c = fgetc(self->handle);
+  if (c == EOF) {
+    return 1;
+  }
+  ungetc(c, self->handle);
+  return 0;
+}
+
+struct TFile *M4_File_close(struct TFile *self) {
+  if (self->handle) {
+    fclose(self->handle);
+    self->handle = NULL;
+  }
+  return self;
+}
+
+int M4_File_isOpen(struct TFile *self) {
+  return self->handle != NULL;
+}
+
+/* These two are about a path, not about this file, so the receiver is not
+ * used; call them on any File. */
+int M4_File_exists(struct TFile *self, struct TString *path) {
+  FILE *probe;
+
+  (void)self;
+  probe = fopen(path->string, "rb");
+  if (!probe) {
+    return 0;
+  }
+  fclose(probe);
+  return 1;
+}
+
+int M4_File_remove(struct TFile *self, struct TString *path) {
+  (void)self;
+  return remove(path->string) == 0;
+}
+
+/* -------------------------------------------------------------------------
+ * Math
+ *
+ * A thin shell over libm. It is a class with no state because the language
+ * has no free functions; `Math m` costs one allocation and then nothing.
+ * ------------------------------------------------------------------------- */
+
+double M4_Math_sqrt(struct TMath *self, double x)  { (void)self; return sqrt(x); }
+double M4_Math_pow(struct TMath *self, double x, double y) {
+  (void)self;
+  return pow(x, y);
+}
+double M4_Math_exp(struct TMath *self, double x)   { (void)self; return exp(x); }
+double M4_Math_log(struct TMath *self, double x)   { (void)self; return log(x); }
+double M4_Math_log10(struct TMath *self, double x) { (void)self; return log10(x); }
+double M4_Math_sin(struct TMath *self, double x)   { (void)self; return sin(x); }
+double M4_Math_cos(struct TMath *self, double x)   { (void)self; return cos(x); }
+double M4_Math_tan(struct TMath *self, double x)   { (void)self; return tan(x); }
+double M4_Math_atan2(struct TMath *self, double y, double x) {
+  (void)self;
+  return atan2(y, x);
+}
+double M4_Math_floor(struct TMath *self, double x) { (void)self; return floor(x); }
+double M4_Math_ceil(struct TMath *self, double x)  { (void)self; return ceil(x); }
+double M4_Math_round(struct TMath *self, double x) { (void)self; return round(x); }
+double M4_Math_absf(struct TMath *self, double x)  { (void)self; return fabs(x); }
+
+int M4_Math_abs(struct TMath *self, int x) { (void)self; return x < 0 ? -x : x; }
+int M4_Math_min(struct TMath *self, int a, int b) { (void)self; return a < b ? a : b; }
+int M4_Math_max(struct TMath *self, int a, int b) { (void)self; return a > b ? a : b; }
+
+double M4_Math_pi(struct TMath *self) { (void)self; return 3.14159265358979323846; }
+double M4_Math_e(struct TMath *self)  { (void)self; return 2.71828182845904523536; }

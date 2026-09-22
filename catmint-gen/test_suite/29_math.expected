@@ -1,0 +1,17 @@
+sqrt 1.41421
+sqrt squared 2
+pow 1024
+exp 2.71828
+log 1
+log10 3
+sin 0
+cos 1
+atan2 0.785398
+floor 3
+ceil 4
+round 3
+absf 4.5
+abs 7
+min 3
+max 9
+pi 3.14159

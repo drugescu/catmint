@@ -119,8 +119,8 @@ from the repository root; `COMPILING.md` documents the four underlying stages.
 ## The runtime, and why it needs a build step
 
 `catmint-gen/runtime.c` is the object model and I/O library: `TObject`,
-`TString`, `TIO`, the `__catmint_rtti` type-info struct, `__catmint_new`, and
-the built-in methods. `build-runtime.sh` compiles it for the host into
+`TString`, `TIO`, `TList`, `TInteger`, `TFile`, `TMath`, the
+`__catmint_rtti` type-info struct, `__catmint_new`, and the built-in methods. `build-runtime.sh` compiles it for the host into
 `runtime.host.ll`, which is what programs link against.
 
 The original `runtime.ll` was committed without its source and built for
@@ -206,6 +206,25 @@ A built-in method's virtual table slot is fixed by `runtime.c`; its
 declaration order in `TypeTable::addBuiltinClasses` is that slot order. A new
 built-in method must be appended, never inserted, or every already-compiled
 caller silently calls the wrong slot.
+
+`File` and `Math` are built-in classes like `IO`, so they need no `using`.
+`File` holds one `FILE *`; `open` answers 1 or 0 rather than aborting, and
+`exists` and `remove` ignore the receiver because they are about a path.
+`Math` has no state at all and exists because the language has no free
+functions. `IO.args()` and `IO.arg(i)` reach the command line, which the
+generated `main(argc, argv)` hands to `__cm_setArgs` before anything else
+runs; `IO.err` writes to standard error and `IO.exit` sets the exit status.
+
+The string primitives that need C live on `String`: `indexOf`, `trim`,
+`upper`, `lower`, `split`, `replace`, `toFloat`, and `chr`, which is the one
+string operation that cannot be written in catmint because there is no way to
+build a character from a number. `chr`, like `File.exists`, ignores its
+receiver; `lib/text.cmm` wraps it so a program writes `t.chr(65)` rather than
+`"".chr(65)`, and adds the operations that are pure composition -- `join`,
+`repeat`, `padLeft`, `padRight`, `startsWith`, `endsWith`, `words`.
+
+A test may pass command-line arguments through `test_suite/<name>.args`, one
+line, whitespace separated, alongside the existing `<name>.stdin`.
 
 Not yet supported: slice vectors (they parse but have no deserializer, so they
 abort in `ASTSerialization.cpp`), return-type inference (`auto` on a method

@@ -126,8 +126,9 @@ OBJECTS="$OBJECTS $WORK/$BASE.ast.ll"
 # shellcheck disable=SC2086
 "$LLVM_LINK" $OBJECTS "$WORK/runtime.host.ll" -o "$WORK/$BASE.bc"
 
-# Bitcode -> native executable.
-"$CLANG" -Wno-override-module "$WORK/$BASE.bc" -o "$OUT"
+# Bitcode -> native executable. -lm for the Math class; on macOS libm is part
+# of libSystem and the flag is a no-op, on Linux it is not.
+"$CLANG" -Wno-override-module "$WORK/$BASE.bc" -o "$OUT" -lm
 echo "catmintc: wrote $OUT"
 
 [ "$RUN" -eq 1 ] && exec "$OUT"
