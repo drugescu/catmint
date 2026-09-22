@@ -202,6 +202,12 @@ private:
   llvm::Value *emitDispatch(Dispatch *D);
   llvm::Value *emitStaticDispatch(StaticDispatch *SD);
   llvm::Value *emitNewObject(NewObject *NO);
+  /// Allocate an instance, run its attribute initialisers and then its
+  /// constructor. Shared by `new`, by a declaration of a variable of class
+  /// type, and by an attribute of class type.
+  llvm::Value *constructObject(ClassInfo *CI,
+                               const std::vector<Expression *> &Args, int Line,
+                               const std::string &Name);
   llvm::Value *emitFieldAccess(FieldAccess *FA);
   llvm::Value *emitCast(Cast *C);
   llvm::Value *emitSubstring(Substring *S);

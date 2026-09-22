@@ -335,6 +335,13 @@ void IRGenerator::buildVTable(ClassInfo *CI) {
     if (!M)
       continue;
     const std::string MName = M->getName();
+    // A constructor gets no slot. It is always called on a known class, and a
+    // subclass's constructor takes its own arguments, so a shared slot would
+    // hold function pointers of two different types.
+    if (MName == strings::Init) {
+      CI->VTableImpl[MName] = {CI, M};
+      continue;
+    }
     if (CI->VTableIndex.count(MName)) {
       CI->VTableImpl[MName] = {CI, M}; // override reuses the parent's slot
     } else {
@@ -501,17 +508,8 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
       if (!FieldClass || isSubclassOf(CI->AST->getName(), A->getType()))
         continue;
 
-      auto *Obj = Builder.CreateCall(Runtime.catmintNew(), {FieldClass->RTTI},
-                                     A->getName() + ".obj");
-      if (FieldClass->Init) {
-        Builder.CreateCall(FieldClass->Init, {Obj});
-      } else {
-        auto *InitFT = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(Context),
-            {llvm::PointerType::getUnqual(Context)}, false);
-        Builder.CreateCall(
-            Module.getOrInsertFunction(symbolName(A->getType()) + "_init", InitFT), {Obj});
-      }
+      auto *Obj = constructObject(FieldClass, {}, A->getLineNumber(),
+                                  A->getName() + ".obj");
       auto *Slot = Builder.CreateGEP(
           CI->Ty, CI->Init->getArg(0),
           {Builder.getInt32(0), Builder.getInt32(CI->FieldIndex[A->getName()])},
@@ -997,17 +995,8 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
   for (const auto &Name : LD->getName()) {
     auto *Slot = createEntryAlloca(Lowered, Name);
     if (DeclClass && !InitIsComplete) {
-      auto *Obj = Builder.CreateCall(Runtime.catmintNew(), {DeclClass->RTTI},
-                                     Name + ".obj");
-      if (DeclClass->Init) {
-        Builder.CreateCall(DeclClass->Init, {Obj});
-      } else {
-        auto *FT = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(Context),
-            {llvm::PointerType::getUnqual(Context)}, false);
-        Builder.CreateCall(
-            Module.getOrInsertFunction(symbolName(DeclaredType) + "_init", FT), {Obj});
-      }
+      auto *Obj = constructObject(DeclClass, {}, LD->getLineNumber(),
+                                  Name + ".obj");
       Builder.CreateStore(Obj, Slot);
     } else if (Lowered->isPointerTy()) {
       Builder.CreateStore(llvm::ConstantPointerNull::get(
@@ -1438,7 +1427,9 @@ llvm::Value *IRGenerator::emitCall(ClassInfo *RecvClass,
 
   Builder.CreateCall(Runtime.checkNull(), {Receiver});
 
-  if (!Virtual) {
+  // A method with no virtual table slot -- a constructor -- is always called
+  // directly, whatever the call site asked for.
+  if (!Virtual || !RecvClass->VTableIndex.count(MethodName)) {
     ClassInfo *Target = StaticClass.empty() ? Owner : lookupClass(StaticClass);
     if (!Target)
       Target = Owner;
@@ -1515,22 +1506,64 @@ llvm::Value *IRGenerator::emitStaticDispatch(StaticDispatch *SD) {
                   /*Virtual=*/false, SD->getType());
 }
 
-llvm::Value *IRGenerator::emitNewObject(NewObject *NO) {
-  ClassInfo *CI = lookupClass(NO->getType());
-  if (!CI)
-    fail(NO->getLineNumber(), "cannot instantiate unknown class '" + NO->getType() + "'");
-  auto *Obj = Builder.CreateCall(Runtime.catmintNew(), {CI->RTTI},
-                                 "new." + NO->getType());
+/// Three steps: allocate, run the attribute initialisers, run the constructor.
+/// A constructor is an ordinary method named 'init', so it is called through
+/// the same path as any other call and its arguments are converted against its
+/// declared parameter types.
+///
+/// A plain declaration passes no arguments, and only a constructor that takes
+/// none runs for it; declaring a variable of a class whose constructor needs
+/// arguments leaves the object default-initialised, as it was before
+/// constructors existed.
+llvm::Value *IRGenerator::constructObject(ClassInfo *CI,
+                                          const std::vector<Expression *> &Args,
+                                          int Line, const std::string &Name) {
+  auto *Obj = Builder.CreateCall(Runtime.catmintNew(), {CI->RTTI}, Name);
+
   if (CI->Init) {
     Builder.CreateCall(CI->Init, {Obj});
-  } else if (CI->Builtin) {
+  } else {
     auto *FT = llvm::FunctionType::get(llvm::Type::getVoidTy(Context),
                                        {llvm::PointerType::getUnqual(Context)},
                                        false);
     Builder.CreateCall(
-        Module.getOrInsertFunction(symbolName(CI->AST->getName()) + "_init", FT), {Obj});
+        Module.getOrInsertFunction(symbolName(CI->AST->getName()) + "_init", FT),
+        {Obj});
   }
+
+  auto Ctor = CI->VTableImpl.find(strings::Init);
+  if (Ctor == CI->VTableImpl.end()) {
+    if (!Args.empty())
+      fail(Line, "class '" + CI->AST->getName() + "' has no constructor");
+    return Obj;
+  }
+
+  size_t Params = 0;
+  for (auto *P : *Ctor->second.second) {
+    (void)P;
+    ++Params;
+  }
+  if (Args.size() != Params) {
+    if (!Args.empty())
+      fail(Line, "the constructor of '" + CI->AST->getName() + "' takes " +
+                     std::to_string(Params) + " arguments");
+    return Obj;
+  }
+
+  emitCall(CI, strings::Init, Obj, Args, Line, /*Virtual=*/false,
+           CI->AST->getName());
   return Obj;
+}
+
+llvm::Value *IRGenerator::emitNewObject(NewObject *NO) {
+  ClassInfo *CI = lookupClass(NO->getType());
+  if (!CI)
+    fail(NO->getLineNumber(), "cannot instantiate unknown class '" + NO->getType() + "'");
+
+  std::vector<Expression *> Args;
+  for (auto *A : *NO)
+    Args.push_back(A);
+  return constructObject(CI, Args, NO->getLineNumber(), "new." + NO->getType());
 }
 
 /// `a.b`, and `a.b = v` when the node carries a value. Both are one GEP into

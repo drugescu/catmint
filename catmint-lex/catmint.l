@@ -55,6 +55,7 @@ static int gColumnNumber = 1;
 "self"        { countColumns(); return KW_SELF;	}
 "null"        { countColumns(); return KW_NULL; }
 "constructor"	{ countColumns(); return KW_CONSTRUCTOR; }
+"new"         { countColumns(); return KW_NEW; }
 "constexpr"   { countColumns(); return KW_CONSTEXPR; }
 "def"         { countColumns(); return KW_DEF; }
 "var"		      { countColumns(); return KW_VAR; }

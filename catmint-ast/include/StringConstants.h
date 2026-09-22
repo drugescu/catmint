@@ -13,6 +13,9 @@ const auto Float = "Float";
 const auto Self = "self";
 const auto MainClass = "Main";
 const auto MainMethod = "main";
+// A constructor is a method under this name, so `new T(a, b)` is a call and
+// needs no separate machinery in the type table or the vtable.
+const auto Init = "init";
 
 const auto Object = "Object";
 const auto Abort = "abort";

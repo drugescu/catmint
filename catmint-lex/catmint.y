@@ -11,6 +11,7 @@
 	#include <cstdlib>
 	#include <cstring>
 	#include <ASTNodes.h>
+	#include <StringConstants.h>
 }
 
 %code {
@@ -102,7 +103,7 @@
 %token KW_WHILE KW_FOR KW_RETURN
 %token KW_CLASS KW_SELF KW_FROM KW_END KW_VAR KW_NULL KW_DO KW_IN
 %token KW_USING KW_IS
-%token KW_CONSTRUCTOR
+%token KW_CONSTRUCTOR KW_NEW
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
 
 %token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE OP_NOT OP_AND OP_OR OP_XOR OP_LSHIFT OP_RSHIFT
@@ -139,6 +140,7 @@ expression
                       vector_access
                   negative_expression
                   field_access
+                  new_expression
                   if_expression
     conditional_expression
     dispatch_expression
@@ -347,6 +349,29 @@ method
 		$$ = new catmint::Method(@1.first_line, *$3, *$2, Expression($8),
 		                         *reinterpret_cast<std::vector<catmint::Attribute*>*>($5));
 		delete $2; delete $3;
+	}
+  // A constructor is sugar for a method named 'init' returning nothing. The
+  // three forms mirror the parameterless, empty-parenthesis and parameterised
+  // spellings of 'def'.
+  // constructor:
+  | KW_CONSTRUCTOR OP_COLON block KW_END {
+		auto params = new std::vector<catmint::Attribute*>();
+		$$ = new catmint::Method(@1.first_line, std::string(catmint::strings::Init),
+		                         std::string("Void"), Expression($3), *params);
+		delete params;
+	}
+  // constructor():
+  | KW_CONSTRUCTOR OP_OPAREN OP_CPAREN OP_COLON block KW_END {
+		auto params = new std::vector<catmint::Attribute*>();
+		$$ = new catmint::Method(@1.first_line, std::string(catmint::strings::Init),
+		                         std::string("Void"), Expression($5), *params);
+		delete params;
+	}
+  // constructor(Int a, Int b):
+  | KW_CONSTRUCTOR OP_OPAREN method_arguments OP_CPAREN OP_COLON block KW_END {
+		$$ = new catmint::Method(@1.first_line, std::string(catmint::strings::Init),
+		                         std::string("Void"), Expression($6),
+		                         *reinterpret_cast<std::vector<catmint::Attribute*>*>($3));
 	}
 	;
 
@@ -697,6 +722,7 @@ unary_expression
 
 basic_expression
   : identifier_expression
+	| new_expression
 	| field_access
 	| negative_expression
 	| parenthesis_expression
@@ -730,6 +756,21 @@ if_expression
 								   Expression(block_else));
     }
   ;
+
+// `new T(a, b)` allocates an object, runs its attribute initialisers and then
+// its constructor. `new T` does the first two. A constructor is an ordinary
+// method named 'init', so the arguments are checked and converted by the same
+// code that checks any call.
+new_expression
+	: KW_NEW type_name OP_OPAREN dispatch_arguments OP_CPAREN {
+		$$ = new catmint::NewObject(@1.first_line, *$2, *$4);
+		delete $2; delete $4;
+	}
+	| KW_NEW type_name {
+		$$ = new catmint::NewObject(@1.first_line, *$2);
+		delete $2;
+	}
+	;
 
 // A field of an object: `a.b`. The same node serves the assignment `a.b = v`,
 // which attaches the value to it (see local_expr) rather than introducing a

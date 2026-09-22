@@ -1,0 +1,74 @@
+# new, and constructors that take arguments.
+
+class Point
+  Int x
+  Int y
+
+  constructor(Int a, Int b):
+    x = a
+    y = b
+  end
+
+  def String show:
+    return "(" + x + "," + y + ")"
+  end
+end
+
+# A subclass inherits the constructor unless it declares its own.
+class Named from Point
+  String label
+
+  constructor(Int a, Int b, String text):
+    self.x = a
+    self.y = b
+    label = text
+  end
+
+  def String show:
+    return label + "(" + x + "," + y + ")"
+  end
+end
+
+# A constructor with no arguments runs on a plain declaration too.
+class Counter
+  Int n
+
+  constructor:
+    n = 100
+  end
+
+  def Int bump:
+    n = n + 1
+    return n
+  end
+end
+
+class Main
+  def main:
+    IO io
+
+    Point p = new Point(3, 4)
+    io.out("p " + p.show() + "\n")
+
+    # new is an expression: it can go straight into a container.
+    List points
+    points.append(new Point(1, 2))
+    points.append(new Point(5, 6))
+    for item in points:
+      Point each = item
+      io.out("in list " + each.show() + "\n")
+    end
+
+    Named n = new Named(7, 8, "origin")
+    io.out("n " + n.show() + "\n")
+
+    # Declaring a variable runs the zero-argument constructor.
+    Counter c
+    io.out("counter " + c.n + " then " + c.bump() + "\n")
+
+    # new without arguments, for a class that has no constructor.
+    Point bare = new Point(0, 0)
+    bare.x = 9
+    io.out("bare " + bare.show() + "\n")
+  end
+end

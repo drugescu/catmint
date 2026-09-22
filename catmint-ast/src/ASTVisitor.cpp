@@ -157,7 +157,15 @@ bool ASTVisitor::visit(StaticDispatch *SD) {
   return visit(SD->getObject());
 }
 
-bool ASTVisitor::visit(NewObject *NO) { return true; }
+bool ASTVisitor::visit(NewObject *NO) {
+  for (auto Arg : *NO) {
+    if (!visit(Arg)) {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 bool ASTVisitor::visit(FieldAccess *FA) {
   if (!visit(FA->getObject())) {

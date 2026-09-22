@@ -570,6 +570,19 @@ bool ASTSerializer::visit(NewObject *NO) {
   CreateJSONObject newObject(*this, keys::NewObjectNodeType, NO);
   writePair(keys::LineNumber, NO->getLineNumber());
   writePair(keys::Type, NO->getType());
+
+  if (NO->begin() == NO->end()) {
+    return true;
+  }
+
+  writer->Key(keys::Arguments);
+  CreateJSONArray arguments(*this);
+  for (auto arg : *NO) {
+    if (!visit(arg)) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -1371,8 +1384,23 @@ ASTDeserializer::parseNewObject(rapidjson::Value &tree) {
   assert(tree.HasMember(keys::Type) && "New operator without type");
   assert(tree[keys::Type].IsString() && "Invalid type for new operator");
 
-  return createNode<NewObject>(tree, parseLineNumber(tree),
-                               tree[keys::Type].GetString());
+  auto newObject = createNode<NewObject>(tree, parseLineNumber(tree),
+                                         tree[keys::Type].GetString());
+
+  if (tree.HasMember(keys::Arguments)) {
+    assert(tree[keys::Arguments].IsArray() && "Arguments not in array");
+
+    auto &args = tree[keys::Arguments];
+    for (auto b = args.Begin(), e = args.End(); b != e; ++b) {
+      auto &argTree = *b;
+      assert(argTree.IsObject() && "Expected argument object");
+      auto argNode = parseExpression(argTree);
+      assert(argNode && "Expected non-null expression node");
+      newObject->addArgument(std::move(argNode));
+    }
+  }
+
+  return newObject;
 }
 
 std::unique_ptr<FieldAccess>

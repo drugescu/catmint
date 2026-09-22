@@ -141,6 +141,14 @@ void SemanticAnalysis::checkFeatures(Class *c) {
       auto hidden =
           typeTable.getMethod(typeTable.getParentClass(c), f->getName());
 
+      // A constructor is not an override: a subclass takes whatever arguments
+      // it needs, and the signature of the one it inherits says nothing about
+      // them. It is never dispatched virtually either, so there is no slot to
+      // keep compatible.
+      if (method->getName() == strings::Init) {
+        continue;
+      }
+
       if (hidden) {
         // check that the signatures match
         if (method->getReturnType() != hidden->getReturnType()) {
@@ -561,6 +569,40 @@ bool SemanticAnalysis::visit(NewObject *n) {
 
   if (!type->getClass()) {
     throw WrongTypeException(type, n);
+  }
+
+  // The arguments are the constructor's, and a constructor is just a method
+  // named 'init'. Checking them here rather than in checkDispatchArgs keeps
+  // NewObject free of the name a dispatch carries.
+  auto constructor = typeTable.getMethod(type->getClass(), strings::Init);
+
+  if (!constructor) {
+    for (auto arg : *n) {
+      if (!visit(arg)) {
+        return false;
+      }
+      throw MethodNotFoundException(strings::Init, type->getClass());
+    }
+  } else {
+    auto paramIt = constructor->begin();
+    for (auto arg : *n) {
+      if (!visit(arg)) {
+        return false;
+      }
+      if (paramIt == constructor->end()) {
+        throw TooManyArgsException(strings::Init, n);
+      }
+
+      auto paramType = typeTable.getType((*paramIt)->getType());
+      if (!typeTable.isEqualOrImplicitlyConvertibleTo(typeTable.getType(arg),
+                                                      paramType)) {
+        throw WrongTypeException(typeTable.getType(arg), paramType, n);
+      }
+      ++paramIt;
+    }
+    if (paramIt != constructor->end()) {
+      throw NotEnoughArgsException(strings::Init, n);
+    }
   }
 
   typeTable.setType(n, type);

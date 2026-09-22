@@ -158,11 +158,21 @@ because a subclass's layout begins with its parent's. `a.b` and `a.b(...)` are
 told apart by the token after the name: with `(` the parser shifts into
 `dispatch_expression`, otherwise it reduces `field_access`.
 
-Two details that are easy to trip over, both forced by the grammar:
+`new T(a, b)` allocates, runs the attribute initialisers and then the
+constructor. A constructor is declared with `constructor(...):` and is sugar
+for a method named `init`: `new` is therefore an ordinary call as far as the
+type table, the argument checking and the generator are concerned. It gets no
+virtual table slot, because a subclass's constructor takes its own arguments
+and would otherwise share a slot with a function of a different type; it is
+always called on a known class.
 
-- **There is no `new`.** Declaring a variable of class type constructs it, so
-  `Counter c` allocates and initialises. `NewObject` exists in the AST and the
-  generator handles it, but no grammar rule produces one.
+Declaring a variable of class type still constructs it, and runs the
+constructor when that constructor takes no arguments. Declaring a variable of a
+class whose constructor does take arguments leaves the object default-
+initialised, as it was before constructors existed; use `new` there.
+
+One detail that is easy to trip over, forced by the grammar:
+
 - **`x = expr` is a `LocalDefinition` with the type `auto`, never an
   `Assignment`.** The generator treats it as assignment when the name already
   resolves, and as a declaration otherwise. Without that, `sum = sum + i`

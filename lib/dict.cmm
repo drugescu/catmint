@@ -8,13 +8,9 @@ class DictEntry from Object
   String k
   Object v
 
-  # catmint has no constructor arguments, so an object is made by declaring it
-  # and then handed its fields. The fields themselves are read and written
-  # directly, so this class needs no accessors.
-  def DictEntry fill(String key, Object value):
+  constructor(String key, Object value):
     k = key
     v = value
-    return self
   end
 end
 
@@ -97,9 +93,7 @@ class Dict from Object
         return self
       end
     end
-    DictEntry fresh
-    fresh.fill(key, value)
-    bucket.append(fresh)
+    bucket.append(new DictEntry(key, value))
     count = count + 1
     return self
   end
