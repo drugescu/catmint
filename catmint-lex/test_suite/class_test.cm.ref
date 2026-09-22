@@ -9,6 +9,7 @@
             "LineNumber": 4,
             "Name": "Point",
             "Parent": "IO",
+            "SourceFile": "./test_suite/class_test.cm",
             "Features": [
                 {
                     "NodeType": "Attribute",
@@ -56,6 +57,7 @@
             "NodeID": 8,
             "LineNumber": 0,
             "Name": "Main",
+            "SourceFile": "./test_suite/class_test.cm",
             "Features": [
                 {
                     "NodeType": "Method",

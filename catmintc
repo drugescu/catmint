@@ -8,6 +8,7 @@
 #   ./catmintc examples/tour.cm -o mytour  -> ./mytour
 #   ./catmintc --run examples/tour.cm      -> compile, then run it
 #   ./catmintc -O0 app.cm                  -> no optimisation, for debugging
+#   ./catmintc -g -O0 app.cm               -> line numbers a debugger can use
 #
 # Set LLVM_BIN if llvm-link/clang are not on PATH.
 set -e
@@ -30,11 +31,14 @@ SEPARATE=0
 # clang uses the fast register allocator, which spills every value to the
 # stack, and a counted loop runs more than twice as slowly for it.
 OPT=-O2
+# -g asks the generator for line numbers and clang to keep them.
+DEBUG=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --run) RUN=1; shift ;;
     --separate) SEPARATE=1; shift ;;
     -O0|-O1|-O2|-O3) OPT="$1"; shift ;;
+    -g) DEBUG=1; shift ;;
     -o)    OUT="$2"; shift 2 ;;
     -I)    INCLUDES="$INCLUDES -I $2"; shift 2 ;;
     -I*)   INCLUDES="$INCLUDES -I ${1#-I}"; shift ;;
@@ -44,7 +48,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$SRC" ]; then
-  echo "usage: catmintc [--run] [--separate] [-O0|-O1|-O2|-O3] [-o output] [-I moduledir]... <program.cm>" >&2
+  echo "usage: catmintc [--run] [--separate] [-g] [-O0|-O1|-O2|-O3] [-o output] [-I moduledir]... <program.cm>" >&2
   exit 2
 fi
 for tool in "$PARSER" "$GEN"; do
@@ -93,6 +97,8 @@ parse_one() {
 generate_one() {
   # generate_one <name> <extra catmint-gen flags...>
   name=$1; shift
+  [ -n "$DEBUG" ] && set -- -g "$@"
+
   # catmint-gen writes <input>.ll beside its input, so run it in the work dir.
   ( cd "$WORK" && "$GEN" "$@" "$name.ast" "$name.sem" >"gen.$name.log" 2>"gen.$name.err" ) || {
     echo "catmintc: compilation failed for $name" >&2
@@ -134,7 +140,21 @@ OBJECTS="$OBJECTS $WORK/$BASE.ast.ll"
 
 # Bitcode -> native executable. -lm for the Math class; on macOS libm is part
 # of libSystem and the flag is a no-op, on Linux it is not.
-"$CLANG" -Wno-override-module "$OPT" "$WORK/$BASE.bc" -o "$OUT" -lm
+if [ -n "$DEBUG" ]; then
+  # Two steps, because macOS does not put DWARF in the executable: it leaves
+  # it in the object file and records a debug map pointing there, which
+  # dsymutil then collects into a .dSYM. Compiling and linking in one command
+  # would delete the object before dsymutil could read it, which is why
+  # `clang -g one.c -o one` gives an executable a debugger cannot read either.
+  "$CLANG" -Wno-override-module "$OPT" -g -c "$WORK/$BASE.bc" -o "$WORK/$BASE.o"
+  "$CLANG" "$OPT" -g "$WORK/$BASE.o" -o "$OUT" -lm
+  if [ "$(uname)" = "Darwin" ] && command -v dsymutil >/dev/null 2>&1; then
+    dsymutil "$OUT" >/dev/null 2>&1 || \
+      echo "catmintc: warning: dsymutil could not collect debug information" >&2
+  fi
+else
+  "$CLANG" -Wno-override-module "$OPT" "$WORK/$BASE.bc" -o "$OUT" -lm
+fi
 echo "catmintc: wrote $OUT"
 
 [ "$RUN" -eq 1 ] && exec "$OUT"

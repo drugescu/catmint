@@ -6,6 +6,11 @@
 #
 # A test may supply stdin via test_suite/<name>.stdin, and command-line
 # arguments via test_suite/<name>.args (one line, whitespace separated).
+#
+# A test may also supply test_suite/<name>.check, an executable script run
+# with the source file as its argument once the output has matched. It is for
+# things the program's own output cannot show -- what is in the generated IR,
+# say. A non-zero exit fails the test.
 # Run a single test:  ./ctest.sh test_suite/01_hello.cm
 LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v llvm-link 2>/dev/null || echo /opt/homebrew/opt/llvm@22/bin/llvm-link)")}
 LLVM_LINK="$LLVM_BIN/llvm-link"
@@ -106,13 +111,25 @@ for file in ${*:-test_suite/*.cm}; do
     errors=$((errors+1)); failed="$failed $name"; continue
   fi
 
-  if diff -q "$WORK/$name.out" "$expected" >/dev/null 2>&1; then
-    printf "${GREEN}ok${NC}\n"
-  else
+  if ! diff -q "$WORK/$name.out" "$expected" >/dev/null 2>&1; then
     printf "${RED}FAIL${NC} (output)\n"
     diff "$expected" "$WORK/$name.out" | sed 's/^/      /' | head -20
     errors=$((errors+1)); failed="$failed $name"
+    continue
   fi
+
+  if [ -x "test_suite/$name.check" ]; then
+    if ! "test_suite/$name.check" "$file" >"$WORK/$name.check.log" 2>&1; then
+      printf "${RED}FAIL${NC} (check)\n"
+      sed 's/^/      /' "$WORK/$name.check.log" | head -10
+      errors=$((errors+1)); failed="$failed $name"
+      continue
+    fi
+    printf "${GREEN}ok${NC} (checked)\n"
+    continue
+  fi
+
+  printf "${GREEN}ok${NC}\n"
 done
 
 echo "------------------------------------------------------------"

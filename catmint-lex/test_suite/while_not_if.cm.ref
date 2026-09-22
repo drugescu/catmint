@@ -8,6 +8,7 @@
             "NodeID": 1,
             "LineNumber": 0,
             "Name": "Main",
+            "SourceFile": "./test_suite/while_not_if.cm",
             "Features": [
                 {
                     "NodeType": "Method",

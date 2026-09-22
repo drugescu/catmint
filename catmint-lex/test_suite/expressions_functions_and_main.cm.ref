@@ -9,6 +9,7 @@
             "LineNumber": 4,
             "Name": "Main",
             "Parent": "IO",
+            "SourceFile": "./test_suite/expressions_functions_and_main.cm",
             "Features": [
                 {
                     "NodeType": "Attribute",

@@ -7,7 +7,9 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -116,7 +118,7 @@ public:
   IRGenerator(llvm::StringRef ModuleName, Program *P, const TypeTable &ASTTypes,
               SymbolMap DefinitionsMap,
               std::set<std::string> ExternalClasses = {},
-              bool LibraryOnly = false);
+              bool LibraryOnly = false, bool EmitDebugInfo = false);
 
   llvm::Module *runGenerator();
 
@@ -145,6 +147,25 @@ private:
   /// True when compiling a .cmm: no Main is required and no entry point is
   /// emitted.
   bool LibraryOnly = false;
+
+  // ---- debug information -------------------------------------------------
+  /// Line numbers only: enough for a debugger to say where it is and for a
+  /// crash to name a line, without describing types or variables.
+  bool EmitDebugInfo = false;
+  std::unique_ptr<llvm::DIBuilder> DI;
+  llvm::DICompileUnit *DICU = nullptr;
+  llvm::DIFile *DIMainFile = nullptr;
+  std::map<std::string, llvm::DIFile *> DIFiles;
+  llvm::DISubprogram *CurrentSubprogram = nullptr;
+
+  void startDebugInfo();
+  llvm::DIFile *debugFileFor(ClassInfo *CI);
+  /// Attach a subprogram to \p F and make it the scope for what follows.
+  void beginDebugScope(llvm::Function *F, ClassInfo *CI,
+                       const std::string &Name, int Line);
+  void endDebugScope();
+  /// Point the builder at \p Line inside the current subprogram.
+  void setDebugLine(int Line);
 
   bool isExternal(const ClassInfo *CI) const;
 

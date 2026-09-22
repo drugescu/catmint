@@ -82,13 +82,115 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
 IRGenerator::IRGenerator(llvm::StringRef ModuleName, Program *P,
                          const TypeTable &ASTTypes, SymbolMap DefinitionsMap,
                          std::set<std::string> ExternalClasses,
-                         bool LibraryOnly)
+                         bool LibraryOnly, bool EmitDebugInfo)
     : Context(), Module(ModuleName, Context), Builder(Context),
       // A generic little-endian 64-bit layout. Only used to size objects; the
       // module carries no datalayout of its own so lli/clang supply the host's.
       SizingLayout("e-m:e-i64:64-f80:128-n8:16:32:64-S128"), Runtime(Module),
       AST(P), ASTTypes(ASTTypes), DefinitionsMap(std::move(DefinitionsMap)),
-      ExternalClasses(std::move(ExternalClasses)), LibraryOnly(LibraryOnly) {}
+      ExternalClasses(std::move(ExternalClasses)), LibraryOnly(LibraryOnly),
+      EmitDebugInfo(EmitDebugInfo) {}
+
+// ---------------------------------------------------------------------------
+// Debug information
+//
+// Line numbers and nothing else: a subprogram per function and a location per
+// expression. That is enough for a debugger to say where it is and for a
+// crash to name a file and a line, which is what was missing. Describing
+// types and variables would be a much larger piece of work and is not done.
+// ---------------------------------------------------------------------------
+
+void IRGenerator::startDebugInfo() {
+  if (!EmitDebugInfo)
+    return;
+
+  DI.reset(new llvm::DIBuilder(Module));
+
+  // The compile unit's file is the file Main was written in, falling back to
+  // the first class that names one.
+  std::string MainPath;
+  if (auto *MainCI = lookupClass(strings::MainClass))
+    MainPath = MainCI->AST->getFile();
+  if (MainPath.empty()) {
+    for (auto *CI : ClassOrder) {
+      if (!CI->AST->getFile().empty()) {
+        MainPath = CI->AST->getFile();
+        break;
+      }
+    }
+  }
+  if (MainPath.empty())
+    MainPath = Module.getName().str();
+
+  DIMainFile = debugFileFor(nullptr);
+  auto Slash = MainPath.find_last_of('/');
+  const std::string Dir = Slash == std::string::npos ? std::string(".")
+                                                     : MainPath.substr(0, Slash);
+  const std::string Name =
+      Slash == std::string::npos ? MainPath : MainPath.substr(Slash + 1);
+  DIMainFile = DI->createFile(Name, Dir);
+  DIFiles[MainPath] = DIMainFile;
+
+  DICU = DI->createCompileUnit(llvm::dwarf::DW_LANG_C, DIMainFile, "catmint",
+                               /*isOptimized=*/false, /*Flags=*/"",
+                               /*RuntimeVersion=*/0);
+
+  Module.addModuleFlag(llvm::Module::Warning, "Debug Info Version",
+                       llvm::DEBUG_METADATA_VERSION);
+  Module.addModuleFlag(llvm::Module::Warning, "Dwarf Version", 4);
+}
+
+llvm::DIFile *IRGenerator::debugFileFor(ClassInfo *CI) {
+  if (!DI)
+    return nullptr;
+  const std::string Path = CI ? CI->AST->getFile() : std::string();
+  if (Path.empty())
+    return DIMainFile;
+
+  auto Found = DIFiles.find(Path);
+  if (Found != DIFiles.end())
+    return Found->second;
+
+  auto Slash = Path.find_last_of('/');
+  const std::string Dir =
+      Slash == std::string::npos ? std::string(".") : Path.substr(0, Slash);
+  const std::string Name =
+      Slash == std::string::npos ? Path : Path.substr(Slash + 1);
+  auto *File = DI->createFile(Name, Dir);
+  DIFiles[Path] = File;
+  return File;
+}
+
+void IRGenerator::beginDebugScope(llvm::Function *F, ClassInfo *CI,
+                                  const std::string &Name, int Line) {
+  if (!DI) {
+    Builder.SetCurrentDebugLocation(llvm::DebugLoc());
+    return;
+  }
+
+  auto *File = debugFileFor(CI);
+  // An empty type list: the signature is not described, only the location.
+  auto *Type = DI->createSubroutineType(DI->getOrCreateTypeArray({}));
+  const unsigned At = Line > 0 ? static_cast<unsigned>(Line) : 1u;
+  CurrentSubprogram = DI->createFunction(
+      File, Name, F->getName(), File, At, Type, At,
+      llvm::DINode::FlagPrototyped, llvm::DISubprogram::SPFlagDefinition);
+  F->setSubprogram(CurrentSubprogram);
+  setDebugLine(Line);
+}
+
+void IRGenerator::endDebugScope() {
+  CurrentSubprogram = nullptr;
+  Builder.SetCurrentDebugLocation(llvm::DebugLoc());
+}
+
+void IRGenerator::setDebugLine(int Line) {
+  if (!DI || !CurrentSubprogram)
+    return;
+  const unsigned At = Line > 0 ? static_cast<unsigned>(Line) : 1u;
+  Builder.SetCurrentDebugLocation(
+      llvm::DILocation::get(Context, At, 0, CurrentSubprogram));
+}
 
 /// A built-in is external in the same sense an imported class is: its code
 /// lives in another object (runtime.ll), so only declarations belong here.
@@ -495,6 +597,7 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
 
   auto *Entry = llvm::BasicBlock::Create(Context, "entry", CI->Init);
   Builder.SetInsertPoint(Entry);
+  beginDebugScope(CI->Init, CI, InitName, CI->AST->getLineNumber());
 
   CurrentClass = CI;
   CurrentFunction = CI->Init;
@@ -555,6 +658,7 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
 
   if (!blockTerminated())
     Builder.CreateRetVoid();
+  endDebugScope();
   return true;
 }
 
@@ -572,6 +676,8 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
 
   auto *Entry = llvm::BasicBlock::Create(Context, "entry", F);
   Builder.SetInsertPoint(Entry);
+  beginDebugScope(F, CI, CI->AST->getName() + "." + M->getName(),
+                  M->getLineNumber());
 
   CurrentClass = CI;
   CurrentFunction = F;
@@ -618,6 +724,7 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
       }
     }
   }
+  endDebugScope();
   return true;
 }
 
@@ -634,6 +741,7 @@ void IRGenerator::emitProgramMain() {
                                    "main", &Module);
   auto *Entry = llvm::BasicBlock::Create(Context, "entry", F);
   Builder.SetInsertPoint(Entry);
+  beginDebugScope(F, MainCI, "main", MainCI->AST->getLineNumber());
 
   auto SetArgs = Module.getOrInsertFunction(
       "__cm_setArgs",
@@ -655,6 +763,7 @@ void IRGenerator::emitProgramMain() {
   }
 
   Builder.CreateRet(Builder.getInt32(0));
+  endDebugScope();
 }
 
 // ---------------------------------------------------------------------------
@@ -670,6 +779,7 @@ llvm::Module *IRGenerator::runGenerator() {
       return nullptr;
     buildVTable(CI);
   }
+  startDebugInfo();
   for (auto *CI : ClassOrder)
     declareMethods(CI);
   for (auto *CI : ClassOrder)
@@ -690,6 +800,10 @@ llvm::Module *IRGenerator::runGenerator() {
 
   if (!LibraryOnly)
     emitProgramMain();
+
+  // Without this the metadata is incomplete and the verifier rejects it.
+  if (DI)
+    DI->finalize();
   return &Module;
 }
 
@@ -936,6 +1050,10 @@ llvm::Value *IRGenerator::coerce(llvm::Value *V, const std::string &From,
 llvm::Value *IRGenerator::emit(Expression *E) {
   if (!E || blockTerminated())
     return nullptr;
+
+  // Every instruction from here on is attributed to this node's line, which
+  // is what turns a crash into a file and a line.
+  setDebugLine(E->getLineNumber());
 
   if (auto *N = dynamic_cast<Block *>(E))            return emitBlock(N);
   if (auto *N = dynamic_cast<IntConstant *>(E))      return emitIntConstant(N);

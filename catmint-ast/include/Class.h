@@ -45,6 +45,12 @@ public:
   std::string getName() const { return name; }
   std::string getParent() const { return parentClassName; }
 
+  /// The source file this class was written in. A module spliced in by the
+  /// preprocessor keeps its own name here, so debug information points at the
+  /// file the programmer wrote rather than at the concatenated text.
+  std::string getFile() const { return fileName; }
+  void setFile(const std::string &file) { fileName = file; }
+
   /// \brief Add a feature and take ownership of it
   void addFeature(std::unique_ptr<Feature> F) {
     features.push_back(std::move(F));
@@ -78,6 +84,7 @@ public:
 private:
   std::string name;
   std::string parentClassName;
+  std::string fileName;
   FeaturesType features;
   Symbol self;
 };

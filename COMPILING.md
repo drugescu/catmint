@@ -144,6 +144,10 @@ Things worth knowing, because they are not obvious:
   declared return type. There is no limit on the number of parameters. The
   paren-less form the README shows, `def show Int a, Int b:`, is not
   implemented; use parentheses.
+- **`-g` gives you line numbers.** `./catmintc -g -O0 app.cm` puts a file and
+  a line on every statement, so a debugger can follow the program and a crash
+  names a place. On macOS it also writes an `app.dSYM` beside the binary,
+  which is where the debugger looks.
 - **`static def` is a method with no receiver**, called on the class:
   `Math.sqrt(2.0)`, `String.chr(65)`, `File.exists(path)`, or your own
   `Geometry.square(7)`. It cannot use `self` or any attribute. Inside the

@@ -28,6 +28,8 @@ void printUsage() {
             << std::endl;
   std::cerr << "  --verbose       print the AST, type and symbol tables"
             << std::endl;
+  std::cerr << "  -g, --debug     emit line numbers in the debug information"
+            << std::endl;
 }
 
 namespace {
@@ -50,6 +52,7 @@ int main(int argc, char **argv) {
   std::vector<std::string> positional;
   bool libraryOnly = false;
   bool verbose = false;
+  bool debugInfo = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string arg(argv[i]);
@@ -63,6 +66,8 @@ int main(int argc, char **argv) {
       libraryOnly = true;
     } else if (arg == "--verbose" || arg == "-v") {
       verbose = true;
+    } else if (arg == "--debug" || arg == "-g") {
+      debugInfo = true;
     } else {
       positional.push_back(arg);
     }
@@ -128,7 +133,7 @@ int main(int argc, char **argv) {
           catmint::IRGenerator Generator(OutputFile, program.get(),
                                       semanticAnalysis.getTypeTable(),
                                       semanticAnalysis.getSymbolDefinitions(),
-                                      externalClasses, libraryOnly);
+                                      externalClasses, libraryOnly, debugInfo);
           auto Module = Generator.runGenerator();
           if (!Module) {
             llvm::report_fatal_error(llvm::Twine("Couldn't generate module"));

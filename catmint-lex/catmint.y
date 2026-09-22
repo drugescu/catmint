@@ -221,22 +221,26 @@ catmint_classes : catmint_class {
 catmint_class : KW_CLASS IDENTIFIER features KW_END {
 			// A class declared inside a namespaced module carries that namespace.
 			$$ = new catmint::Class(@1.first_line, qualifyTypeName(*$2), "", *$3);
+			$$->setFile(gCurrentFile);
 		}
 		// Inherits from other classes
 		| KW_CLASS IDENTIFIER inherits_class features KW_END {
 		  $$ = new catmint::Class(@1.first_line, qualifyTypeName(*$2), *$3, *$4);
+		  $$->setFile(gCurrentFile);
 
 		  delete $2; delete $3; delete $4;
 		}
 		// Inherits from other classes but is empty
 		| KW_CLASS IDENTIFIER inherits_class KW_END {
 		  $$ = new catmint::Class(@1.first_line, qualifyTypeName(*$2), *$3, std::vector<catmint::Feature*>());
+		  $$->setFile(gCurrentFile);
 
 		  delete $2; delete $3;
 		}
 		// Empty class
 		| KW_CLASS IDENTIFIER KW_END {
 			$$ = new catmint::Class(@1.first_line, qualifyTypeName(*$2), "", std::vector<catmint::Feature*>());
+			$$->setFile(gCurrentFile);
 
 			delete $2;
 		}
@@ -1401,6 +1405,15 @@ int main(int argc, char** argv) {
 
   if (parseResult) {
     return 1;
+  }
+
+  // A Main synthesised around top-level code has no file of its own, because
+  // no 'class' line produced it. It belongs to the file being compiled, and
+  // saying so is what lets debug information name that file.
+  for (auto cls : *gCatmintProgram) {
+    if (cls->getFile().empty()) {
+      cls->setFile(positional[0]);
+    }
   }
 
   catmint::ASTSerializer serializer(positional[1].c_str());

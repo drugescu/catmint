@@ -9,6 +9,7 @@
             "LineNumber": 2,
             "Name": "Main",
             "Parent": "IO",
+            "SourceFile": "./test_suite/main_blocks.cm",
             "Features": [
                 {
                     "NodeType": "Attribute",

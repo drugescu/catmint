@@ -17,6 +17,7 @@ const auto Classes = "Classes";
 const auto Name = "Name";
 const auto NameList = "NameList";
 const auto ClassParent = "Parent";
+const auto SourceFile = "SourceFile";
 const auto Features = "Features";
 const auto Type = "Type";
 const auto Initializer = "Initializer";
@@ -162,6 +163,13 @@ bool ASTSerializer::visit(Class *C) {
   auto parent = C->getParent();
   if (!parent.empty()) {
     writePair(keys::ClassParent, parent);
+  }
+
+  // Written only when known, so an AST produced before classes carried their
+  // file is still read back unchanged.
+  auto file = C->getFile();
+  if (!file.empty()) {
+    writePair(keys::SourceFile, file);
   }
 
   if (C->begin() == C->end()) {
@@ -874,6 +882,11 @@ std::unique_ptr<Class> ASTDeserializer::parseClass(rapidjson::Value &tree) {
 
   auto classNode = createNode<Class>(tree, parseLineNumber(tree),
                                      tree[keys::Name].GetString(), parent);
+
+  if (tree.HasMember(keys::SourceFile)) {
+    assert(tree[keys::SourceFile].IsString() && "Invalid source file");
+    classNode->setFile(tree[keys::SourceFile].GetString());
+  }
 
   if (tree.HasMember(keys::Features)) {
     auto &features = tree[keys::Features];

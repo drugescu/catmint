@@ -97,7 +97,11 @@ cd catmint-gen && ./ctest.sh   # codegen: program stdout vs .expected files
 ```
 
 `wtest.sh` runs every `test_suite/*.cm`, diffs the produced `.ast` against the
-committed `.ref`, and writes `<test>.errlog.txt` on mismatch. All 11 pass. `declarations.cm` and `dispatch_complex.cm` had failed since
+committed `.ref`, and writes `<test>.errlog.txt` on mismatch. A class records
+the path it was parsed from, so the `.ref` files contain the path as
+`wtest.sh` spells it (`./test_suite/x.cm`); regenerate them by running the
+parser the same way it does, not with a different prefix. The `.ast` files
+are generated and are not committed. All 11 pass. `declarations.cm` and `dispatch_complex.cm` had failed since
 2020; both now parse. `declarations.cm.ref` was regenerated because the
 committed one predated the `new_list` rule, so it still described an empty list
 literal as a single node. Everything else in it, including the `a[i]` and
@@ -109,6 +113,11 @@ exactly.
 `.expected`, optionally feeding `<name>.stdin`. All of these pass; any failure
 is a real regression. Run one with `./ctest.sh test_suite/05_while.cm`, and add
 a case by dropping in the two files.
+
+A test may also carry `test_suite/<name>.check`, an executable script run with
+the source file once the program's output has matched. It exists for what the
+output cannot show: `35_debug.check` compiles the program again with `-g` and
+asserts what is in the generated IR. A non-zero exit fails the test.
 
 `catmint-gen/dbg.sh <file.cm>` parses and generates one program and prints just
 the error, which is otherwise lost in the debug trace.
@@ -253,6 +262,16 @@ letting the grammar see `IDENTIFIER :: IDENTIFIER` where a type is named is
 ambiguous with static dispatch (`Program::run.execute(...)`), which begins
 identically; the dispatch rule splits it apart again. In symbols `::` becomes
 `$`, which cannot appear in a catmint identifier, so nothing can collide.
+
+`catmint-gen -g` emits debug information: a `DISubprogram` per generated
+function and a `DILocation` per expression, which is line numbers and nothing
+else -- no types, no variables. Each class carries the file it was parsed
+from, so a method spliced in from a module points at that module rather than
+at the concatenated text. `catmintc -g` passes it through and then, on macOS,
+runs `dsymutil`, because macOS leaves DWARF in the object file and records
+only a debug map in the executable; compiling and linking in one command
+would delete the object first, which is why `clang -g one.c -o one` also
+produces an executable a debugger cannot read.
 
 `static def` declares a method with no receiver: it gets no virtual table
 slot and is called on the class, `Geometry.square(7)`. A call whose receiver

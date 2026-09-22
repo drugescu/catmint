@@ -1,0 +1,20 @@
+# Line numbers in the debug information. The .check script compiles this
+# again with -g and asserts that the lines below reach the IR, so the line
+# numbers in this file are part of the test: do not reflow it.
+
+class Counter
+  Int n
+
+  def Int bump:
+    n = n + 1
+    return n
+  end
+end
+
+class Main from IO
+  def main:
+    Counter c
+    out("bump " + c.bump() + "\n")
+    out("bump " + c.bump() + "\n")
+  end
+end
