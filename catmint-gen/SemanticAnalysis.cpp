@@ -365,6 +365,15 @@ bool SemanticAnalysis::visit(BinaryOperator *bo) {
   auto lhsType = typeTable.getType(LHS);
   auto rhsType = typeTable.getType(RHS);
 
+  // 'and' and 'or' ask each side for a truth value rather than combining
+  // them, so the two need nothing in common: 'p != null and p.size() > 0'
+  // has an Int on both sides, but 'p and p.size() > 0' has an object on the
+  // left, and both are meant to work.
+  if (bo->isShortCircuit()) {
+    typeTable.setType(bo, typeTable.getIntType());
+    return true;
+  }
+
   if (!typeTable.isEqualOrImplicitlyConvertibleTo(rhsType, lhsType)) {
     throw IncompatibleOperandsException(bo, lhsType, rhsType);
   }

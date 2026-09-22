@@ -772,7 +772,7 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
     return Last;
   }
   if (auto *BO = dynamic_cast<BinaryOperator *>(E)) {
-    if (BO->isComparison())
+    if (BO->isComparison() || BO->isShortCircuit())
       return strings::Int;
     std::string L = staticTypeOf(BO->getLHS());
     std::string R = staticTypeOf(BO->getRHS());
@@ -1138,6 +1138,44 @@ llvm::Value *IRGenerator::emitAssignment(Assignment *A) {
 }
 
 llvm::Value *IRGenerator::emitBinaryOperator(BinaryOperator *BO) {
+  // 'and' and 'or' come first, because the whole point of them is that the
+  // right operand is not evaluated unless it has to be. Everything below
+  // this evaluates both sides.
+  if (BO->isShortCircuit()) {
+    const bool IsAnd = BO->getOperatorKind() == BinaryOperator::AndAlso;
+
+    llvm::Value *L = emit(BO->getLHS());
+    if (!L)
+      return nullptr;
+    L = toCondition(L, IsAnd ? "and.lhs" : "or.lhs");
+
+    auto *RHSBB = llvm::BasicBlock::Create(Context, IsAnd ? "and.rhs" : "or.rhs",
+                                           CurrentFunction);
+    auto *EndBB = llvm::BasicBlock::Create(Context, IsAnd ? "and.end" : "or.end",
+                                           CurrentFunction);
+    auto *EntryBB = Builder.GetInsertBlock();
+    // 'and' needs the right side only when the left is true; 'or' only when
+    // it is false.
+    Builder.CreateCondBr(L, IsAnd ? RHSBB : EndBB, IsAnd ? EndBB : RHSBB);
+
+    Builder.SetInsertPoint(RHSBB);
+    llvm::Value *R = emit(BO->getRHS());
+    if (!R)
+      return nullptr;
+    R = toCondition(R, IsAnd ? "and.rhs.v" : "or.rhs.v");
+    auto *RHSExit = Builder.GetInsertBlock();
+    Builder.CreateBr(EndBB);
+
+    Builder.SetInsertPoint(EndBB);
+    auto *Phi = Builder.CreatePHI(Builder.getInt1Ty(), 2,
+                                  IsAnd ? "and.val" : "or.val");
+    // Short-circuiting out of 'and' is false, out of 'or' is true.
+    Phi->addIncoming(Builder.getInt1(!IsAnd), EntryBB);
+    Phi->addIncoming(R, RHSExit);
+    return Builder.CreateZExt(Phi, llvm::Type::getInt32Ty(Context),
+                              IsAnd ? "and" : "or");
+  }
+
   const std::string LT = staticTypeOf(BO->getLHS());
   const std::string RT = staticTypeOf(BO->getRHS());
 

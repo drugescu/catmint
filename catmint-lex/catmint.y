@@ -76,7 +76,7 @@
 		const std::string &where = gCurrentFile.empty()
 			? std::string(gInputFileName ? gInputFileName : "<input>")
 			: gCurrentFile;
-		std::cout << where << " | Line : " << yylloc.first_line << " | Column : " << yylloc.first_column << " | Error: " << error << std::endl;
+		std::cerr << where << " | Line : " << yylloc.first_line << " | Column : " << yylloc.first_column << " | Error: " << error << std::endl;
 	}
 }
 
@@ -115,6 +115,7 @@
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
 
 %token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE OP_NOT OP_AND OP_OR OP_XOR OP_LSHIFT OP_RSHIFT
+%token OP_ANDALSO OP_ORELSE
 %token OP_ATTRIB OP_DIV OP_PLUS OP_MINUS OP_MUL
 %token OP_OPAREN OP_CPAREN OP_COLON OP_STATIC_ACCESS
 
@@ -170,6 +171,10 @@ expression
 
 // Precedence increases downward
 //%right '[' ']'
+// 'and' and 'or' bind looser than everything else, so
+// 'a > 1 and a < 10' needs no parentheses.
+%left OP_ORELSE
+%left OP_ANDALSO
 %left OP_MOD OP_PLUS OP_MINUS 
 %left OP_MUL OP_DIV OP_POW OP_AND OP_OR OP_XOR OP_LSHIFT OP_RHIFT
 %right OP_NOT
@@ -455,7 +460,7 @@ local_expr
 	  // avoids needing a second, conflicting rule for the assignment form.
 	  auto getDispatch = dynamic_cast<catmint::Dispatch*>($1);
 	  if (!getDispatch) {
-	    std::cout << "[ ERROR ] : Line " << @1.first_line
+	    std::cerr << "[ ERROR ] : Line " << @1.first_line
 	              << " : left side of '=' is not an indexable access." << std::endl;
 	    fflush(stdout);
 	    exit(1);
@@ -469,7 +474,7 @@ local_expr
 	| field_access OP_ATTRIB value_expression {
 	  auto access = dynamic_cast<catmint::FieldAccess*>($1);
 	  if (!access) {
-	    std::cout << "[ ERROR ] : Line " << @1.first_line
+	    std::cerr << "[ ERROR ] : Line " << @1.first_line
 	              << " : left side of '=' is not a field." << std::endl;
 	    fflush(stdout);
 	    exit(1);
@@ -580,6 +585,17 @@ return_expression
 value_expression
   : conditional_expression
   | additive_expression
+  // 'and' and 'or' evaluate their right operand only when the left has not
+  // already settled the answer. They sit here, at the outermost level of an
+  // expression, with the lowest precedence of any operator.
+  | value_expression OP_ANDALSO value_expression {
+		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::AndAlso,
+		                                 Expression($1), Expression($3));
+	}
+  | value_expression OP_ORELSE value_expression {
+		$$ = new catmint::BinaryOperator(@1.first_line, BinOp::OrElse,
+		                                 Expression($1), Expression($3));
+	}
   ;
 
 conditional_expression 
@@ -1099,15 +1115,28 @@ vector_arguments
 // ----------------------------------------------------------------------------
 
 void printUsage() {
-  std::cout << "Usage: catmint-parser [-I <dir>]... <inputFile> <outputFile>"
+  std::cerr << "Usage: catmint-parser [-I <dir>]... [--verbose] <inputFile> <outputFile>"
             << std::endl;
-  std::cout << "  -I <dir>     also look for modules in <dir>" << std::endl;
-  std::cout << "  --no-expand  leave 'using' unexpanded (separate compilation)"
+  std::cerr << "  -I <dir>     also look for modules in <dir>" << std::endl;
+  std::cerr << "  --no-expand  leave 'using' unexpanded (separate compilation)"
             << std::endl;
-  std::cout << "  --module     compile a .cmm library: no Main is synthesised"
+  std::cerr << "  --module     compile a .cmm library: no Main is synthesised"
             << std::endl;
-  std::cout << "  --namespace <n>  declare this file's classes in namespace n"
+  std::cerr << "  --namespace <n>  declare this file's classes in namespace n"
             << std::endl;
+  std::cerr << "  --verbose    print the running commentary on std::cout"
+            << std::endl;
+}
+
+namespace {
+/// Swallows everything written to it. The grammar actions narrate what they
+/// are reducing, which is useful when working on the grammar and noise the
+/// rest of the time, so std::cout goes nowhere unless --verbose is given.
+/// Diagnostics go to std::cerr and are never swallowed.
+class NullBuffer : public std::streambuf {
+public:
+  int overflow(int c) override { return c; }
+};
 }
 
 // ----------------------------------------------------------------------------
@@ -1206,7 +1235,7 @@ bool expandModule(const std::string &name, const std::string &fromDir,
                   const std::string &alias, const std::string &enclosingNs) {
   std::string path = findModule(name, fromDir);
   if (path.empty()) {
-    std::cout << "[ ERROR ] Could not find module << " << name << ".cmm >>"
+    std::cerr << "[ ERROR ] Could not find module << " << name << ".cmm >>"
               << std::endl;
     return false;
   }
@@ -1224,7 +1253,7 @@ bool expandModule(const std::string &name, const std::string &fromDir,
   // body has been read, so check the active stack too.
   for (const auto &active : includeStack) {
     if (active == key) {
-      std::cout << "[ ERROR ] Module cycle: << " << name
+      std::cerr << "[ ERROR ] Module cycle: << " << name
                 << " >> is already being included" << std::endl;
       return false;
     }
@@ -1247,7 +1276,7 @@ bool expandFile(const std::string &path, std::ostringstream &out,
                 const std::string &ns) {
   std::ifstream in(path);
   if (!in.good()) {
-    std::cout << "[ ERROR ] Could not open << " << path << " >>" << std::endl;
+    std::cerr << "[ ERROR ] Could not open << " << path << " >>" << std::endl;
     return false;
   }
 
@@ -1305,29 +1334,37 @@ extern int yylineno;
 int main(int argc, char** argv) {
 
   std::vector<std::string> positional;
+  bool verbose = false;
   for (int i = 1; i < argc; ++i) {
     std::string arg(argv[i]);
     if (arg == "-I") {
       if (i + 1 >= argc) {
-        std::cout << "[ ERROR ] -I needs a directory" << std::endl;
+        std::cerr << "[ ERROR ] -I needs a directory" << std::endl;
         return 1;
       }
       gSearchPaths.push_back(argv[++i]);
     } else if (arg.rfind("-I", 0) == 0 && arg.size() > 2) {
       gSearchPaths.push_back(arg.substr(2));
+    } else if (arg == "--verbose" || arg == "-v") {
+      verbose = true;
     } else if (arg == "--no-expand") {
       gExpandModules = false;
     } else if (arg == "--module") {
       gCreateMain = false;
     } else if (arg == "--namespace") {
       if (i + 1 >= argc) {
-        std::cout << "[ ERROR ] --namespace needs a name" << std::endl;
+        std::cerr << "[ ERROR ] --namespace needs a name" << std::endl;
         return 1;
       }
       gCurrentNamespace = argv[++i];
     } else {
       positional.push_back(arg);
     }
+  }
+
+  NullBuffer nullBuffer;
+  if (!verbose) {
+    std::cout.rdbuf(&nullBuffer);
   }
 
   if (positional.size() != 2) {

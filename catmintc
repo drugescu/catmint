@@ -7,6 +7,7 @@
 #                                             object and link them
 #   ./catmintc examples/tour.cm -o mytour  -> ./mytour
 #   ./catmintc --run examples/tour.cm      -> compile, then run it
+#   ./catmintc -O0 app.cm                  -> no optimisation, for debugging
 #
 # Set LLVM_BIN if llvm-link/clang are not on PATH.
 set -e
@@ -25,10 +26,15 @@ OUT=""
 SRC=""
 INCLUDES=""
 SEPARATE=0
+# The level clang compiles the linked bitcode at. It is not a nicety: at -O0
+# clang uses the fast register allocator, which spills every value to the
+# stack, and a counted loop runs more than twice as slowly for it.
+OPT=-O2
 while [ $# -gt 0 ]; do
   case "$1" in
     --run) RUN=1; shift ;;
     --separate) SEPARATE=1; shift ;;
+    -O0|-O1|-O2|-O3) OPT="$1"; shift ;;
     -o)    OUT="$2"; shift 2 ;;
     -I)    INCLUDES="$INCLUDES -I $2"; shift 2 ;;
     -I*)   INCLUDES="$INCLUDES -I ${1#-I}"; shift ;;
@@ -38,7 +44,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$SRC" ]; then
-  echo "usage: catmintc [--run] [--separate] [-o output] [-I moduledir]... <program.cm>" >&2
+  echo "usage: catmintc [--run] [--separate] [-O0|-O1|-O2|-O3] [-o output] [-I moduledir]... <program.cm>" >&2
   exit 2
 fi
 for tool in "$PARSER" "$GEN"; do
@@ -128,7 +134,7 @@ OBJECTS="$OBJECTS $WORK/$BASE.ast.ll"
 
 # Bitcode -> native executable. -lm for the Math class; on macOS libm is part
 # of libSystem and the flag is a no-op, on Linux it is not.
-"$CLANG" -Wno-override-module "$WORK/$BASE.bc" -o "$OUT" -lm
+"$CLANG" -Wno-override-module "$OPT" "$WORK/$BASE.bc" -o "$OUT" -lm
 echo "catmintc: wrote $OUT"
 
 [ "$RUN" -eq 1 ] && exec "$OUT"

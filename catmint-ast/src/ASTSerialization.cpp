@@ -362,6 +362,10 @@ static std::string getBinOpKindSerialization(BinaryOperator::BinOpKind opKind) {
     return "==";
   case BinaryOperator::NotEqual:
     return "!=";
+  case BinaryOperator::AndAlso:
+    return "and";
+  case BinaryOperator::OrElse:
+    return "or";
   default:
     assert(false && "Unhandled binary operator");
   }
@@ -1185,6 +1189,10 @@ static BinaryOperator::BinOpKind getBinOpKind(rapidjson::Value &tree) {
     return BinaryOperator::Equal;
   } else if (opKind == "!=") {
     return BinaryOperator::NotEqual;
+  } else if (opKind == "and") {
+    return BinaryOperator::AndAlso;
+  } else if (opKind == "or") {
+    return BinaryOperator::OrElse;
   }
 
   assert(false && "Unknown binary operator kind, or unimplemented");

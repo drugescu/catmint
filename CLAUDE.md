@@ -116,6 +116,19 @@ the error, which is otherwise lost in the debug trace.
 To compile and run a program end to end, `./catmintc --run examples/tour.cm`
 from the repository root; `COMPILING.md` documents the four underlying stages.
 
+Both tools are quiet unless given `--verbose`: the AST dump, the type table,
+the symbol table and the grammar's running commentary all go to `std::cout`,
+which is redirected to nowhere by default. Diagnostics go to `std::cerr` and
+are never swallowed, so a failing build still says why.
+
+`catmintc` compiles the linked bitcode at `-O2`, and `-O0` on its command
+line turns that off. This is not a nicety: at `-O0` clang uses the fast
+register allocator, which spills every value to the stack, and a counted loop
+ran more than twice as slowly for it. Running LLVM's pass pipeline inside
+`catmint-gen` as well was tried and made no measurable difference on top of
+that, so the generator emits plain IR, which is also far easier to read when
+working on it.
+
 ## The runtime, and why it needs a build step
 
 `catmint-gen/runtime.c` is the object model and I/O library: `TObject`,
@@ -223,6 +236,11 @@ letting the grammar see `IDENTIFIER :: IDENTIFIER` where a type is named is
 ambiguous with static dispatch (`Program::run.execute(...)`), which begins
 identically; the dispatch rule splits it apart again. In symbols `::` becomes
 `$`, which cannot appear in a catmint identifier, so nothing can collide.
+
+`and` and `or` are short-circuiting and bind looser than every other
+operator, so `p != null and p.value > 0` needs no parentheses and never
+evaluates the right side when the left has settled the answer. `&` and `|`
+remain the bitwise operators and still evaluate both sides.
 
 `expr is Type` reuses `StaticDispatch` with the method name `is`, since that
 node already carries both an object and a type name. No new AST node, so no

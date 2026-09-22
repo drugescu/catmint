@@ -9,30 +9,47 @@
 #include <PrintAnalysis.h>
 #include <ASTSerialization.h>
 
-#include "llvm/Support/Path.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "IRGenerator.h"
 
 void printUsage() {
-  std::cout << "Usage: catmint-gen [--import <module.ast>]... [--module] "
-               "<inputFile> <outputFile>"
+  std::cerr << "Usage: catmint-gen [--import <module.ast>]... [--module] "
+               "[--verbose] <inputFile> <outputFile>"
             << std::endl;
-  std::cout << "  --import <ast>  bring in a separately compiled module's "
+  std::cerr << "  --import <ast>  bring in a separately compiled module's "
                "declarations"
             << std::endl;
-  std::cout << "  --module        compile a library: no Main required, no "
+  std::cerr << "  --module        compile a library: no Main required, no "
                "entry point emitted"
             << std::endl;
+  std::cerr << "  --verbose       print the AST, type and symbol tables"
+            << std::endl;
 }
+
+namespace {
+
+/// Swallows everything written to it. The compiler's running commentary --
+/// the AST dump, the type table, the symbol table -- goes to std::cout from
+/// a dozen places, so the cheapest way to make the compiler quiet is to send
+/// that stream nowhere unless --verbose is given. Errors go to std::cerr and
+/// are unaffected.
+class NullBuffer : public std::streambuf {
+public:
+  int overflow(int c) override { return c; }
+};
+
+} // namespace
 
 int main(int argc, char **argv) {
 
   std::vector<std::string> imports;
   std::vector<std::string> positional;
   bool libraryOnly = false;
+  bool verbose = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string arg(argv[i]);
@@ -44,12 +61,21 @@ int main(int argc, char **argv) {
       imports.push_back(argv[++i]);
     } else if (arg == "--module") {
       libraryOnly = true;
+    } else if (arg == "--verbose" || arg == "-v") {
+      verbose = true;
     } else {
       positional.push_back(arg);
     }
   }
 
+  NullBuffer nullBuffer;
+  std::streambuf *chatter = std::cout.rdbuf();
+  if (!verbose) {
+    std::cout.rdbuf(&nullBuffer);
+  }
+
   if (positional.size() < 2) {
+    std::cout.rdbuf(chatter);
     printUsage();
     return 0;
   }
@@ -116,12 +142,18 @@ int main(int argc, char **argv) {
             llvm::report_fatal_error(llvm::Twine("Couldn't open output file: ") + filename + "\n");
           }
 
-          std::cout << "---------- Code Generation & Execution ----------" << std::endl;
-          Module->print(output, nullptr);
-
           if (llvm::verifyModule(*Module, &llvm::errs())) {
             return -3;
-    }
+          }
+
+          // No optimisation passes run here. They were tried, and once
+          // catmintc compiles the linked bitcode at -O2 they made no
+          // measurable difference -- the win was entirely in the driver,
+          // which used to invoke clang at -O0 and so threw away register
+          // allocation. Unoptimised IR is also much easier to read when
+          // working on the generator.
+          std::cout << "---------- Code Generation & Execution ----------" << std::endl;
+          Module->print(output, nullptr);
     }
     catch (const std::exception &e) {
       std::cerr << e.what() << std::endl;
