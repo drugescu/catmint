@@ -1,0 +1,13 @@
+# A module: a class library with no top-level code of its own.
+class Shape from IO
+  def Int area:
+    return 0
+  end
+
+  def Void report:
+    out(type())
+    out(" area ")
+    out(area())
+    out("\n")
+  end
+end

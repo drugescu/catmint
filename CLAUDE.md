@@ -26,9 +26,18 @@ Three components, built in order, each depending on the previous:
    it back. Both stages link this library.
 2. **catmint-lex** — `bin/catmint-parser`. `catmint.l` (flex) and `catmint.y`
    (bison) build AST objects directly in the grammar actions, then serialize.
-   The grammar also does two source-level transforms: it inlines `using <module>`
-   files (`.cmm`, searched in `.` and `./test/`), and it synthesizes a `Main`
-   class and `main` method around any top-level statements.
+   The grammar also does two source-level transforms: it expands `using <module>`
+   directives, and it synthesizes a `Main` class and `main` method around any
+   top-level statements.
+
+   Module expansion lives in `main()` in `catmint.y`. It is recursive, includes
+   each module at most once (so diamonds do not duplicate classes and cycles
+   terminate), searches the importing file's directory then any `-I` directory
+   then the working directory, and emits `#line` directives so diagnostics name
+   the file the programmer wrote. The expanded text is fed to flex with
+   `yy_scan_string`, so there is no temporary file. `using` is a real keyword:
+   a malformed directive is a syntax error rather than being silently parsed as
+   a variable declaration.
 3. **catmint-gen** — `bin/catmint-gen`. Deserializes the `.ast`, runs
    `PrintAnalysis` (debug dump), then `SemanticAnalysis` (builds `TypeTable`
    and `SymbolTable`, checks the inheritance graph and features, annotates node

@@ -30,8 +30,8 @@ for file in ${*:-test_suite/*.cm}; do
     printf "${RED}NO .expected${NC}\n"; errors=$((errors+1)); failed="$failed $name"; continue
   fi
 
-  # 1. parse
-  if ! $PARSER "$file" "$WORK/$name.ast" >"$WORK/$name.parse.log" 2>&1; then
+  # 1. parse. test_suite/modules holds the .cmm files that tests import.
+  if ! $PARSER -I test_suite/modules "$file" "$WORK/$name.ast" >"$WORK/$name.parse.log" 2>&1; then
     printf "${RED}FAIL${NC} (parser)\n"; errors=$((errors+1)); failed="$failed $name"; continue
   fi
   if [ ! -s "$WORK/$name.ast" ]; then

@@ -134,6 +134,47 @@ Things worth knowing, because they are not obvious:
 Built-in methods, from `Object`, `IO` and `String` respectively: `abort()`,
 `type()`, `copy()`, `input()`, `out(String)`, `len()`, `toInt()`.
 
+## 5a. Splitting a program across files
+
+A `.cmm` file is a module: a class library with no top-level code. A program
+pulls one in with `using`, naming the file without its extension.
+
+```
+# shapes.cmm
+class Shape from IO
+  def Int area:
+    return 0
+  end
+end
+```
+
+```
+# app.cm
+using shapes
+
+class Main from IO
+  def main:
+    Shape s
+    out(s.area())
+  end
+end
+```
+
+```sh
+./catmintc --run -I . app.cm
+```
+
+Modules are searched for in the directory of the file that imports them, then
+in each `-I` directory, then in the working directory. Inclusion is textual but
+careful: it is recursive, so a module may itself `using` others; each module is
+spliced in at most once, so a diamond does not duplicate class definitions and
+a cycle terminates; and line directives keep error messages pointing at the
+file and line you wrote.
+
+What this is not, yet, is separate compilation: every module is re-parsed on
+every build, and all classes share one global namespace, so two modules cannot
+both define a `Point`.
+
 ## 6. Tests
 
 ```sh

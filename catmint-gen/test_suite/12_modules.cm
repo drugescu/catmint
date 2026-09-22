@@ -1,0 +1,11 @@
+using shapes
+using square
+
+class Main from IO
+  def main:
+    Square s
+    s.report()
+    Shape p
+    p.report()
+  end
+end

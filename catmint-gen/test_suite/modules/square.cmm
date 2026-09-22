@@ -1,0 +1,12 @@
+# This module depends on another one. The include is transitive, and because
+# shapes is reached once from here and once from the program, it is spliced in
+# only once.
+using shapes
+
+class Square from Shape
+  Int side = 5
+
+  def Int area:
+    return side * side
+  end
+end

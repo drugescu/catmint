@@ -1,7 +1,10 @@
 %{
 
 #include "catmint.tab.h"
+#include <cstdio>
 #include <string>
+
+extern std::string gCurrentFile;
 
 void countColumns();
 
@@ -18,6 +21,21 @@ static int gColumnNumber = 1;
 
 %%
 
+  /* A #line directive from the module preprocessor: re-point the lexer at the
+     original file and line so diagnostics are reported against what the
+     programmer wrote, not the spliced text. */
+^[ \t]*"#line"[ \t]+[0-9]+[ \t]+\"[^\"]*\"[ \t]*\r?\n {
+	int directiveLine = 0;
+	char directiveFile[1024] = {0};
+	if (sscanf(yytext, " #line %d \"%1023[^\"]\"", &directiveLine, directiveFile) == 2) {
+		yylineno = directiveLine;
+		gCurrentFile = directiveFile;
+	}
+	gColumnNumber = 1;
+}
+
+
+"using"       { countColumns(); return KW_USING; }
 "class" 	    { countColumns(); return KW_CLASS; }
 "from" 		    { countColumns(); return KW_FROM; }
 "return"      { countColumns(); return KW_RETURN; }

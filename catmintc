@@ -2,6 +2,7 @@
 # catmintc - compile a .cm program to a native executable.
 #
 #   ./catmintc examples/tour.cm            -> ./tour
+#   ./catmintc -I lib app.cm               -> also search ./lib for modules
 #   ./catmintc examples/tour.cm -o mytour  -> ./mytour
 #   ./catmintc --run examples/tour.cm      -> compile, then run it
 #
@@ -20,17 +21,20 @@ CLANG="$LLVM_BIN/clang"
 RUN=0
 OUT=""
 SRC=""
+INCLUDES=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --run) RUN=1; shift ;;
     -o)    OUT="$2"; shift 2 ;;
+    -I)    INCLUDES="$INCLUDES -I $2"; shift 2 ;;
+    -I*)   INCLUDES="$INCLUDES -I ${1#-I}"; shift ;;
     -*)    echo "catmintc: unknown option $1" >&2; exit 2 ;;
     *)     SRC="$1"; shift ;;
   esac
 done
 
 if [ -z "$SRC" ]; then
-  echo "usage: catmintc [--run] [-o output] <program.cm>" >&2
+  echo "usage: catmintc [--run] [-o output] [-I moduledir]... <program.cm>" >&2
   exit 2
 fi
 for tool in "$PARSER" "$GEN"; do
@@ -42,8 +46,10 @@ BASE=$(basename "$SRC" .cm)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-# 1. Source -> AST (flex/bison front end).
-"$PARSER" "$SRC" "$WORK/$BASE.ast" >"$WORK/parse.log" 2>&1 || {
+# 1. Source -> AST (flex/bison front end). `using` directives are expanded
+#    here, recursively, each module at most once.
+# shellcheck disable=SC2086
+"$PARSER" $INCLUDES "$SRC" "$WORK/$BASE.ast" >"$WORK/parse.log" 2>&1 || {
   echo "catmintc: parse failed" >&2; cat "$WORK/parse.log" >&2; exit 1; }
 [ -s "$WORK/$BASE.ast" ] || {
   echo "catmintc: parse produced no AST" >&2; tail -20 "$WORK/parse.log" >&2; exit 1; }

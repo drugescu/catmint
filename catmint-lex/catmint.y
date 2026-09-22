@@ -5,7 +5,11 @@
 	#include <string>
 	#include <sstream>
 	#include <regex>
+	#include <set>
 	#include <vector>
+	#include <climits>
+	#include <cstdlib>
+	#include <cstring>
 	#include <ASTNodes.h>
 }
 
@@ -21,10 +25,19 @@
 	static catmint::Program* gCatmintProgram = nullptr;
 	char* gInputFileName = NULL;
 
+	// The file the current token came from. The preprocessor emits #line
+	// directives when it splices a module in, and the lexer updates this, so a
+	// diagnostic names the file the programmer actually wrote rather than the
+	// concatenated text the parser sees.
+	std::string gCurrentFile;
+
 	int  yylex ();
 	void yyerror(const char *error)
 	{
-		std::cout << gInputFileName << " | Line : " << yylloc.first_line << " | Column : " << yylloc.first_column << " | Error: " << error << std::endl;
+		const std::string &where = gCurrentFile.empty()
+			? std::string(gInputFileName ? gInputFileName : "<input>")
+			: gCurrentFile;
+		std::cout << where << " | Line : " << yylloc.first_line << " | Column : " << yylloc.first_column << " | Error: " << error << std::endl;
 	}
 }
 
@@ -58,6 +71,7 @@
 
 %token KW_WHILE KW_FOR KW_RETURN
 %token KW_CLASS KW_SELF KW_FROM KW_END KW_VAR KW_NULL KW_DO KW_IN
+%token KW_USING
 %token KW_CONSTRUCTOR
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
 
@@ -940,98 +954,212 @@ vector_arguments
 // ----------------------------------------------------------------------------
 
 void printUsage() {
-  std::cout << "Usage: ./catmint-parser <inputFile> <outputFile>" << std::endl;
+  std::cout << "Usage: catmint-parser [-I <dir>]... <inputFile> <outputFile>"
+            << std::endl;
+  std::cout << "  -I <dir>   also look for modules in <dir>" << std::endl;
 }
+
+// ----------------------------------------------------------------------------
+//
+// Module preprocessing
+//
+// `using <name>` splices <name>.cmm into the translation unit. It is a textual
+// include, but a careful one:
+//   * inclusion is recursive, so a module may itself use other modules;
+//   * each module is included at most once, so a diamond does not produce
+//     duplicate class definitions, and a cycle terminates instead of looping;
+//   * #line directives are emitted so that a diagnostic reports the file and
+//     line the programmer wrote, not an offset into the spliced text.
+//
+// ----------------------------------------------------------------------------
+
+namespace {
+
+std::vector<std::string> gSearchPaths;
+std::set<std::string> gIncludedModules;
+
+/// Absolute path when the file exists, so the same module reached by two
+/// different relative paths is still recognised as one module.
+std::string canonicalPath(const std::string &path) {
+  char resolved[PATH_MAX];
+  if (realpath(path.c_str(), resolved)) {
+    return std::string(resolved);
+  }
+  return path;
+}
+
+std::string directoryOf(const std::string &path) {
+  auto slash = path.find_last_of('/');
+  return slash == std::string::npos ? std::string(".") : path.substr(0, slash);
+}
+
+/// The module name on a `using` line, or an empty string if this is not one.
+std::string moduleNameOn(const std::string &line) {
+  static const std::regex usingLine(R"(^[ \t]*using[ \t]+([A-Za-z_][A-Za-z_0-9]*)[ \t\r]*$)");
+  std::smatch match;
+  if (!std::regex_match(line, match, usingLine)) {
+    return std::string();
+  }
+  return match[1].str();
+}
+
+/// Search <dir of the including file>, then every -I directory, then the
+/// historical default locations.
+std::string findModule(const std::string &name, const std::string &fromDir) {
+  std::vector<std::string> candidates;
+  candidates.push_back(fromDir + "/" + name + ".cmm");
+  for (const auto &dir : gSearchPaths) {
+    candidates.push_back(dir + "/" + name + ".cmm");
+  }
+  candidates.push_back(name + ".cmm");
+  candidates.push_back("./test/" + name + ".cmm");
+
+  for (const auto &candidate : candidates) {
+    std::ifstream probe(candidate);
+    if (probe.good()) {
+      return candidate;
+    }
+  }
+  return std::string();
+}
+
+void emitLineDirective(std::ostringstream &out, int line,
+                       const std::string &file) {
+  out << "#line " << line << " \"" << file << "\"\n";
+}
+
+bool expandFile(const std::string &path, std::ostringstream &out,
+                std::vector<std::string> &includeStack);
+
+bool expandModule(const std::string &name, const std::string &fromDir,
+                  std::ostringstream &out,
+                  std::vector<std::string> &includeStack) {
+  std::string path = findModule(name, fromDir);
+  if (path.empty()) {
+    std::cout << "[ ERROR ] Could not find module << " << name << ".cmm >>"
+              << std::endl;
+    return false;
+  }
+
+  std::string key = canonicalPath(path);
+
+  // A module reached twice is included once. Without this, two modules that
+  // both use a third would define its classes twice.
+  if (gIncludedModules.count(key)) {
+    return true;
+  }
+
+  // A cycle would otherwise recurse forever. The visited set above already
+  // stops the common case, but a module is only marked included once its own
+  // body has been read, so check the active stack too.
+  for (const auto &active : includeStack) {
+    if (active == key) {
+      std::cout << "[ ERROR ] Module cycle: << " << name
+                << " >> is already being included" << std::endl;
+      return false;
+    }
+  }
+
+  std::cout << "[ LOG ] Opening and adding module << " << path << " >>"
+            << std::endl;
+  gIncludedModules.insert(key);
+  return expandFile(path, out, includeStack);
+}
+
+bool expandFile(const std::string &path, std::ostringstream &out,
+                std::vector<std::string> &includeStack) {
+  std::ifstream in(path);
+  if (!in.good()) {
+    std::cout << "[ ERROR ] Could not open << " << path << " >>" << std::endl;
+    return false;
+  }
+
+  includeStack.push_back(canonicalPath(path));
+  const std::string dir = directoryOf(path);
+
+  emitLineDirective(out, 1, path);
+
+  std::string line;
+  int lineNumber = 0;
+  while (std::getline(in, line)) {
+    ++lineNumber;
+
+    std::string moduleName = moduleNameOn(line);
+    if (moduleName.empty()) {
+      out << line << "\n";
+      continue;
+    }
+
+    std::cout << "Found module inclusion: using " << moduleName << std::endl;
+    if (!expandModule(moduleName, dir, out, includeStack)) {
+      includeStack.pop_back();
+      return false;
+    }
+    // Back in this file: blank line keeps the `using` line's position, and the
+    // directive puts the lexer back on the right file and line.
+    out << "\n";
+    emitLineDirective(out, lineNumber + 1, path);
+  }
+
+  includeStack.pop_back();
+  return true;
+}
+
+} // namespace
+
+// flex lets us parse straight from a buffer, so the expanded source never has
+// to be written to a temporary file.
+struct yy_buffer_state;
+typedef yy_buffer_state *YY_BUFFER_STATE;
+extern YY_BUFFER_STATE yy_scan_string(const char *str);
+extern void yy_delete_buffer(YY_BUFFER_STATE buffer);
+extern int yylineno;
 
 int main(int argc, char** argv) {
 
-  if(argc != 3) {
-	printUsage();
-	return 0;
+  std::vector<std::string> positional;
+  for (int i = 1; i < argc; ++i) {
+    std::string arg(argv[i]);
+    if (arg == "-I") {
+      if (i + 1 >= argc) {
+        std::cout << "[ ERROR ] -I needs a directory" << std::endl;
+        return 1;
+      }
+      gSearchPaths.push_back(argv[++i]);
+    } else if (arg.rfind("-I", 0) == 0 && arg.size() > 2) {
+      gSearchPaths.push_back(arg.substr(2));
+    } else {
+      positional.push_back(arg);
+    }
   }
 
-  gInputFileName = strdup(argv[1]);
-
-  // Preprocess file for module inclusion
-  std::ifstream in;
-  std::string target = "target.~tmp";
-  std::ofstream out(target, std::ofstream::out | std::ofstream::trunc);
-
-  // Open and read initial file
-  std::stringstream buffer;	
-  std::ifstream initial;
-  initial.open(gInputFileName);
-  buffer << initial.rdbuf();
-  initial.close();
-
-  // Vector of modules
-  std::vector<std::string> matches;
-
-  // Try to match module constructions
-  std::string result = "";
-  try 
-  {
-	std::regex re("using (.*)\n");
-	std::string text = buffer.str();
-	std::smatch match;
-	std::sregex_iterator next(text.begin(), text.end(), re);
-	std::sregex_iterator end;
-	
-	while (next != end) {
-	  std::smatch match = *next;
-	  std::string match_string = match.str();
-	  match_string = match_string.substr(0, strlen(match.str().c_str()) - 1);
-	  std::cout << "Found module inclusion: " << match_string << "\n";
-	  matches.insert(matches.end(), match_string);
-	  next++;
-	}
-	
-	// Now eliminate module inclusions
-	result = regex_replace(buffer.str(), re, "");
-  }
-  catch (std::regex_error& e) {
-	std::cout << "Syntax error in regular expression." << std::endl;
+  if (positional.size() != 2) {
+    printUsage();
+    return 0;
   }
 
-  // Now open each module and add it to the buffer
-  std::stringstream Sbuffer;	
+  gInputFileName = strdup(positional[0].c_str());
+  gCurrentFile = positional[0];
 
-  for(auto inclusion : matches) {
-    auto module_name = inclusion.substr(strlen("using "), strlen(inclusion.c_str()));
-	  std::string full_path_to_module = module_name + ".cmm";
-	  std::string full_path_to_module2 = "./test/" + module_name + ".cmm";
-      std::cout << "[ LOG ] Opening and adding module << " << full_path_to_module << " >>" << std::endl;
-	  in.open(full_path_to_module.c_str());
-	  
-	  // Test alternate paths
-	  if (in.fail()) {
-  	  in.open(full_path_to_module2.c_str());
-	    if (in.fail()) {
-	      std::cout << "[ ERROR ] Could not find module!" <<std::endl;
-	      fflush(stdout);
-	      exit(1);
-	    }
-	  }
-	  
-	  Sbuffer << "# Included from module << " << full_path_to_module << " >> \n"; // Add a newline
-	  Sbuffer << in.rdbuf();
-	  Sbuffer << "\n"; // Add a newline
-	  in.close();
-  }
-  
-  // Now add the original file
-  Sbuffer << result;
-  out << Sbuffer.str();
-  out.close();
-	
-  /* Open actual merged file */
-  yyin = fopen("target.~tmp", "r");
-
-  if(yyparse()) {
-	return 1;
+  std::ostringstream expanded;
+  std::vector<std::string> includeStack;
+  if (!expandFile(positional[0], expanded, includeStack)) {
+    return 1;
   }
 
-  catmint::ASTSerializer serializer(argv[2]);
+  const std::string source = expanded.str();
+  yylineno = 1;
+  YY_BUFFER_STATE buffer = yy_scan_string(source.c_str());
+
+  int parseResult = yyparse();
+
+  yy_delete_buffer(buffer);
+
+  if (parseResult) {
+    return 1;
+  }
+
+  catmint::ASTSerializer serializer(positional[1].c_str());
   serializer.visit(gCatmintProgram);
 
   return 0;
