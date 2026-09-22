@@ -24,6 +24,7 @@
 
 #include <ctype.h>
 #include <math.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -200,6 +201,8 @@ long long M7_Integer_getLong(struct TInteger *self);
 
 void *__catmint_new(struct __catmint_rtti *rtti);
 void String_init(struct TString *self);
+void __cm_runtimeError(const char *message);
+void __cm_throw(void *object);
 
 extern catmint_rtti20_string RString;
 
@@ -490,8 +493,7 @@ struct TString *M6_String_substring(struct TString *self, int start, int end) {
   struct TString *result;
 
   if (start < 0 || start > end || end > self->length) {
-    printf("Runtime error : Substring indices out of bounds.\n");
-    exit(1);
+    __cm_runtimeError("Substring indices out of bounds.");
   }
 
   result = (struct TString *)__catmint_new(RTTI(RString));
@@ -532,8 +534,7 @@ int M6_String_equal(struct TString *self, struct TString *other) {
  * gives the byte as an Int, which is what a hash function needs. */
 int M6_String_at(struct TString *self, int index) {
   if (index < 0 || index >= self->length) {
-    printf("Runtime error : String index out of bounds.\n");
-    exit(1);
+    __cm_runtimeError("String index out of bounds.");
   }
   return (int)(unsigned char)self->string[index];
 }
@@ -710,8 +711,7 @@ struct TIO *M2_IO_out(struct TIO *self, struct TString *message) {
 
 static void list_bounds(struct TList *self, int index) {
   if (index < 0 || index >= self->length) {
-    printf("Runtime error : List index out of bounds.\n");
-    exit(1);
+    __cm_runtimeError("List index out of bounds.");
   }
 }
 
@@ -736,8 +736,7 @@ struct TList *M4_List_append(struct TList *self, void *value) {
     int capacity = self->capacity == 0 ? 4 : self->capacity * 2;
     void **items = realloc(self->items, (size_t)capacity * sizeof(void *));
     if (!items) {
-      printf("Runtime error : Out of memory growing a List.\n");
-      exit(1);
+      __cm_runtimeError("Out of memory growing a List.");
     }
     self->items = items;
     self->capacity = capacity;
@@ -753,8 +752,7 @@ struct TList *M4_List_slice(struct TList *self, int start, int end) {
   int i;
 
   if (start < 0 || start > end || end > self->length) {
-    printf("Runtime error : List slice indices out of bounds.\n");
-    exit(1);
+    __cm_runtimeError("List slice indices out of bounds.");
   }
 
   result = (struct TList *)__catmint_new(RTTI(RList));
@@ -791,8 +789,7 @@ long long M7_Integer_getLong(struct TInteger *self) {
 /* Called before every dispatch. */
 void __cm_checkNull(void *object) {
   if (object == NULL) {
-    printf("Runtime error : Calling a method of a void object.\n");
-    exit(1);
+    __cm_runtimeError("Calling a method of a void object.");
   }
 }
 
@@ -830,9 +827,13 @@ void *__cm_cast(void *object, struct __catmint_rtti *target) {
     }
   }
 
-  printf("Runtime error : Unable to convert %s into %s.\n",
-         actual->name->string, target->name->string);
-  exit(1);
+  {
+    char message[256];
+    snprintf(message, sizeof(message), "Unable to convert %s into %s.",
+             actual->name->string, target->name->string);
+    __cm_runtimeError(message);
+  }
+  return NULL;
 }
 
 /* Boxing and unboxing, inserted by the generator where an integer meets a
@@ -849,9 +850,10 @@ void *__cm_boxLong(long long value) {
 long long __cm_unboxLong(void *object) {
   __cm_checkNull(object);
   if (((struct TObject *)object)->rtti != RTTI(RInteger)) {
-    printf("Runtime error : Expected an Integer, found %s.\n",
-           ((struct TObject *)object)->rtti->name->string);
-    exit(1);
+    char message[256];
+    snprintf(message, sizeof(message), "Expected an Integer, found %s.",
+             ((struct TObject *)object)->rtti->name->string);
+    __cm_runtimeError(message);
   }
   return ((struct TInteger *)object)->value;
 }
@@ -1165,8 +1167,7 @@ struct TString *M4_File_readAll(struct TFile *self) {
       capacity = capacity == 0 ? 8192 : capacity * 2;
       text = realloc(text, capacity);
       if (!text) {
-        printf("Runtime error : Out of memory reading a file.\n");
-        exit(1);
+        __cm_runtimeError("Out of memory reading a file.");
       }
     }
     got = fread(text + size, 1, 4096, self->handle);
@@ -1268,3 +1269,105 @@ int M4_Math_max(int a, int b) { return a > b ? a : b; }
 
 double M4_Math_pi(void) { return 3.14159265358979323846; }
 double M4_Math_e(void)  { return 2.71828182845904523536; }
+
+/* -------------------------------------------------------------------------
+ * Errors
+ *
+ * try/catch/throw, on setjmp and longjmp. This is the scheme Lua uses, and
+ * it fits here for the same reason: there is nothing to unwind. Catmint has
+ * no destructors, so jumping over a frame skips no work that had to happen,
+ * and the cost on the path where nothing is thrown is one setjmp per try
+ * rather than the frame descriptors a table-driven scheme needs.
+ *
+ * The generated code allocates the jump buffer itself, because setjmp has to
+ * be called from the frame that will be returned to; the runtime only keeps
+ * the stack of them.
+ * ------------------------------------------------------------------------- */
+
+/* The generated code allocates this many bytes for a jump buffer. It cannot
+ * ask sizeof(jmp_buf) at compile time, so the size is fixed here and checked
+ * once, loudly, rather than being silently too small on some platform. */
+#define CATMINT_JMPBUF_BYTES 512
+
+struct __cm_handler {
+  jmp_buf *buffer;
+  struct __cm_handler *previous;
+};
+
+static struct __cm_handler *gHandlers = NULL;
+/* What the innermost throw was carrying, read by the catch block. */
+static void *gThrown = NULL;
+
+void __cm_pushHandler(void *buffer) {
+  struct __cm_handler *handler;
+
+  if (sizeof(jmp_buf) > CATMINT_JMPBUF_BYTES) {
+    printf("Runtime error : this platform needs a larger CATMINT_JMPBUF_BYTES.\n");
+    exit(1);
+  }
+
+  handler = (struct __cm_handler *)malloc(sizeof(struct __cm_handler));
+  if (!handler) {
+    printf("Runtime error : out of memory entering a try.\n");
+    exit(1);
+  }
+  handler->buffer = (jmp_buf *)buffer;
+  handler->previous = gHandlers;
+  gHandlers = handler;
+}
+
+/* Leaving a try normally, and also on the way out of a return that jumped
+ * over the end of one. */
+void __cm_popHandler(void) {
+  struct __cm_handler *handler = gHandlers;
+
+  if (!handler) {
+    return;
+  }
+  gHandlers = handler->previous;
+  free(handler);
+}
+
+void *__cm_caught(void) {
+  return gThrown;
+}
+
+/* Hand the object to the innermost handler and jump to it. The handler is
+ * popped first, so a throw from inside a catch block reaches the next one
+ * out rather than looping back into itself. */
+void __cm_throw(void *object) {
+  struct __cm_handler *handler = gHandlers;
+  jmp_buf *buffer;
+
+  gThrown = object;
+
+  if (!handler) {
+    /* Nothing is watching, so this is the end of the program. A String says
+     * what happened; anything else can at least say what it was. */
+    if (object && ((struct TObject *)object)->rtti == RTTI(RString)) {
+      printf("Uncaught: %s\n", ((struct TString *)object)->string);
+    } else if (object) {
+      printf("Uncaught: an object of type %s\n",
+             ((struct TObject *)object)->rtti->name->string);
+    } else {
+      printf("Uncaught: null\n");
+    }
+    exit(1);
+  }
+
+  buffer = handler->buffer;
+  gHandlers = handler->previous;
+  free(handler);
+  longjmp(*buffer, 1);
+}
+
+/* What the runtime's own checks call. With a handler installed the message
+ * becomes an ordinary thrown String, so a program can catch a null dispatch
+ * or an index out of bounds; with none it prints and stops, as before. */
+void __cm_runtimeError(const char *message) {
+  if (gHandlers) {
+    __cm_throw(make_string(message));
+  }
+  printf("Runtime error : %s\n", message);
+  exit(1);
+}

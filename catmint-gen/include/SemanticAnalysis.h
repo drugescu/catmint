@@ -49,6 +49,8 @@ private:
   bool visit(StaticDispatch *sd) override;
   bool visit(NewObject *n) override;
   bool visit(FieldAccess *fa) override;
+  bool visit(TryStatement *t) override;
+  bool visit(ThrowStatement *t) override;
 
   /// The class named by a static call's receiver, or null for a normal call.
   Class *staticReceiverClass(Dispatch *d);

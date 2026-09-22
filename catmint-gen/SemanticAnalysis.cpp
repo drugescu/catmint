@@ -11,6 +11,23 @@
 
 using namespace catmint;
 
+namespace {
+/// Whether an expression tree contains a `return`. A method whose body ends
+/// in a statement rather than a value -- a try, a loop -- has the type Void,
+/// but it can still produce its result by returning from inside, so the
+/// block's type says nothing in that case.
+class ReturnFinder : public ASTVisitor {
+public:
+  using ASTVisitor::visit;
+
+  bool Found = false;
+  bool visit(ReturnExpression *R) override {
+    Found = true;
+    return ASTVisitor::visit(R);
+  }
+};
+} // namespace
+
 SemanticAnalysis::SemanticAnalysis(Program *p, bool libraryOnly)
     : program(p), libraryOnly(libraryOnly), typeTable(p), symbolTable(),
       typeVisitor(TypeVisitor(&typeTable)) {
@@ -267,7 +284,9 @@ bool SemanticAnalysis::visit(Method *m) {
     }
 
     auto bodyType = typeTable.getType(body);
-    if (returnType != typeTable.getVoidType() &&
+    ReturnFinder returns;
+    returns.visit(body);
+    if (returnType != typeTable.getVoidType() && !returns.Found &&
         !typeTable.isEqualOrImplicitlyConvertibleTo(bodyType, returnType)) {
       throw WrongTypeException(bodyType, returnType, m);
     }
@@ -834,6 +853,49 @@ bool SemanticAnalysis::visit(ForStatement *f) {
   }
 
   typeTable.setType(f, typeTable.getVoidType());
+  return true;
+}
+
+/// The handler binds one name, typed Object because anything can be thrown.
+/// A handler that wants something more specific says so with an assignment,
+/// which inserts the checked downcast, or asks with `is`.
+bool SemanticAnalysis::visit(TryStatement *t) {
+  {
+    SymbolTable::Scope tryScope(symbolTable, "try");
+    if (!visit(t->getBody())) {
+      return false;
+    }
+  }
+
+  {
+    SymbolTable::Scope catchScope(symbolTable, "catch");
+    std::vector<std::string> names{t->getCatchName()};
+    std::unique_ptr<LocalDefinition> caught(
+        new LocalDefinition(t->getLineNumber(), names, strings::Object));
+    symbolTable.insert(caught.get());
+    typeTable.setType(caught.get(), typeTable.getObjectType());
+    syntheticDefinitions.push_back(std::move(caught));
+
+    if (!visit(t->getHandler())) {
+      return false;
+    }
+  }
+
+  typeTable.setType(t, typeTable.getVoidType());
+  return true;
+}
+
+bool SemanticAnalysis::visit(ThrowStatement *t) {
+  auto value = t->getValue();
+  if (!value) {
+    throw MissingOperandException(t);
+  }
+  if (!visit(value)) {
+    return false;
+  }
+
+  // A throw never produces a value: it leaves through the nearest handler.
+  typeTable.setType(t, typeTable.getVoidType());
   return true;
 }
 

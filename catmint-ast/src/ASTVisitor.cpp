@@ -56,6 +56,14 @@ bool ASTVisitor::visit(Method *M) {
 bool ASTVisitor::visit(FormalParam *F) { return true; }
 
 bool ASTVisitor::visit(Expression *E) {
+  // Several nodes have optional children: a bare call has no object, a
+  // built-in method has no body, a return may carry nothing. Walking into one
+  // of those used to reach the "unknown expression kind" assertion at the
+  // bottom, which is a confusing way to say "there was nothing here".
+  if (!E) {
+    return true;
+  }
+
   if (auto IntCt = dynamic_cast<IntConstant *>(E)) {
     return visit(IntCt);
   } else if (auto FloatCt = dynamic_cast<FloatConstant *>(E)) {
@@ -86,6 +94,10 @@ bool ASTVisitor::visit(Expression *E) {
     return visit(New);
   } else if (auto Field = dynamic_cast<FieldAccess *>(E)) {
     return visit(Field);
+  } else if (auto Try = dynamic_cast<TryStatement *>(E)) {
+    return visit(Try);
+  } else if (auto Throw = dynamic_cast<ThrowStatement *>(E)) {
+    return visit(Throw);
   } else if (auto If = dynamic_cast<IfStatement *>(E)) {
     return visit(If);
   } else if (auto While = dynamic_cast<WhileStatement *>(E)) {
@@ -165,6 +177,17 @@ bool ASTVisitor::visit(NewObject *NO) {
   }
 
   return true;
+}
+
+bool ASTVisitor::visit(TryStatement *Try) {
+  if (!visit(Try->getBody())) {
+    return false;
+  }
+  return Try->getHandler() ? visit(Try->getHandler()) : true;
+}
+
+bool ASTVisitor::visit(ThrowStatement *Throw) {
+  return visit(Throw->getValue());
 }
 
 bool ASTVisitor::visit(FieldAccess *FA) {

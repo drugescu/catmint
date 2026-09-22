@@ -179,6 +179,12 @@ private:
   ClassInfo *CurrentClass = nullptr;
   llvm::Function *CurrentFunction = nullptr;
   std::string CurrentReturnType;
+  /// How many try handlers are open around the point being emitted. A return
+  /// from inside a try has to pop them, or the next throw jumps into a frame
+  /// that has gone.
+  unsigned OpenHandlers = 0;
+  /// True while emitting a function that contains a try.
+  bool FunctionHasTry = false;
 
   // ---- setup -------------------------------------------------------------
   bool collectClasses();
@@ -238,6 +244,17 @@ private:
                                const std::vector<Expression *> &Args, int Line,
                                const std::string &Name);
   llvm::Value *emitFieldAccess(FieldAccess *FA);
+  llvm::Value *emitTry(TryStatement *T);
+  llvm::Value *emitThrow(ThrowStatement *T);
+  /// Every alloca in \p F is accessed volatilely from here on. A function
+  /// containing a try needs this: longjmp returns to the middle of the
+  /// frame, and a value the optimiser had promoted to a register would be
+  /// whatever it was when setjmp ran, not what the try body left it. It is
+  /// the C rule about volatile locals, applied by the compiler instead of by
+  /// the programmer.
+  void makeLocalsVolatile(llvm::Function *F);
+  /// Emit one __cm_popHandler for each try open around this point.
+  void popOpenHandlers();
   llvm::Value *emitCast(Cast *C);
   llvm::Value *emitSubstring(Substring *S);
 

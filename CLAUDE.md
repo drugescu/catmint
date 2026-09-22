@@ -64,6 +64,11 @@ cd catmint-lex && make                        # -> bin/catmint-parser
 cd catmint-gen && make                        # -> bin/catmint-gen
 ```
 
+Both `catmint-lex` and `catmint-gen` relink when `libcatmint-ast.a` changes;
+without that dependency a stale binary survives a change to a shared header
+or to `ASTVisitor.cpp`, and the symptom is a fault in code that looks
+correct.
+
 Both Makefiles locate LLVM through `llvm-config` and accept an override:
 `make LLVM_CONFIG=/path/to/llvm-config`. They deliberately strip `-std=`,
 `-fno-exceptions` and `-fno-rtti` out of `llvm-config --cxxflags`, because the
@@ -172,6 +177,36 @@ for one to have a usable runtime, which is enough to run programs under
 The layouts and the virtual table slot order in `runtime.c` are fixed by
 agreement with `IRGenerator.cpp`; changing one without the other silently
 miscompiles.
+
+## Errors
+
+`try: ... catch e: ... end` and `throw <expression>`, on `setjmp` and
+`longjmp`. This is what Lua does and it fits for the same reason: the
+language has no destructors, so jumping over a frame skips no work that had
+to happen, and the path where nothing is thrown costs one `setjmp` per try
+rather than the frame descriptors a table-driven scheme needs.
+
+The generated code allocates the jump buffer itself, because `setjmp` has to
+be called from the frame it will return to; the runtime only keeps the stack
+of them. Its size is fixed at 512 bytes by agreement with
+`CATMINT_JMPBUF_BYTES` in `runtime.c`, which checks `sizeof(jmp_buf)` against
+it at run time rather than being silently too small somewhere.
+
+`__cm_throw` pops the innermost handler before jumping, so a throw from
+inside a `catch` reaches the next handler out instead of looping back into
+itself. The runtime's own checks go through `__cm_runtimeError`, which throws
+a String when a handler is installed and prints and exits when none is, so a
+null dispatch or an index out of bounds is catchable.
+
+**A function containing a `try` has all its locals made volatile**, by a pass
+over the finished function in `makeLocalsVolatile`. This is the C rule about
+`volatile` locals across `setjmp`, applied by the compiler rather than left
+to the programmer, and it is load-bearing: without it, at `-O2`, a variable
+assigned inside the try reads back in the handler as whatever it was when
+`setjmp` ran. Test 36 checks exactly that.
+
+A `return` out of the middle of a try pops the handlers it is jumping over
+(`popOpenHandlers`), or the next throw would jump into a frame that has gone.
 
 ## Memory
 
@@ -364,6 +399,12 @@ Each of these produced a crash or a silent miscompile during development.
   compiler could not read back. The vendored rapidjson's escape table had also
   lost its backslash entry and wrote one raw, which is fixed in
   `catmint-ast/include/rapidjson/writer.h`.
+- **`ASTVisitor` walks into optional children.** A bare call has no object, a
+  built-in method has no body, a return may carry nothing. `visit(Expression
+  *)` returns true for null rather than falling through to its "unknown
+  expression kind" assertion, which is what it used to do -- harmlessly,
+  because every visitor in the tree overrode the nodes that have optional
+  children, until one did not.
 - **The grammar produces no `Assignment` node.** `x = expr` is always a
   `LocalDefinition` with the type `auto`; the generator decides between
   assignment and declaration by whether the name already resolves.

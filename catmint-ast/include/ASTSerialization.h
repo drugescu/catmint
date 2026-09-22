@@ -60,6 +60,8 @@ public:
   bool visit(StaticDispatch *SD) override;
   bool visit(NewObject *NO) override;
   bool visit(FieldAccess *FA) override;
+  bool visit(TryStatement *Try) override;
+  bool visit(ThrowStatement *Throw) override;
   bool visit(IfStatement *If) override;
   bool visit(WhileStatement *While) override;
   bool visit(ForStatement *For) override; // Pay attention here, new one
@@ -189,6 +191,8 @@ private:
   std::unique_ptr<StaticDispatch> parseStaticDispatch(rapidjson::Value &tree);
   std::unique_ptr<NewObject> parseNewObject(rapidjson::Value &tree);
   std::unique_ptr<FieldAccess> parseFieldAccess(rapidjson::Value &tree);
+  std::unique_ptr<TryStatement> parseTryStatement(rapidjson::Value &tree);
+  std::unique_ptr<ThrowStatement> parseThrowStatement(rapidjson::Value &tree);
   std::unique_ptr<IfStatement> parseIfStatement(rapidjson::Value &tree);
   std::unique_ptr<WhileStatement> parseWhileStatement(rapidjson::Value &tree);
   std::unique_ptr<ForStatement> parseForStatement(rapidjson::Value &tree); // Pay attention here in deserialization

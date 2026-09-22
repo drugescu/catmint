@@ -113,6 +113,7 @@
 %token KW_USING KW_IS
 %token KW_CONSTRUCTOR KW_NEW
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
+%token KW_TRY KW_CATCH KW_THROW
 
 %token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE OP_NOT OP_AND OP_OR OP_XOR OP_LSHIFT OP_RSHIFT
 %token OP_ANDALSO OP_ORELSE
@@ -157,6 +158,8 @@ expression
 	  while_expression
 	  for_expression
 	    for_iterator_expression
+	  try_expression
+	  throw_expression
 
 %type <vecstr> id_list
 %type <expressions> dispatch_arguments vector_arguments
@@ -967,7 +970,30 @@ negative_expression
 void_expression
   : while_expression
   | for_expression
+  | try_expression
+  | throw_expression
   ;
+
+// try: <block> catch <name>: <block> end
+//
+// The handler binds one name and no type, because anything can be thrown and
+// 'is' is how a handler decides what it caught.
+try_expression
+    : KW_TRY OP_COLON block KW_CATCH IDENTIFIER OP_COLON block KW_END {
+		auto body    = ($3 != nullptr) ? $3 : new catmint::Block(@3.first_line);
+		auto handler = ($7 != nullptr) ? $7 : new catmint::Block(@7.first_line);
+
+		$$ = new catmint::TryStatement(@1.first_line, Expression(body), *$5,
+		                               Expression(handler));
+		delete $5;
+	}
+    ;
+
+throw_expression
+    : KW_THROW value_expression {
+		$$ = new catmint::ThrowStatement(@1.first_line, Expression($2));
+	}
+    ;
   
 while_expression
     : KW_WHILE value_expression OP_COLON block KW_END {

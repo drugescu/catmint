@@ -1,0 +1,109 @@
+# try, catch and throw.
+
+class Bank
+  Int balance
+
+  def Bank withdraw(Int amount):
+    if amount > balance:
+      throw "insufficient funds"
+    end
+    balance = balance - amount
+    return self
+  end
+end
+
+class Helper
+  # A return out of the middle of a try has to leave the handler stack as it
+  # found it, or the next throw goes somewhere that no longer exists.
+  def Int earlyReturn(Int n):
+    try:
+      if n > 0:
+        return n * 2
+      end
+      throw "not positive"
+    catch e:
+      return 0 - 1
+    end
+  end
+end
+
+class Main from IO
+  def main:
+    Bank b
+    b.balance = 100
+
+    try:
+      b.withdraw(30)
+      out("balance " + b.balance + "\n")
+      b.withdraw(1000)
+      out("not reached\n")
+    catch e:
+      out("caught " + e + "\n")
+    end
+    out("balance after " + b.balance + "\n")
+
+    # A runtime error is an ordinary throw, so it can be caught.
+    try:
+      Bank missing = null
+      missing.withdraw(1)
+    catch e:
+      out("runtime " + e + "\n")
+    end
+
+    # Nested, with the handler throwing on.
+    try:
+      try:
+        throw "inner"
+      catch e:
+        out("inner caught " + e + "\n")
+        throw "outer"
+      end
+    catch e:
+      out("outer caught " + e + "\n")
+    end
+
+    # A try that does not throw skips the handler entirely.
+    try:
+      out("quiet\n")
+    catch e:
+      out("not reached\n")
+    end
+
+    Helper h
+    out("early " + h.earlyReturn(21) + "\n")
+    out("early " + h.earlyReturn(0) + "\n")
+
+    # After a return out of a try, the handler stack is still sound.
+    try:
+      throw "still working"
+    catch e:
+      out("after returns " + e + "\n")
+    end
+
+    # A local changed inside the try must still read correctly in the
+    # handler. longjmp returns into the middle of this frame, so a value the
+    # optimiser had promoted to a register would otherwise be whatever it was
+    # when the try started. The compiler makes the locals of a function
+    # containing a try volatile for exactly this.
+    Int progress = 0
+    String note = "none"
+    try:
+      progress = 1
+      note = "started"
+      progress = 2
+      throw "stop"
+    catch e:
+      out("progress " + progress + " note " + note + "\n")
+    end
+
+    # Any object can be thrown, not only a String.
+    try:
+      throw b
+    catch e:
+      Bank caught = e
+      out("object " + caught.balance + "\n")
+    end
+
+    out("done\n")
+  end
+end

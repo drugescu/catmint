@@ -1,3 +1,4 @@
+#include "ASTVisitor.h"
 #include "IRGenerator.h"
 #include "SemanticException.h"
 #include "StringConstants.h"
@@ -602,6 +603,8 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
   CurrentClass = CI;
   CurrentFunction = CI->Init;
   CurrentReturnType = strings::Void;
+  OpenHandlers = 0;
+  FunctionHasTry = false;
   Scopes.clear();
   Scopes.emplace_back();
 
@@ -666,6 +669,22 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
 // Methods
 // ---------------------------------------------------------------------------
 
+namespace {
+/// Whether a method body contains a try, which decides whether its locals
+/// have to be read and written volatilely.
+class TryFinder : public ASTVisitor {
+public:
+  // Overriding one visit would otherwise hide every other overload.
+  using ASTVisitor::visit;
+
+  bool Found = false;
+  bool visit(TryStatement *T) override {
+    Found = true;
+    return ASTVisitor::visit(T);
+  }
+};
+} // namespace
+
 bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
   const std::string Sym = mangle(CI->AST->getName(), M->getName());
   auto *F = Module.getFunction(Sym);
@@ -682,8 +701,14 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
   CurrentClass = CI;
   CurrentFunction = F;
   CurrentReturnType = M->getReturnType();
+  OpenHandlers = 0;
   Scopes.clear();
   Scopes.emplace_back();
+
+  TryFinder Finder;
+  if (M->getBody())
+    Finder.visit(M->getBody());
+  FunctionHasTry = Finder.Found;
 
   // self, then the declared parameters, each given a stack slot so that
   // assignment to a parameter works like assignment to any other local. A
@@ -723,6 +748,10 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
         Builder.CreateRet(llvm::ConstantFP::get(RT, 0.0));
       }
     }
+  }
+  if (FunctionHasTry) {
+    makeLocalsVolatile(F);
+    FunctionHasTry = false;
   }
   endDebugScope();
   return true;
@@ -939,6 +968,8 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
   }
   if (dynamic_cast<WhileStatement *>(E))        return strings::Void;
   if (dynamic_cast<ForStatement *>(E))          return strings::Void;
+  if (dynamic_cast<TryStatement *>(E))          return strings::Void;
+  if (dynamic_cast<ThrowStatement *>(E))        return strings::Void;
 
   if (auto *D = dynamic_cast<Dispatch *>(E)) {
     if (ClassInfo *Target = staticReceiver(D)) {
@@ -1072,6 +1103,8 @@ llvm::Value *IRGenerator::emit(Expression *E) {
   if (auto *N = dynamic_cast<Dispatch *>(E))         return emitDispatch(N);
   if (auto *N = dynamic_cast<NewObject *>(E))        return emitNewObject(N);
   if (auto *N = dynamic_cast<FieldAccess *>(E))      return emitFieldAccess(N);
+  if (auto *N = dynamic_cast<TryStatement *>(E))     return emitTry(N);
+  if (auto *N = dynamic_cast<ThrowStatement *>(E))   return emitThrow(N);
   if (auto *N = dynamic_cast<Cast *>(E))             return emitCast(N);
   if (auto *N = dynamic_cast<Substring *>(E))        return emitSubstring(N);
   if (auto *N = dynamic_cast<Symbol *>(E))           return emitSymbol(N);
@@ -1643,18 +1676,35 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
   return nullptr;
 }
 
+/// Leaving a try by returning has to pop the handlers that were opened
+/// around this point; otherwise the next throw jumps into a frame that has
+/// already gone. The value is computed first, since computing it may itself
+/// throw, and that throw should still find this try's handler.
+void IRGenerator::popOpenHandlers() {
+  if (OpenHandlers == 0)
+    return;
+  auto Pop = Module.getOrInsertFunction(
+      "__cm_popHandler",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {}, false));
+  for (unsigned N = 0; N < OpenHandlers; ++N)
+    Builder.CreateCall(Pop, {});
+}
+
 llvm::Value *IRGenerator::emitReturn(ReturnExpression *R) {
   if (CurrentReturnType == strings::Void || CurrentReturnType == "auto" ||
       !R->getRet()) {
+    popOpenHandlers();
     Builder.CreateRetVoid();
     return nullptr;
   }
   llvm::Value *V = emit(R->getRet());
   if (!V) {
+    popOpenHandlers();
     Builder.CreateRetVoid();
     return nullptr;
   }
   V = coerce(V, staticTypeOf(R->getRet()), CurrentReturnType, R->getLineNumber());
+  popOpenHandlers();
   Builder.CreateRet(V);
   return nullptr;
 }
@@ -1942,6 +1992,114 @@ llvm::Value *IRGenerator::emitFieldAccess(FieldAccess *FA) {
   }
 
   return Builder.CreateLoad(lowerType(FieldType), Addr, FA->getField());
+}
+
+// ---------------------------------------------------------------------------
+// Errors
+//
+// try/catch/throw on setjmp and longjmp. There is nothing to unwind -- the
+// language has no destructors -- so jumping over frames skips no work, and
+// the path where nothing is thrown costs one setjmp per try.
+// ---------------------------------------------------------------------------
+
+llvm::Value *IRGenerator::emitTry(TryStatement *T) {
+  auto Ptr = llvm::PointerType::getUnqual(Context);
+  auto *I32 = llvm::Type::getInt32Ty(Context);
+  auto *VoidTy = llvm::Type::getVoidTy(Context);
+
+  // The jump buffer lives in this frame, because setjmp has to be called
+  // from the frame it will return to. Its size is fixed by agreement with
+  // CATMINT_JMPBUF_BYTES in runtime.c, which checks it at run time.
+  auto *BufTy = llvm::ArrayType::get(Builder.getInt8Ty(), 512);
+  auto *Buf = createEntryAlloca(BufTy, "try.buf");
+  Buf->setAlignment(llvm::Align(16));
+
+  auto Push = Module.getOrInsertFunction(
+      "__cm_pushHandler", llvm::FunctionType::get(VoidTy, {Ptr}, false));
+  auto Pop = Module.getOrInsertFunction(
+      "__cm_popHandler", llvm::FunctionType::get(VoidTy, {}, false));
+  auto CaughtFn = Module.getOrInsertFunction(
+      "__cm_caught", llvm::FunctionType::get(Ptr, {}, false));
+
+  // setjmp is called here rather than from a runtime helper, because a helper
+  // would return before the longjmp ever arrived.
+  auto SetJmp = Module.getOrInsertFunction(
+      "setjmp", llvm::FunctionType::get(I32, {Ptr}, false));
+  if (auto *SJ = llvm::dyn_cast<llvm::Function>(SetJmp.getCallee()))
+    SJ->addFnAttr(llvm::Attribute::ReturnsTwice);
+
+  Builder.CreateCall(Push, {Buf});
+  auto *Code = Builder.CreateCall(SetJmp, {Buf}, "try.code");
+  Code->addFnAttr(llvm::Attribute::ReturnsTwice);
+  auto *Threw = Builder.CreateICmpNE(Code, Builder.getInt32(0), "try.threw");
+
+  auto *BodyBB = llvm::BasicBlock::Create(Context, "try.body", CurrentFunction);
+  auto *CatchBB = llvm::BasicBlock::Create(Context, "try.catch", CurrentFunction);
+  auto *EndBB = llvm::BasicBlock::Create(Context, "try.end", CurrentFunction);
+  Builder.CreateCondBr(Threw, CatchBB, BodyBB);
+
+  Builder.SetInsertPoint(BodyBB);
+  ++OpenHandlers;
+  Scopes.emplace_back();
+  (void)emit(T->getBody());
+  Scopes.pop_back();
+  --OpenHandlers;
+  if (!blockTerminated()) {
+    Builder.CreateCall(Pop, {});
+    Builder.CreateBr(EndBB);
+  }
+
+  // Arriving here means a throw, which popped the handler on its way, so
+  // there is nothing to pop and the next throw goes further out.
+  Builder.SetInsertPoint(CatchBB);
+  Scopes.emplace_back();
+  auto *Slot = createEntryAlloca(Ptr, T->getCatchName());
+  Builder.CreateStore(Builder.CreateCall(CaughtFn, {}, "caught"), Slot);
+  Scopes.back()[T->getCatchName()] = {Slot, strings::Object};
+  (void)emit(T->getHandler());
+  Scopes.pop_back();
+  if (!blockTerminated())
+    Builder.CreateBr(EndBB);
+
+  Builder.SetInsertPoint(EndBB);
+  return nullptr;
+}
+
+llvm::Value *IRGenerator::emitThrow(ThrowStatement *T) {
+  const std::string From = staticTypeOf(T->getValue());
+  llvm::Value *V = emit(T->getValue());
+  if (!V)
+    fail(T->getLineNumber(), "the value of a 'throw' produced nothing");
+  // An Int is boxed here exactly as it is anywhere a reference is wanted.
+  V = coerce(V, From, strings::Object, T->getLineNumber());
+
+  auto Throw = Module.getOrInsertFunction(
+      "__cm_throw",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context),
+                              {llvm::PointerType::getUnqual(Context)}, false));
+  auto *Call = Builder.CreateCall(Throw, {V});
+  Call->setDoesNotReturn();
+  Builder.CreateUnreachable();
+  return nullptr;
+}
+
+void IRGenerator::makeLocalsVolatile(llvm::Function *F) {
+  std::set<llvm::Value *> Allocas;
+  for (auto &I : F->getEntryBlock())
+    if (auto *A = llvm::dyn_cast<llvm::AllocaInst>(&I))
+      Allocas.insert(A);
+
+  for (auto &BB : *F) {
+    for (auto &I : BB) {
+      if (auto *L = llvm::dyn_cast<llvm::LoadInst>(&I)) {
+        if (Allocas.count(L->getPointerOperand()))
+          L->setVolatile(true);
+      } else if (auto *S = llvm::dyn_cast<llvm::StoreInst>(&I)) {
+        if (Allocas.count(S->getPointerOperand()))
+          S->setVolatile(true);
+      }
+    }
+  }
 }
 
 llvm::Value *IRGenerator::emitCast(Cast *C) {

@@ -63,6 +63,9 @@ const auto DispatchNodeType = "Dispatch";
 const auto StaticDispatchNodeType = "StaticDispatch";
 const auto NewObjectNodeType = "NewObject";
 const auto FieldAccessNodeType = "FieldAccess";
+const auto TryStatementNodeType = "TryStatement";
+const auto ThrowStatementNodeType = "ThrowStatement";
+const auto Handler = "Handler";
 const auto IfStatementNodeType = "IfStatement";
 const auto WhileStatementNodeType = "WhileStatement";
 const auto ForStatementNodeType = "ForStatement";
@@ -640,6 +643,40 @@ bool ASTSerializer::visit(FieldAccess *FA) {
   return true;
 }
 
+bool ASTSerializer::visit(TryStatement *Try) {
+  assert(isValid() && "Invalid serializer");
+  assert(Try && "Expected non-null try statement");
+
+  CreateJSONObject tryObject(*this, keys::TryStatementNodeType, Try);
+  writePair(keys::LineNumber, Try->getLineNumber());
+  writePair(keys::Name, Try->getCatchName());
+
+  writer->Key(keys::Body);
+  auto body = Try->getBody();
+  assert(body && "Try without a body");
+  if (!visit(body)) {
+    return false;
+  }
+
+  writer->Key(keys::Handler);
+  auto handler = Try->getHandler();
+  assert(handler && "Try without a handler");
+  return visit(handler);
+}
+
+bool ASTSerializer::visit(ThrowStatement *Throw) {
+  assert(isValid() && "Invalid serializer");
+  assert(Throw && "Expected non-null throw statement");
+
+  CreateJSONObject throwObject(*this, keys::ThrowStatementNodeType, Throw);
+  writePair(keys::LineNumber, Throw->getLineNumber());
+
+  writer->Key(keys::Object);
+  auto value = Throw->getValue();
+  assert(value && "Throw without a value");
+  return visit(value);
+}
+
 bool ASTSerializer::visit(ReturnExpression *R) {
   assert(isValid() && "Invalid serializer");
   assert(R && "Expected non-null return expression");
@@ -1052,6 +1089,10 @@ ASTDeserializer::parseExpression(rapidjson::Value &tree) {
     return parseNewObject(tree);
   } else if (nodeType == keys::FieldAccessNodeType) {
     return parseFieldAccess(tree);
+  } else if (nodeType == keys::TryStatementNodeType) {
+    return parseTryStatement(tree);
+  } else if (nodeType == keys::ThrowStatementNodeType) {
+    return parseThrowStatement(tree);
   } else if (nodeType == keys::IfStatementNodeType) {
     return parseIfStatement(tree);
   } else if (nodeType == keys::WhileStatementNodeType) {
@@ -1466,6 +1507,40 @@ ASTDeserializer::parseFieldAccess(rapidjson::Value &tree) {
   return createNode<FieldAccess>(tree, parseLineNumber(tree), std::move(object),
                                  tree[keys::Name].GetString(),
                                  std::move(value));
+}
+
+std::unique_ptr<TryStatement>
+ASTDeserializer::parseTryStatement(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::TryStatementNodeType &&
+         "Expected try statement object");
+
+  assert(tree.HasMember(keys::Name) && "Try without a catch name");
+  assert(tree.HasMember(keys::Body) && "Try without a body");
+  assert(tree.HasMember(keys::Handler) && "Try without a handler");
+
+  auto body = parseExpression(tree[keys::Body]);
+  assert(body && "Expected non-null expression node");
+  auto handler = parseExpression(tree[keys::Handler]);
+  assert(handler && "Expected non-null expression node");
+
+  return createNode<TryStatement>(tree, parseLineNumber(tree), std::move(body),
+                                  tree[keys::Name].GetString(),
+                                  std::move(handler));
+}
+
+std::unique_ptr<ThrowStatement>
+ASTDeserializer::parseThrowStatement(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::ThrowStatementNodeType &&
+         "Expected throw statement object");
+
+  assert(tree.HasMember(keys::Object) && "Throw without a value");
+  auto value = parseExpression(tree[keys::Object]);
+  assert(value && "Expected non-null expression node");
+
+  return createNode<ThrowStatement>(tree, parseLineNumber(tree),
+                                    std::move(value));
 }
 
 std::unique_ptr<IfStatement>

@@ -144,6 +144,12 @@ Things worth knowing, because they are not obvious:
   declared return type. There is no limit on the number of parameters. The
   paren-less form the README shows, `def show Int a, Int b:`, is not
   implemented; use parentheses.
+- **`throw` and `try`/`catch` are how a failure travels.** `throw
+  "insufficient funds"` leaves through the nearest `try: ... catch e: ...
+  end`; `e` holds whatever was thrown, typed `Object`, so assign it to a
+  typed variable or ask with `is`. The runtime's own errors -- a method call
+  on null, an index out of bounds -- arrive the same way and can be caught.
+  Uncaught, a throw prints `Uncaught: ...` and exits 1.
 - **`-g` gives you line numbers.** `./catmintc -g -O0 app.cm` puts a file and
   a line on every statement, so a debugger can follow the program and a crash
   names a place. On macOS it also writes an `app.dSYM` beside the binary,

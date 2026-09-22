@@ -1,0 +1,13 @@
+balance 70
+caught insufficient funds
+balance after 70
+runtime Calling a method of a void object.
+inner caught inner
+outer caught outer
+quiet
+early 42
+early -1
+after returns still working
+progress 2 note started
+object 70
+done

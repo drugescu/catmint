@@ -24,6 +24,8 @@
 #include "Substring.h"
 #include "Slicevector.h"
 #include "Symbol.h"
+#include "ThrowStatement.h"
+#include "TryStatement.h"
 #include "UnaryOperator.h"
 #include "WhileStatement.h"
 #include "ForStatement.h"

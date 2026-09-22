@@ -16,6 +16,11 @@ LLVM_LIBS     := $(shell $(LLVM_CONFIG) --libs core support irreader bitwriter) 
 LLVM_CXXFLAGS_CLEAN = $(filter-out -std=% -fno-exceptions -fno-rtti,$(LLVM_CXXFLAGS))
 CXXFLAGS = -std=c++17 -fexceptions -frtti -w $(LLVM_CXXFLAGS_CLEAN)
 
+# Relink when the AST library changes: it is built by the 'ast' target
+# above, and without this dependency a stale binary silently survives a
+# change to a shared header or to ASTVisitor.cpp.
+AST_LIB = ../catmint-ast/build/libcatmint-ast.a
+
 INCLUDES = -I../catmint-ast/include -I. -I./include
 LFLAGS   = -L../catmint-ast/build $(LLVM_LDFLAGS)
 LIBS     = -lcatmint-ast $(LLVM_LIBS)
@@ -30,7 +35,7 @@ SOURCES = IRGenerator.cpp PrintAnalysis.cpp SemanticAnalysis.cpp \
 all: ast $(MAIN)
 	@echo "The Catmint Generator has been compiled -> $(MAIN)"
 
-$(MAIN): $(SOURCES) | bin
+$(MAIN): $(SOURCES) $(AST_LIB) | bin
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $(MAIN) $(SOURCES) $(LFLAGS) $(LIBS)
 
 bin:
