@@ -98,6 +98,11 @@ class Counter from IO        # 'from' names the parent; Object is the default
   def Int get:               # no parameters, so no parentheses
     return value
   end
+
+  def report(String label):  # no declared return type means it returns nothing
+    out(label)
+    out(value)
+  end
 end
 
 class Main from IO
@@ -124,6 +129,11 @@ Things worth knowing, because they are not obvious:
 - **A method without a declared return type returns nothing.** Write
   `def Int square(Int n):` when you want a value back. Return-type inference is
   not implemented, and `auto` is currently just a spelling of `Void`.
+- **The return type and the parameter list are each optional**, giving six
+  forms: `def f:`, `def f():`, `def f(Int a):`, and the same three with a
+  declared return type. There is no limit on the number of parameters. The
+  paren-less form the README shows, `def show Int a, Int b:`, is not
+  implemented; use parentheses.
 - **`x = expr` on a name that already exists assigns to it**; on a new name it
   declares it. The grammar produces the same node for both.
 - **`for v in n:` counts**, giving `v` the values `0` to `n - 1`, and

@@ -1,0 +1,58 @@
+# Every method declaration form, each actually called. Three of the six used
+# to be rejected: a method without a declared return type could not take
+# parameters at all, and empty parentheses were a syntax error.
+
+class Forms from IO
+  Int seen
+
+  def noneBare:
+    seen = seen + 1
+  end
+
+  def noneParens():
+    seen = seen + 10
+  end
+
+  def oneArg(Int a):
+    seen = seen + a
+  end
+
+  def manyArgs(Int a, Int b, Int c, Int d, Int e):
+    seen = seen + a + b + c + d + e
+  end
+
+  def Int typedBare:
+    return seen
+  end
+
+  def Int typedParens():
+    return seen * 2
+  end
+
+  def Int typedMany(Int a, Int b, Int c, Int d, Int e, Int f, Int g):
+    return a + b + c + d + e + f + g
+  end
+
+  def String mixedTypes(Int n, String s, Float f, Object o):
+    return s + n + ":" + f
+  end
+end
+
+class Main from IO
+  def main:
+    Forms x
+    x.noneBare()
+    x.noneParens()
+    x.oneArg(100)
+    x.manyArgs(1, 2, 3, 4, 5)
+
+    out(x.typedBare())
+    out(" ")
+    out(x.typedParens())
+    out(" ")
+    out(x.typedMany(1, 2, 3, 4, 5, 6, 7))
+    out(" ")
+    out(x.mixedTypes(9, "n", 2.5, x))
+    out("\n")
+  end
+end

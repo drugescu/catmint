@@ -301,56 +301,51 @@ attribute : type_name IDENTIFIER {
 	}
 	;
 
+// A method declaration. The return type is optional, and so is the parameter
+// list, which gives six forms. They used to be written out ad hoc, and three
+// of the six were missing: a method without a declared return type could not
+// take parameters at all, and empty parentheses were rejected.
+//
+// A declared return type is a type_name, so it may be namespace-qualified.
 method
-  // No return type given, must be deducible, like auto
-	: KW_DEF IDENTIFIER OP_COLON block KW_END {
-    auto& name  	   = *$2;
-    //auto& params 	   = *$4;
-		auto params 	   = new std::vector<catmint::Attribute*>();
-		auto  returnType = std::string("auto");
-		auto  body       = $4;
-
-		// Void method
-		$$ = new catmint::Method(@1.first_line,
-							 name,
-							 returnType,
-	   					 Expression(body),
-							 *params);
-
-		delete $2; //delete $4;
+  // def f:
+  : KW_DEF IDENTIFIER OP_COLON block KW_END {
+		auto params = new std::vector<catmint::Attribute*>();
+		$$ = new catmint::Method(@1.first_line, *$2, std::string("auto"),
+		                         Expression($4), *params);
+		delete $2; delete params;
 	}
-	//| KW_DEF IDENTIFIER IDENTIFIER OP_COLON formals block KW_END {
-	
-	| KW_DEF type_name IDENTIFIER OP_COLON block KW_END {
-    auto& name  	   = *$3;
-    //auto& params 	   = *$5;
-		auto params 	   = new std::vector<catmint::Attribute*>();
-		auto& returnType = *$2;
-		auto  body       = $5;
-
-		// Void method
-		$$ = new catmint::Method(@1.first_line,
-							 name,
-							 returnType,
-	   					 Expression(body),
-							 *params);
-
-		delete $2; delete $3; //delete $5;
+  // def f():
+  | KW_DEF IDENTIFIER OP_OPAREN OP_CPAREN OP_COLON block KW_END {
+		auto params = new std::vector<catmint::Attribute*>();
+		$$ = new catmint::Method(@1.first_line, *$2, std::string("auto"),
+		                         Expression($6), *params);
+		delete $2; delete params;
 	}
-	| KW_DEF type_name IDENTIFIER OP_OPAREN method_arguments OP_CPAREN OP_COLON block KW_END {
-
-    auto& name  	   = *$3;
-		auto& returnType = *$2;
-		auto  body       = $8;
-
-		// Void method
-		$$ = new catmint::Method(@1.first_line,
-							 name,
-							 returnType,
-	   					 Expression(body),
-	   					 *reinterpret_cast<std::vector<catmint::Attribute*>*>($5));
-							 //*params);
-
+  // def f(Int a, Int b, Int c):
+  | KW_DEF IDENTIFIER OP_OPAREN method_arguments OP_CPAREN OP_COLON block KW_END {
+		$$ = new catmint::Method(@1.first_line, *$2, std::string("auto"),
+		                         Expression($7),
+		                         *reinterpret_cast<std::vector<catmint::Attribute*>*>($4));
+		delete $2;
+	}
+  // def Int f:
+  | KW_DEF type_name IDENTIFIER OP_COLON block KW_END {
+		auto params = new std::vector<catmint::Attribute*>();
+		$$ = new catmint::Method(@1.first_line, *$3, *$2, Expression($5), *params);
+		delete $2; delete $3; delete params;
+	}
+  // def Int f():
+  | KW_DEF type_name IDENTIFIER OP_OPAREN OP_CPAREN OP_COLON block KW_END {
+		auto params = new std::vector<catmint::Attribute*>();
+		$$ = new catmint::Method(@1.first_line, *$3, *$2, Expression($7), *params);
+		delete $2; delete $3; delete params;
+	}
+  // def Int f(Int a, Int b, Int c):
+  | KW_DEF type_name IDENTIFIER OP_OPAREN method_arguments OP_CPAREN OP_COLON block KW_END {
+		$$ = new catmint::Method(@1.first_line, *$3, *$2, Expression($8),
+		                         *reinterpret_cast<std::vector<catmint::Attribute*>*>($5));
+		delete $2; delete $3;
 	}
 	;
 
