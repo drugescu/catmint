@@ -73,10 +73,12 @@ cd catmint-gen && ./ctest.sh   # codegen: program stdout vs .expected files
 ```
 
 `wtest.sh` runs every `test_suite/*.cm`, diffs the produced `.ast` against the
-committed `.ref`, and writes `<test>.errlog.txt` on mismatch. **9 of 11 pass.
-`declarations.cm` and `dispatch_complex.cm` fail with syntax errors and this is
-the pre-existing upstream state**, not a regression: their `.ast` outputs were
-deleted in commit 6eecc98 and never restored. Treat 9/11 as the baseline.
+committed `.ref`, and writes `<test>.errlog.txt` on mismatch. All 11 pass. `declarations.cm` and `dispatch_complex.cm` had failed since
+2020; both now parse. `declarations.cm.ref` was regenerated because the
+committed one predated the `new_list` rule, so it still described an empty list
+literal as a single node. Everything else in it, including the `a[i]` and
+`a[i] = v` desugaring the test exists to check, matches the old reference
+exactly.
 
 `ctest.sh` is the end-to-end suite: it compiles and runs each
 `catmint-gen/test_suite/*.cm` and diffs stdout against the matching

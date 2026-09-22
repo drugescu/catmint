@@ -145,8 +145,9 @@ The code generation suite compiles and runs each `test_suite/*.cm` and diffs the
 program's stdout against the matching `.expected`. Run one test with
 `./ctest.sh test_suite/05_while.cm`. Add a case by dropping in the two files.
 
-The parser suite passes 9 of 11. `declarations.cm` and `dispatch_complex.cm`
-have failed since 2020 and are the known baseline, not something you broke.
+Both suites should be fully green. If the parser suite regresses, compare the
+produced `.ast` against the committed `.ref`; the diff is usually a grammar
+change altering the shape of a node.
 
 When a program fails to compile, `catmint-gen/dbg.sh <file.cm>` runs just the
 parse and generate steps and shows the error, which is otherwise buried in a
@@ -186,8 +187,10 @@ catmint spellings, so `type`, `len` and `input` map explicitly to
 
 ## 8. What is still missing
 
-- Slice vectors (`a[1:2]`) parse but are not deserialized, so a program using
-  them aborts in `ASTSerialization.cpp`.
+- Indexing and list/dictionary literals parse -- `a[i]` desugars to `a.get(i)`
+  and `a[i] = v` to `a.set(i, v)` -- but there is no list type below the
+  parser, so such a program cannot be compiled or run yet. Slice vectors
+  (`a[1:2]`) are not deserialized at all and abort in `ASTSerialization.cpp`.
 - `Float` arithmetic is generated, but the runtime cannot print a float.
 - Return-type inference, as described above.
 - Lists and dictionaries parse but have no representation in the runtime.
