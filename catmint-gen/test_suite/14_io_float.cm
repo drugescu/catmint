@@ -1,0 +1,18 @@
+class Main from IO
+  def main:
+    Float f = 1.5
+    Float g = f * 2.0
+    out("f = ")
+    out(f)
+    out("  g = ")
+    out(g)
+    out("\n")
+
+    while !eof():
+      String line = readLine()
+      out("[")
+      out(line)
+      out("]\n")
+    end
+  end
+end

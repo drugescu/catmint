@@ -21,6 +21,7 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
   auto Ptr = llvm::PointerType::getUnqual(Context);
   auto I32 = llvm::Type::getInt32Ty(Context);
   auto Void = llvm::Type::getVoidTy(Context);
+  (void)Void;
 
   RTTIType = llvm::StructType::create(Context, "struct.__catmint_rtti");
   StringType = llvm::StructType::create(Context, "struct.TString");
@@ -44,6 +45,9 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
       M.getOrInsertFunction("__catmint_new", llvm::FunctionType::get(Ptr, {Ptr}, false));
   IntToString = M.getOrInsertFunction(
       "__lcpl_intToString", llvm::FunctionType::get(Ptr, {I32}, false));
+  FloatToString = M.getOrInsertFunction(
+      "__lcpl_floatToString",
+      llvm::FunctionType::get(Ptr, {llvm::Type::getDoubleTy(Context)}, false));
   CheckNull = M.getOrInsertFunction(
       "__lcpl_checkNull", llvm::FunctionType::get(Void, {Ptr}, false));
   DynamicCast = M.getOrInsertFunction(
@@ -107,8 +111,10 @@ std::string IRGenerator::runtimeSymbol(ClassInfo *CI,
     if (MethodName == strings::TypeName) return "M6_Object_typeName";
     if (MethodName == strings::Copy)     return "M6_Object_copy";
   } else if (C == strings::Io) {
-    if (MethodName == strings::In)  return "M2_IO_in";
-    if (MethodName == strings::Out) return "M2_IO_out";
+    if (MethodName == strings::In)       return "M2_IO_in";
+    if (MethodName == strings::Out)      return "M2_IO_out";
+    if (MethodName == strings::ReadLine) return "M2_IO_readLine";
+    if (MethodName == strings::Eof)      return "M2_IO_eof";
   } else if (C == strings::String) {
     if (MethodName == strings::Length) return "M6_String_length";
     if (MethodName == strings::ToInt)  return "M6_String_toInt";
@@ -691,6 +697,8 @@ llvm::Value *IRGenerator::coerce(llvm::Value *V, const std::string &From,
 
   if (From == strings::Int && To == strings::String)
     return Builder.CreateCall(Runtime.intToString(), {V}, "int.str");
+  if (From == strings::Float && To == strings::String)
+    return Builder.CreateCall(Runtime.floatToString(), {V}, "float.str");
   if (From == strings::Int && To == strings::Float)
     return Builder.CreateSIToFP(V, llvm::Type::getDoubleTy(Context), "int.fp");
   if (From == strings::Float && To == strings::Int)

@@ -27,6 +27,8 @@ const auto Io = "IO";
 const auto Message = "message";
 const auto Out = "out";
 const auto In = "input";
+const auto ReadLine = "readLine";
+const auto Eof = "eof";
 
 const auto Symbol = "Symbol";
 const auto ComplexType = "ComplexType";

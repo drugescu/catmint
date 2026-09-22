@@ -104,6 +104,17 @@ void TypeTable::addBuiltinClasses(Program *p) {
       new Attribute(0, strings::Message, strings::String));
   builtinMethods.push_back(
       new Method(0, strings::Out, strings::Io, nullptr, builtinMethodsParams));
+
+  // Appended after 'out' on purpose: the virtual table slot of a built-in is
+  // fixed by runtime.c, and inserting earlier would renumber 'input' and
+  // 'out'. Declaration order here is slot order there.
+  builtinMethodsParams.clear();
+  // Method - 'IO_object.readLine()' returning obj of type 'String'
+  builtinMethods.push_back(new Method(0, strings::ReadLine, strings::String,
+                                      nullptr, builtinMethodsParams));
+  // Method - 'IO_object.eof()' returning an 'Int'
+  builtinMethods.push_back(
+      new Method(0, strings::Eof, strings::Int, nullptr, builtinMethodsParams));
   
   // Add these methods to class 'IO' which inherits 'Object', add class to typeTable,  park it in the program
   // Class(int, const std::string &name, const std::string &parentClassName, const std::vector<...> &features = {})
@@ -240,6 +251,9 @@ std::string TypeTable::getCommonTypeStr(std::string T, std::string U) const {
 
   if (T == strings::Float) {
     if (U == strings::Int) return strings::Float;
+    // Printing a Float goes through the same conversion as printing an Int;
+    // the generator inserts __lcpl_floatToString.
+    if (U == strings::String) return strings::String;
   }
 
   return strings::Void;

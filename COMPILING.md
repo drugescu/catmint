@@ -132,7 +132,23 @@ Things worth knowing, because they are not obvious:
   be iterated yet. The loop variable is scoped to the loop.
 
 Built-in methods, from `Object`, `IO` and `String` respectively: `abort()`,
-`type()`, `copy()`, `input()`, `out(String)`, `len()`, `toInt()`.
+`type()`, `copy()`; `input()`, `out(String)`, `readLine()`, `eof()`;
+`len()`, `toInt()`.
+
+There are three ways to read input, because they answer different questions.
+`input()` reads one whitespace-delimited word, `readLine()` reads the rest of
+the line without its newline, and `eof()` says whether input is exhausted so a
+loop can stop:
+
+```
+while !eof():
+  String line = readLine()
+  out(line)
+  out("\n")
+end
+```
+
+`out` accepts a `Float` as well as an `Int`, printing it with `%g`.
 
 ## 5a. Splitting a program across files
 
@@ -266,7 +282,6 @@ catmint spellings, so `type`, `len` and `input` map explicitly to
   and `a[i] = v` to `a.set(i, v)` -- but there is no list type below the
   parser, so such a program cannot be compiled or run yet. Slice vectors
   (`a[1:2]`) are not deserialized at all and abort in `ASTSerialization.cpp`.
-- `Float` arithmetic is generated, but the runtime cannot print a float.
 - Return-type inference, as described above.
 - Lists and dictionaries parse but have no representation in the runtime.
 - Attribute assignment through another object, as in `c.name = "x"`, has no

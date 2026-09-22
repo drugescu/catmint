@@ -60,7 +60,7 @@ struct TIO {
   } name
 
 CATMINT_RTTI_TYPE(catmint_rtti3, 3);
-CATMINT_RTTI_TYPE(catmint_rtti5, 5);
+CATMINT_RTTI_TYPE(catmint_rtti7, 7);
 CATMINT_RTTI_TYPE(catmint_rtti8, 8);
 
 #define RTTI(x) ((struct __catmint_rtti *)&(x))
@@ -77,6 +77,8 @@ int M6_String_equal(struct TString *self, struct TString *other);
 
 struct TString *M2_IO_in(struct TIO *self);
 struct TIO *M2_IO_out(struct TIO *self, struct TString *message);
+struct TString *M2_IO_readLine(struct TIO *self);
+int M2_IO_eof(struct TIO *self);
 
 void *__catmint_new(struct __catmint_rtti *rtti);
 void String_init(struct TString *self);
@@ -101,10 +103,13 @@ catmint_rtti8 RString = {
     (void *)M6_String_equal }
 };
 
-catmint_rtti5 RIO = {
+/* The two new slots go on the end. Inserting anywhere else would renumber
+ * `in` and `out` and silently break every already-compiled caller. */
+catmint_rtti7 RIO = {
   &NIO, sizeof(struct TIO), RTTI(RObject),
   { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
-    (void *)M2_IO_in, (void *)M2_IO_out }
+    (void *)M2_IO_in, (void *)M2_IO_out,
+    (void *)M2_IO_readLine, (void *)M2_IO_eof }
 };
 
 /* -------------------------------------------------------------------------
@@ -132,6 +137,16 @@ void IO_init(struct TIO *self) {
 void String_init(struct TString *self) {
   self->string = "";
   self->length = 0;
+}
+
+/* Build a catmint String from a NUL-terminated buffer. */
+static struct TString *make_string(const char *text) {
+  struct TString *result = (struct TString *)__catmint_new(RTTI(RString));
+  String_init(result);
+  result->length = (int)strlen(text);
+  result->string = calloc((size_t)result->length + 1, 1);
+  strcpy(result->string, text);
+  return result;
 }
 
 /* -------------------------------------------------------------------------
@@ -223,7 +238,6 @@ int M6_String_equal(struct TString *self, struct TString *other) {
 /* Reads one whitespace-delimited word, at most 255 characters. */
 struct TString *M2_IO_in(struct TIO *self) {
   char buffer[256];
-  struct TString *result;
 
   (void)self;
   buffer[0] = '\0';
@@ -231,12 +245,40 @@ struct TString *M2_IO_in(struct TIO *self) {
     buffer[0] = '\0';
   }
 
-  result = (struct TString *)__catmint_new(RTTI(RString));
-  String_init(result);
-  result->length = (int)strlen(buffer);
-  result->string = calloc(result->length + 1, 1);
-  strcpy(result->string, buffer);
-  return result;
+  return make_string(buffer);
+}
+
+/* The rest of the current line, without its newline. At end of input this
+ * gives an empty String, so pair it with eof() to drive a loop. */
+struct TString *M2_IO_readLine(struct TIO *self) {
+  char buffer[1024];
+  size_t length;
+
+  (void)self;
+  if (!fgets(buffer, (int)sizeof(buffer), stdin)) {
+    return make_string("");
+  }
+
+  length = strlen(buffer);
+  if (length > 0 && buffer[length - 1] == '\n') {
+    buffer[length - 1] = '\0';
+  }
+  return make_string(buffer);
+}
+
+/* 1 once input is exhausted. It peeks rather than relying on a previous read
+ * having failed, which is what makes `while !io.eof():` stop at the right
+ * place instead of one iteration late. */
+int M2_IO_eof(struct TIO *self) {
+  int c;
+
+  (void)self;
+  c = fgetc(stdin);
+  if (c == EOF) {
+    return 1;
+  }
+  ungetc(c, stdin);
+  return 0;
 }
 
 struct TIO *M2_IO_out(struct TIO *self, struct TString *message) {
@@ -277,18 +319,22 @@ void *__lcpl_cast(void *object, struct __catmint_rtti *target) {
   exit(1);
 }
 
+/* The float counterpart of __lcpl_intToString. %g keeps short values short
+ * instead of printing a tail of zeroes. */
+struct TString *__lcpl_floatToString(double value) {
+  char buffer[64];
+
+  memset(buffer, 0, sizeof(buffer));
+  snprintf(buffer, sizeof(buffer), "%g", value);
+  return make_string(buffer);
+}
+
 /* What makes out(someInt) work: the generated code inserts this call. */
 struct TString *__lcpl_intToString(int value) {
   char buffer[32];
-  struct TString *result;
 
   memset(buffer, 0, sizeof(buffer));
   snprintf(buffer, sizeof(buffer), "%d", value);
 
-  result = (struct TString *)__catmint_new(RTTI(RString));
-  String_init(result);
-  result->length = (int)strlen(buffer);
-  result->string = calloc(result->length + 1, 1);
-  strcpy(result->string, buffer);
-  return result;
+  return make_string(buffer);
 }

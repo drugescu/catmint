@@ -44,6 +44,7 @@ public:
 
   llvm::FunctionCallee catmintNew() const { return CatmintNew; }
   llvm::FunctionCallee intToString() const { return IntToString; }
+  llvm::FunctionCallee floatToString() const { return FloatToString; }
   llvm::FunctionCallee checkNull() const { return CheckNull; }
   llvm::FunctionCallee dynamicCast() const { return DynamicCast; }
   llvm::FunctionCallee stringSubstring() const { return StringSubstring; }
@@ -62,6 +63,7 @@ private:
 
   llvm::FunctionCallee CatmintNew;
   llvm::FunctionCallee IntToString;
+  llvm::FunctionCallee FloatToString;
   llvm::FunctionCallee CheckNull;
   llvm::FunctionCallee DynamicCast;
   llvm::FunctionCallee StringSubstring;

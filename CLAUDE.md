@@ -166,9 +166,14 @@ Two details that are easy to trip over, both forced by the grammar:
 characters as one-character strings. Both lower to the same counted loop.
 There is no list type in the runtime, so nothing else can be iterated.
 
+A built-in method's virtual table slot is fixed by `runtime.c`; its
+declaration order in `TypeTable::addBuiltinClasses` is that slot order. A new
+built-in method must be appended, never inserted, or every already-compiled
+caller silently calls the wrong slot.
+
 Not yet supported: slice vectors (they parse but have no deserializer, so they
-abort in `ASTSerialization.cpp`), printing a `Float`, return-type inference
-(`auto` on a method means `Void`), and lists and dictionaries.
+abort in `ASTSerialization.cpp`), return-type inference (`auto` on a method
+means `Void`), and lists and dictionaries.
 
 `catmint-gen/ASTCodeGen.cpp.old` and `include/ASTCodeGen.h` are a superseded
 earlier attempt, not built and not included by anything.
