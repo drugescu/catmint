@@ -109,14 +109,14 @@ struct TMath {
     void *vtable[slots];                                                       \
   } name
 
-/* Object now holds seven slots, so every subclass's own methods start at
- * seven. These sizes are the totals, Object's included. */
-CATMINT_RTTI_TYPE(catmint_rtti7_object, 7);
-CATMINT_RTTI_TYPE(catmint_rtti21_io, 21);
-CATMINT_RTTI_TYPE(catmint_rtti12_list, 12);
-CATMINT_RTTI_TYPE(catmint_rtti10_integer, 10);
-CATMINT_RTTI_TYPE(catmint_rtti14_file, 14);
-CATMINT_RTTI_TYPE(catmint_rtti20_string, 20);
+/* Object holds six slots, so every subclass's own methods start at six.
+ * These sizes are the totals, Object's included. */
+CATMINT_RTTI_TYPE(catmint_rtti6_object, 6);
+CATMINT_RTTI_TYPE(catmint_rtti20_io, 20);
+CATMINT_RTTI_TYPE(catmint_rtti11_list, 11);
+CATMINT_RTTI_TYPE(catmint_rtti9_integer, 9);
+CATMINT_RTTI_TYPE(catmint_rtti13_file, 13);
+CATMINT_RTTI_TYPE(catmint_rtti19_string, 19);
 
 
 #define RTTI(x) ((struct __catmint_rtti *)&(x))
@@ -124,7 +124,6 @@ CATMINT_RTTI_TYPE(catmint_rtti20_string, 20);
 void  M6_Object_abort(struct TObject *self);
 struct TString *M6_Object_typeName(struct TObject *self);
 struct TObject *M6_Object_copy(struct TObject *self);
-void M6_Object_free(struct TObject *self);
 struct TObject *M6_Object_retain(struct TObject *self);
 void M6_Object_release(struct TObject *self);
 int M6_Object_refs(struct TObject *self);
@@ -203,8 +202,14 @@ void *__catmint_new(struct __catmint_rtti *rtti);
 void String_init(struct TString *self);
 void __cm_runtimeError(const char *message);
 void __cm_throw(void *object);
+void __cm_retain(void *object);
+void __cm_release(void *object);
+void __cm_poolAdd(void *object);
+int __cm_poolDepth(void);
+void __cm_poolUnwind(int depth);
+void __cm_poolPop(void);
 
-extern catmint_rtti20_string RString;
+extern catmint_rtti19_string RString;
 
 /* Class names. Each is itself a String, so its rtti is RString, and each has
  * a reference count of zero: they are static and must never be freed. */
@@ -218,16 +223,15 @@ struct TString NMath    = { RTTI(RString), 0, 4, "Math" };
 
 #define CATMINT_OBJECT_SLOTS                                                   \
   (void *)M6_Object_abort, (void *)M6_Object_typeName,                         \
-      (void *)M6_Object_copy, (void *)M6_Object_free,                          \
-      (void *)M6_Object_retain, (void *)M6_Object_release,                     \
-      (void *)M6_Object_refs
+      (void *)M6_Object_copy, (void *)M6_Object_retain,                        \
+      (void *)M6_Object_release, (void *)M6_Object_refs
 
-catmint_rtti7_object RObject = {
+catmint_rtti6_object RObject = {
   &NObject, sizeof(struct TObject), NULL,
   { CATMINT_OBJECT_SLOTS }
 };
 
-catmint_rtti20_string RString = {
+catmint_rtti19_string RString = {
   &NString, sizeof(struct TString), RTTI(RObject),
   { CATMINT_OBJECT_SLOTS,
     (void *)M6_String_length, (void *)M6_String_toInt,
@@ -241,7 +245,7 @@ catmint_rtti20_string RString = {
 
 /* The two new slots go on the end. Inserting anywhere else would renumber
  * `in` and `out` and silently break every already-compiled caller. */
-catmint_rtti21_io RIO = {
+catmint_rtti20_io RIO = {
   &NIO, sizeof(struct TIO), RTTI(RObject),
   { CATMINT_OBJECT_SLOTS,
     (void *)M2_IO_in, (void *)M2_IO_out,
@@ -252,7 +256,7 @@ catmint_rtti21_io RIO = {
     (void *)M2_IO_exit, (void *)M2_IO_allocated }
 };
 
-catmint_rtti14_file RFile = {
+catmint_rtti13_file RFile = {
   &NFile, sizeof(struct TFile), RTTI(RObject),
   { CATMINT_OBJECT_SLOTS,
     (void *)M4_File_open, (void *)M4_File_readLine, (void *)M4_File_readAll,
@@ -262,19 +266,19 @@ catmint_rtti14_file RFile = {
 
 /* Every Math method is static, so the class contributes no slots of its own
  * and its table is Object's. The class exists only to name the functions. */
-catmint_rtti7_object RMath = {
+catmint_rtti6_object RMath = {
   &NMath, sizeof(struct TMath), RTTI(RObject),
   { CATMINT_OBJECT_SLOTS }
 };
 
-catmint_rtti12_list RList = {
+catmint_rtti11_list RList = {
   &NList, sizeof(struct TList), RTTI(RObject),
   { CATMINT_OBJECT_SLOTS,
     (void *)M4_List_len, (void *)M4_List_get, (void *)M4_List_set,
     (void *)M4_List_append, (void *)M4_List_slice }
 };
 
-catmint_rtti10_integer RInteger = {
+catmint_rtti9_integer RInteger = {
   &NInteger, sizeof(struct TInteger), RTTI(RObject),
   { CATMINT_OBJECT_SLOTS,
     (void *)M7_Integer_get, (void *)M7_Integer_set,
@@ -292,13 +296,19 @@ static int gLiveObjects = 0;
 
 /* Allocate an instance of the class described by rtti, zero it, install the
  * rtti pointer and start the reference count at one. Generated code calls
- * this for `new` and for every declaration of a variable of class type. */
+ * this for `new` and for every declaration of a variable of class type.
+ *
+ * The new object also joins the current pool, so that if nothing goes on to
+ * keep it -- the String that `a + b` makes and nobody names -- it is released
+ * when the pool closes. Anything that does keep it retains it, and the
+ * pool's release then only undoes the one this allocation put there. */
 void *__catmint_new(struct __catmint_rtti *rtti) {
   void *object = malloc(rtti->size);
   memset(object, 0, rtti->size);
   ((struct TObject *)object)->rtti = rtti;
   ((struct TObject *)object)->refs = 1;
   gLiveObjects += 1;
+  __cm_poolAdd(object);
   return object;
 }
 
@@ -387,9 +397,14 @@ struct TObject *M6_Object_copy(struct TObject *self) {
     struct TList *list = (struct TList *)copy;
     if (list->capacity > 0 && list->items) {
       void **items = malloc((size_t)list->capacity * sizeof(void *));
+      int i;
       memcpy(items, ((struct TList *)self)->items,
              (size_t)list->length * sizeof(void *));
       list->items = items;
+      /* Two lists now point at the same items, so each item gains a holder. */
+      for (i = 0; i < list->length; ++i) {
+        __cm_retain(items[i]);
+      }
     }
   } else if (copy->rtti == RTTI(RFile)) {
     /* Two objects must not hold one FILE *: the copy starts closed. */
@@ -422,8 +437,17 @@ static void release_owned_buffers(struct TObject *self) {
     text->length = 0;
   } else if (self->rtti == RTTI(RList)) {
     struct TList *list = (struct TList *)self;
+    int i;
+    /* A list holds a reference to each of its items, so it gives them back
+     * when it goes. This is the one container the runtime provides, and the
+     * only place ownership is nested. */
+    for (i = 0; i < list->length; ++i) {
+      __cm_release(list->items[i]);
+    }
     free(list->items);
     list->items = NULL;
+    list->length = 0;
+    list->capacity = 0;
   } else if (self->rtti == RTTI(RFile)) {
     struct TFile *file = (struct TFile *)self;
     if (file->handle) {
@@ -433,10 +457,12 @@ static void release_owned_buffers(struct TObject *self) {
   }
 }
 
-/* Give the object back now, whatever its count says. A count of zero means a
- * static object -- a string literal, a class name -- and freeing one of those
- * does nothing, which is the point of keeping the count in the object. */
-void M6_Object_free(struct TObject *self) {
+/* Give the object back. Only release calls this, and only when the last
+ * holder has let go: an unconditional "free it now" cannot be offered once
+ * the compiler is counting references, because it would leave the counted
+ * references pointing at freed memory. A count of zero means a static object
+ * -- a string literal, a class name -- which is never freed. */
+static void object_free(struct TObject *self) {
   if (self == NULL || self->refs == 0) {
     return;
   }
@@ -447,10 +473,22 @@ void M6_Object_free(struct TObject *self) {
 }
 
 struct TObject *M6_Object_retain(struct TObject *self) {
+  __cm_retain(self);
+  return self;
+}
+
+/* The same two operations as plain functions, because the generated code
+ * calls them directly rather than through a virtual table: they are the same
+ * for every class, and a dispatch per assignment would be absurd. */
+void __cm_retain(void *object) {
+  struct TObject *self = (struct TObject *)object;
   if (self != NULL && self->refs > 0) {
     self->refs += 1;
   }
-  return self;
+}
+
+void __cm_release(void *object) {
+  M6_Object_release((struct TObject *)object);
 }
 
 /* One fewer holder; the last one out frees it. */
@@ -460,8 +498,8 @@ void M6_Object_release(struct TObject *self) {
   }
   self->refs -= 1;
   if (self->refs == 0) {
-    self->refs = 1; /* so free() does not mistake it for a static object */
-    M6_Object_free(self);
+    self->refs = 1; /* so the free does not mistake it for a static object */
+    object_free(self);
   }
 }
 
@@ -725,8 +763,15 @@ void *M4_List_get(struct TList *self, int index) {
 }
 
 void *M4_List_set(struct TList *self, int index, void *value) {
+  void *previous;
+
   list_bounds(self, index);
+  previous = self->items[index];
+  /* Retain before releasing: setting a slot to what it already holds must
+   * not free it in between. */
+  __cm_retain(value);
   self->items[index] = value;
+  __cm_release(previous);
   return value;
 }
 
@@ -741,6 +786,8 @@ struct TList *M4_List_append(struct TList *self, void *value) {
     self->items = items;
     self->capacity = capacity;
   }
+  /* The list keeps what it is given, so it holds a reference of its own. */
+  __cm_retain(value);
   self->items[self->length] = value;
   self->length += 1;
   return self;
@@ -1291,6 +1338,7 @@ double M4_Math_e(void)  { return 2.71828182845904523536; }
 
 struct __cm_handler {
   jmp_buf *buffer;
+  int poolDepth;
   struct __cm_handler *previous;
 };
 
@@ -1312,6 +1360,7 @@ void __cm_pushHandler(void *buffer) {
     exit(1);
   }
   handler->buffer = (jmp_buf *)buffer;
+  handler->poolDepth = __cm_poolDepth();
   handler->previous = gHandlers;
   gHandlers = handler;
 }
@@ -1357,6 +1406,9 @@ void __cm_throw(void *object) {
 
   buffer = handler->buffer;
   gHandlers = handler->previous;
+  /* The jump skips every poolPop between here and the handler, so close
+   * those pools now; their contents are temporaries of the abandoned work. */
+  __cm_poolUnwind(handler->poolDepth);
   free(handler);
   longjmp(*buffer, 1);
 }
@@ -1370,4 +1422,104 @@ void __cm_runtimeError(const char *message) {
   }
   printf("Runtime error : %s\n", message);
   exit(1);
+}
+
+/* -------------------------------------------------------------------------
+ * Temporaries
+ *
+ * An expression makes objects nothing names: the String that `a + b`
+ * produces, the Integer that boxing an Int produces. Nothing can free those
+ * by hand, because nothing can refer to them. So every allocation joins the
+ * open pool, and closing the pool releases everything in it once.
+ *
+ * What keeps an object alive is a reference of its own: the generated code
+ * retains whatever it stores into a variable, a field or a container, and
+ * releases it again when that variable goes out of scope. An object that was
+ * stored therefore has two -- the allocation's and the store's -- and
+ * closing the pool takes back only the first.
+ *
+ * This is the pool and retain/release pair that Objective-C used before ARC,
+ * for the same reason: it needs no reachability analysis and nothing in the
+ * language has to change.
+ * ------------------------------------------------------------------------- */
+
+/* One array of entries for the whole program, and a stack of marks into it.
+ * Opening a pool is pushing a mark, closing it is releasing everything above
+ * that mark -- so a pool that catches nothing costs a compare and a store,
+ * and no allocation at all. That matters: a loop body opens one per
+ * iteration. */
+static void **gPoolItems = NULL;
+static int gPoolCount = 0;
+static int gPoolCapacity = 0;
+
+static int *gPoolMarks = NULL;
+static int gPoolDepth = 0;
+static int gPoolMarkCapacity = 0;
+
+void __cm_poolPush(void) {
+  if (gPoolDepth == gPoolMarkCapacity) {
+    int capacity = gPoolMarkCapacity == 0 ? 32 : gPoolMarkCapacity * 2;
+    int *marks = realloc(gPoolMarks, (size_t)capacity * sizeof(int));
+    if (!marks) {
+      printf("Runtime error : out of memory opening a pool.\n");
+      exit(1);
+    }
+    gPoolMarks = marks;
+    gPoolMarkCapacity = capacity;
+  }
+  gPoolMarks[gPoolDepth] = gPoolCount;
+  gPoolDepth += 1;
+}
+
+/* An allocation with no pool open -- there is none before main starts -- is
+ * simply not tracked, which is the behaviour there used to be everywhere. */
+void __cm_poolAdd(void *object) {
+  if (gPoolDepth == 0 || object == NULL) {
+    return;
+  }
+  if (gPoolCount == gPoolCapacity) {
+    int capacity = gPoolCapacity == 0 ? 64 : gPoolCapacity * 2;
+    void **items = realloc(gPoolItems, (size_t)capacity * sizeof(void *));
+    if (!items) {
+      printf("Runtime error : out of memory recording a temporary.\n");
+      exit(1);
+    }
+    gPoolItems = items;
+    gPoolCapacity = capacity;
+  }
+  gPoolItems[gPoolCount] = object;
+  gPoolCount += 1;
+}
+
+void __cm_poolPop(void) {
+  int mark;
+
+  if (gPoolDepth == 0) {
+    return;
+  }
+  gPoolDepth -= 1;
+  mark = gPoolMarks[gPoolDepth];
+
+  /* The count comes down as each entry is released, so anything allocated by
+   * a release -- freeing a List releases its items -- lands in the pool
+   * below rather than in the one being emptied. */
+  while (gPoolCount > mark) {
+    void *object = gPoolItems[gPoolCount - 1];
+    gPoolCount -= 1;
+    __cm_release(object);
+  }
+}
+
+int __cm_poolDepth(void) {
+  return gPoolDepth;
+}
+
+/* A throw jumps over every pool the try body opened, so the handler asks for
+ * them to be closed rather than leaving them open forever. The objects in
+ * them are temporaries; anything the body stored somewhere has a reference of
+ * its own and survives. */
+void __cm_poolUnwind(int depth) {
+  while (gPoolDepth > depth) {
+    __cm_poolPop();
+  }
 }

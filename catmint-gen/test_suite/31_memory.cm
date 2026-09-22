@@ -1,4 +1,4 @@
-# Giving memory back: reference counts on the object, and free.
+# Memory: reference counts, and temporaries released without being asked.
 
 class Node
   Int value
@@ -10,65 +10,74 @@ class Main from IO
     Node n = new Node
     n.value = 5
 
+    # Two holders: the allocation's, which the open pool will give back, and
+    # the variable's.
     out("refs " + n.refs() + "\n")
     n.retain()
     out("after retain " + n.refs() + "\n")
     n.release()
     out("after release " + n.refs() + "\n")
 
-    # A string literal is static: no count, and freeing it does nothing
-    # rather than corrupting the heap.
+    # A string literal is static: it has no count and is never freed.
     String literal = "hello"
     out("literal refs " + literal.refs() + "\n")
-    literal.free()
     out("literal still " + literal + "\n")
 
-    # Allocate and give back in a loop. The live count must come out where it
-    # started, which is the whole point of having free at all.
+    # A loop that builds a string every time round. Nothing here frees
+    # anything by hand; the pool for the loop body does it.
     Int start = allocated()
     Int i = 0
     while i < 1000:
-      Node t = new Node
-      t.value = i
-      t.free()
+      String s = "item " + i
       i = i + 1
     end
-    out("net growth " + (allocated() - start) + "\n")
+    out("named strings leaked " + (allocated() - start) + "\n")
 
-    # release frees at zero, so the same loop works without free.
+    # The same, but the string is never given a name, so nothing could have
+    # freed it by hand even in principle. This is the case manual counting
+    # cannot reach.
     Int second = allocated()
     i = 0
-    while i < 1000:
-      Node t = new Node
-      t.release()
+    while i < 500:
+      Int found = ("value " + i).indexOf("zzz")
       i = i + 1
     end
-    out("net growth again " + (allocated() - second) + "\n")
+    out("unnamed strings leaked " + (allocated() - second) + "\n")
 
-    # Strings built at run time are ordinary objects and can be given back.
-    # A freshly declared String owns nothing yet, and freeing it must not
-    # reach for a buffer that was never allocated.
+    # Objects, released when the variable holding them goes out of scope.
     Int third = allocated()
     i = 0
     while i < 100:
-      String empty
-      empty.free()
-      String s = "item " + i
-      s.free()
+      Node t = new Node
+      t.value = i
       i = i + 1
     end
-    # Not zero: 'a + b' allocates a String the program never names, so
-    # nothing can free it. Manual counting cannot reach a temporary, which is
-    # the argument for the compiler inserting the release itself.
-    out("temporaries leak " + (allocated() - third > 0) + "\n")
+    out("objects leaked " + (allocated() - third) + "\n")
 
-    # copy gives back something of its own, so freeing both is safe.
-    String original = "shared"
-    String duplicate = original.copy()
-    out("copy " + duplicate + " refs " + duplicate.refs() + "\n")
-    duplicate.free()
+    # A List holds a reference to each of its items, and gives them back
+    # when it is itself released.
+    Int fourth = allocated()
+    i = 0
+    while i < 100:
+      List items
+      items.append(new Node)
+      items.append(new Node)
+      i = i + 1
+    end
+    out("lists leaked " + (allocated() - fourth) + "\n")
 
-    n.free()
+    # Assigning over a field releases whatever was there, so a linked
+    # structure comes apart without anything being freed by hand. Releasing
+    # it by hand as well would be one release too many.
+    Int fifth = allocated()
+    i = 0
+    while i < 100:
+      n.next = new Node
+      n.next = null
+      i = i + 1
+    end
+    out("fields replaced " + (allocated() - fifth) + "\n")
+
     out("done\n")
   end
 end

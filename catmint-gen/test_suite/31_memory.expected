@@ -1,10 +1,11 @@
-refs 1
-after retain 2
-after release 1
+refs 2
+after retain 3
+after release 2
 literal refs 0
 literal still hello
-net growth 0
-net growth again 0
-temporaries leak 1
-copy shared refs 1
+named strings leaked 0
+unnamed strings leaked 0
+objects leaked 0
+lists leaked 0
+fields replaced 0
 done

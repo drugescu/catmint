@@ -212,27 +212,53 @@ A `return` out of the middle of a try pops the handlers it is jumping over
 
 Every object is `{ rtti, int refs, fields... }`. `__catmint_new` starts the
 count at 1; a static object -- a string literal, a class name -- is emitted
-with a count of 0, and **0 means never free**. That is the whole reason the
-count lives in the object rather than in a hidden allocation header: reading
-a header in front of a compiler-emitted global would be reading memory the
-program does not own.
+with a count of 0, and **0 means never free**. That is why the count lives in
+the object rather than in a hidden allocation header: reading a header in
+front of a compiler-emitted global would be reading memory the program does
+not own.
 
-`Object` therefore carries four methods, in slots 3 to 6: `free` gives the
-object back now, `retain` and `release` count holders and free at zero, and
-`refs` reports the count. `IO.allocated()` is the number of live objects, so
-a program -- or a test -- can prove a loop does not leak.
+**The compiler counts references.** It emits a retain on every store of a
+reference -- into a local, a parameter, an attribute, a loop variable, a
+handler's variable -- a release of whatever that slot held before, and a
+release of every reference local when its scope ends. `List` does the same
+for what it holds, in `runtime.c`. `self` is the one exception: it is not
+counted, because the caller holds it for the whole call.
 
-The compiler inserts nothing. This is manual counting, which is what the
-project's "C-level memory control, no GC" asks for, and it has one visible
-hole: a temporary inside an expression has no name, so `a + b` allocates a
-String nothing can free. Closing that means the generator emitting a release
-for each temporary at the end of the statement, which is the next step and
-is not taken yet.
+**Temporaries are handled by a pool.** An expression makes objects nothing
+names -- the String `a + b` produces, the Integer boxing an Int produces -- so
+every allocation also joins the open pool, and closing the pool releases
+everything in it once. An object that was also stored has two references and
+survives; one that was not has one, and goes. A method opens a pool, and so
+does each iteration of a loop body, which is what keeps a long loop's memory
+flat.
 
-Freeing a built-in also returns what it owns: a String's characters, a List's
-item array, a File's handle. `Object.copy` duplicates those rather than
-sharing them, so the copy can be freed independently of the original. Freeing
-a user object is shallow: its fields are references and nothing follows them.
+**A pool is emitted speculatively and removed again if nothing inside it
+allocated.** `beginPool` emits the open and remembers the allocation counter;
+`endPool` erases that open, and every close a `return` emitted for it, when
+the counter has not moved. Without this a loop that only adds integers paid
+two calls an iteration for a mechanism it never used, which measured as a
+sevenfold slowdown. `noteAllocation` is what moves the counter, and it must
+be called from **every** place the generator emits something that can put an
+object in the pool: `constructObject`, the allocating coercions, string
+concatenation, `substring`, and any call whose return type is a reference,
+since the callee hands its result to this frame's pool on the way out.
+
+**There is no `free`.** An unconditional "give it back now" cannot be offered
+once the compiler is counting, because it would leave the counted references
+pointing at freed memory -- which is exactly how it failed when it was still
+there. `release` lets go of one reference and frees on the last; `retain`
+takes one; `refs` reports the count, which is 2 for a freshly made object
+held in a variable (the allocation's, still owed to the pool, and the
+variable's). `IO.allocated()` is the live object count, which is how test 31
+proves a thousand-iteration loop returns to where it started.
+
+Freeing is shallow: it returns what a built-in owns -- a String's characters,
+a List's items, a File's handle -- but does not follow a user class's fields.
+A structure held in fields is taken apart by assigning over them, which
+releases what was there.
+
+The whole codegen suite runs clean under AddressSanitizer, which is the check
+to repeat after touching any of this.
 
 ## State of code generation
 

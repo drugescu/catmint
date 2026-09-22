@@ -607,6 +607,8 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
   FunctionHasTry = false;
   Scopes.clear();
   Scopes.emplace_back();
+  Pools.clear();
+  beginPool();
 
   auto *SelfSlot = createEntryAlloca(Ptr, "self");
   Builder.CreateStore(CI->Init->getArg(0), SelfSlot);
@@ -644,7 +646,9 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
           CI->Ty, CI->Init->getArg(0),
           {Builder.getInt32(0), Builder.getInt32(CI->FieldIndex[A->getName()])},
           A->getName() + ".addr");
-      Builder.CreateStore(Obj, Slot);
+      // The object was zeroed by __catmint_new, so there is nothing to
+      // release; the field takes a reference of its own.
+      storeReference(Obj, Slot, /*SlotIsLive=*/false);
       continue;
     }
 
@@ -656,11 +660,15 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
         CI->Ty, CI->Init->getArg(0),
         {Builder.getInt32(0), Builder.getInt32(CI->FieldIndex[A->getName()])},
         A->getName() + ".addr");
-    Builder.CreateStore(V, Addr);
+    if (isReferenceTypeName(A->getType()))
+      storeReference(V, Addr, /*SlotIsLive=*/false);
+    else
+      Builder.CreateStore(V, Addr);
   }
 
   if (!blockTerminated())
-    Builder.CreateRetVoid();
+    emitCleanupAndReturn(nullptr);
+  endPool(/*Reachable=*/false);
   endDebugScope();
   return true;
 }
@@ -710,6 +718,13 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
     Finder.visit(M->getBody());
   FunctionHasTry = Finder.Found;
 
+  // Everything this method allocates and does not keep is released when it
+  // returns. A loop body opens a pool of its own so that a long loop does
+  // not hold every temporary it ever made. Both are taken away again if
+  // nothing inside them allocates.
+  Pools.clear();
+  beginPool();
+
   // self, then the declared parameters, each given a stack slot so that
   // assignment to a parameter works like assignment to any other local. A
   // static method has no self, and its parameters start at argument zero.
@@ -724,7 +739,15 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
 
   for (auto *P : *M) {
     auto *Slot = createEntryAlloca(lowerType(P->getType()), P->getName());
-    Builder.CreateStore(F->getArg(Idx), Slot);
+    // A parameter is an ordinary local from here on, so it is counted like
+    // one: retained on the way in and released when the method ends. The
+    // caller's own reference keeps it alive across the call either way, but
+    // counting it means reassigning a parameter behaves like reassigning
+    // anything else.
+    if (isReferenceTypeName(P->getType()))
+      storeReference(F->getArg(Idx), Slot, /*SlotIsLive=*/false);
+    else
+      Builder.CreateStore(F->getArg(Idx), Slot);
     Scopes.back()[P->getName()] = {Slot, P->getType()};
     ++Idx;
   }
@@ -733,22 +756,24 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
 
   if (!blockTerminated()) {
     if (M->getReturnType() == strings::Void || M->getReturnType() == "auto") {
-      Builder.CreateRetVoid();
+      emitCleanupAndReturn(nullptr);
     } else {
       // catmint allows the last expression to be the result.
       llvm::Type *RT = lowerType(M->getReturnType());
+      llvm::Value *RV = nullptr;
       if (Body && Body->getType() == RT) {
-        Builder.CreateRet(Body);
+        RV = Body;
       } else if (RT->isPointerTy()) {
-        Builder.CreateRet(llvm::ConstantPointerNull::get(
-            llvm::cast<llvm::PointerType>(RT)));
+        RV = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(RT));
       } else if (RT->isIntegerTy()) {
-        Builder.CreateRet(llvm::ConstantInt::get(RT, 0));
+        RV = llvm::ConstantInt::get(RT, 0);
       } else {
-        Builder.CreateRet(llvm::ConstantFP::get(RT, 0.0));
+        RV = llvm::ConstantFP::get(RT, 0.0);
       }
+      emitCleanupAndReturn(RV);
     }
   }
+  endPool(/*Reachable=*/false);
   if (FunctionHasTry) {
     makeLocalsVolatile(F);
     FunctionHasTry = false;
@@ -778,6 +803,12 @@ void IRGenerator::emitProgramMain() {
                               false));
   Builder.CreateCall(SetArgs, {F->getArg(0), F->getArg(1)});
 
+  Scopes.clear();
+  Scopes.emplace_back();
+  OpenHandlers = 0;
+  Pools.clear();
+  beginPool();
+
   auto *Obj = Builder.CreateCall(Runtime.catmintNew(), {MainCI->RTTI}, "main.obj");
   if (MainCI->Init)
     Builder.CreateCall(MainCI->Init, {Obj});
@@ -791,6 +822,7 @@ void IRGenerator::emitProgramMain() {
     Builder.CreateCall(Callee, {Obj});
   }
 
+  endPool(/*Reachable=*/true);
   Builder.CreateRet(Builder.getInt32(0));
   endDebugScope();
 }
@@ -878,6 +910,165 @@ llvm::Value *IRGenerator::attributeAddress(const std::string &Name,
   return Builder.CreateGEP(CurrentClass->Ty, Self,
                            {Builder.getInt32(0), Builder.getInt32(It->second)},
                            Name + ".addr");
+}
+
+// ---------------------------------------------------------------------------
+// Ownership
+//
+// Every allocation joins the open temporary pool and is released when that
+// pool closes. What keeps an object past that is a reference of its own:
+// storing into a variable, a field or a container retains, and leaving the
+// scope releases. See the long note in runtime.c.
+// ---------------------------------------------------------------------------
+
+bool IRGenerator::isReferenceTypeName(const std::string &TypeName) {
+  if (TypeName.empty() || TypeName == "auto" || TypeName == strings::Void ||
+      TypeName == strings::Float || TypeTable::integerWidth(TypeName))
+    return false;
+  // Null is a reference, but a null needs no counting and no release.
+  return TypeName != strings::Null;
+}
+
+void IRGenerator::emitRetain(llvm::Value *V) {
+  if (!V || !V->getType()->isPointerTy())
+    return;
+  auto Retain = Module.getOrInsertFunction(
+      "__cm_retain",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context),
+                              {llvm::PointerType::getUnqual(Context)}, false));
+  Builder.CreateCall(Retain, {V});
+}
+
+void IRGenerator::emitRelease(llvm::Value *V) {
+  if (!V || !V->getType()->isPointerTy())
+    return;
+  auto Release = Module.getOrInsertFunction(
+      "__cm_release",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context),
+                              {llvm::PointerType::getUnqual(Context)}, false));
+  Builder.CreateCall(Release, {V});
+}
+
+void IRGenerator::storeReference(llvm::Value *V, llvm::Value *Slot,
+                                 bool SlotIsLive) {
+  emitRetain(V);
+  if (SlotIsLive) {
+    auto *Old = Builder.CreateLoad(llvm::PointerType::getUnqual(Context), Slot,
+                                   "old");
+    emitRelease(Old);
+  }
+  Builder.CreateStore(V, Slot);
+}
+
+void IRGenerator::releaseScopes(unsigned Count) {
+  unsigned Seen = 0;
+  for (auto It = Scopes.rbegin(); It != Scopes.rend() && Seen < Count;
+       ++It, ++Seen) {
+    for (auto &Entry : *It) {
+      if (Entry.first == strings::Self)
+        continue;
+      if (!isReferenceTypeName(Entry.second.TypeName))
+        continue;
+      auto *V = Builder.CreateLoad(llvm::PointerType::getUnqual(Context),
+                                   Entry.second.Addr, Entry.first + ".out");
+      emitRelease(V);
+    }
+  }
+}
+
+void IRGenerator::emitPoolPushCall() {
+  auto Push = Module.getOrInsertFunction(
+      "__cm_poolPush",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {}, false));
+  Builder.CreateCall(Push, {});
+}
+
+/// Opening a pool is speculative: the call is emitted now and taken out
+/// again by endPool if nothing between the two allocated. Without this a
+/// loop that only adds integers would pay two calls an iteration for a
+/// mechanism it never uses, which measured as a sevenfold slowdown.
+void IRGenerator::beginPool() {
+  auto Push = Module.getOrInsertFunction(
+      "__cm_poolPush",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {}, false));
+  auto *Call = Builder.CreateCall(Push, {});
+  Pools.push_back({Call, AllocationCount, {}});
+}
+
+void IRGenerator::endPool(bool Reachable) {
+  PoolScope Scope = Pools.back();
+  Pools.pop_back();
+
+  // Nothing between the open and here could put anything in it, so both the
+  // open and every close a return emitted for it come out again. An inner
+  // pool that allocated has already moved the count, so an outer pool is
+  // never removed while an inner one is kept.
+  if (AllocationCount == Scope.AllocationsBefore) {
+    for (auto *Pop : Scope.Pops)
+      Pop->eraseFromParent();
+    Scope.Push->eraseFromParent();
+    return;
+  }
+  if (Reachable)
+    emitPoolPopCall();
+}
+
+void IRGenerator::noteAllocation() { ++AllocationCount; }
+
+llvm::CallInst *IRGenerator::emitPoolPopCall() {
+  auto Pop = Module.getOrInsertFunction(
+      "__cm_poolPop",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {}, false));
+  return Builder.CreateCall(Pop, {});
+}
+
+/// Hand an object to the open pool, which will release it once. Paired with
+/// a retain, this keeps a value alive past the scope that owned it without
+/// making anything else responsible for it.
+void IRGenerator::emitPoolAdd(llvm::Value *V) {
+  if (!V || !V->getType()->isPointerTy())
+    return;
+  noteAllocation();
+  auto Add = Module.getOrInsertFunction(
+      "__cm_poolAdd",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context),
+                              {llvm::PointerType::getUnqual(Context)}, false));
+  Builder.CreateCall(Add, {V});
+}
+
+void IRGenerator::emitCleanupAndReturn(llvm::Value *RV) {
+  const bool Reference = RV && RV->getType()->isPointerTy();
+
+  // Retain first: everything below is about giving references back, and the
+  // result must not be one of the things given back.
+  if (Reference)
+    emitRetain(RV);
+
+  releaseScopes(static_cast<unsigned>(Scopes.size()));
+  popOpenHandlers();
+  // Every pool open around this return is closed here. Each close is
+  // remembered by its pool, so that a pool nothing used takes its closes
+  // away along with its open.
+  for (size_t N = Pools.size(); N-- > 0;)
+    Pools[N].Pops.push_back(emitPoolPopCall());
+
+  // The caller's pool now owns the balancing release, so the result is alive
+  // for the caller's statement and nobody has to remember to free it. This
+  // does not count as an allocation here: the object joins the caller's
+  // pool, not this frame's.
+  if (Reference) {
+    auto Add = Module.getOrInsertFunction(
+        "__cm_poolAdd",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(Context),
+                                {llvm::PointerType::getUnqual(Context)},
+                                false));
+    Builder.CreateCall(Add, {RV});
+  }
+
+  if (RV)
+    Builder.CreateRet(RV);
+  else
+    Builder.CreateRetVoid();
 }
 
 llvm::Value *IRGenerator::toCondition(llvm::Value *V, const std::string &Name) {
@@ -1029,14 +1220,17 @@ llvm::Value *IRGenerator::coerce(llvm::Value *V, const std::string &From,
   }
 
   if (FromWidth && To == strings::String) {
+    noteAllocation();
     // Int64 has its own conversion; the narrower widths go through Int.
     if (FromWidth == 64)
       return Builder.CreateCall(Runtime.longToString(), {V}, "long.str");
     V = coerce(V, From, strings::Int, Line);
     return Builder.CreateCall(Runtime.intToString(), {V}, "int.str");
   }
-  if (From == strings::Float && To == strings::String)
+  if (From == strings::Float && To == strings::String) {
+    noteAllocation();
     return Builder.CreateCall(Runtime.floatToString(), {V}, "float.str");
+  }
   if (FromWidth && To == strings::Float)
     return Builder.CreateSIToFP(V, llvm::Type::getDoubleTy(Context), "int.fp");
   if (From == strings::Float && ToWidth)
@@ -1051,6 +1245,7 @@ llvm::Value *IRGenerator::coerce(llvm::Value *V, const std::string &From,
   // numbers when the language has no generics. The box holds 64 bits, so no
   // width loses anything on the way through.
   if (FromWidth && !ToIsValue && To != strings::Void) {
+    noteAllocation();
     V = coerce(V, From, strings::Int64, Line);
     return Builder.CreateCall(Runtime.boxLong(), {V}, "box");
   }
@@ -1119,6 +1314,18 @@ llvm::Value *IRGenerator::emitBlock(Block *B) {
     if (blockTerminated())
       break;
     Last = emit(Sub);
+  }
+
+  if (!blockTerminated()) {
+    // The block's value may be one of the objects this scope is about to
+    // release -- a method whose last expression names a local. Handing it to
+    // the pool keeps it alive for the rest of the enclosing statement, which
+    // is exactly as long as anyone can still be looking at it.
+    if (Last && Last->getType()->isPointerTy()) {
+      emitRetain(Last);
+      emitPoolAdd(Last);
+    }
+    releaseScopes(1);
   }
   Scopes.pop_back();
   return Last;
@@ -1225,14 +1432,21 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
         return nullptr;
       for (const auto &Name : LD->getName()) {
         if (auto *L = findLocal(Name)) {
-          Builder.CreateStore(coerce(V, InitTy, L->TypeName, LD->getLineNumber()),
-                              L->Addr);
+          auto *Stored = coerce(V, InitTy, L->TypeName, LD->getLineNumber());
+          if (isReferenceTypeName(L->TypeName))
+            storeReference(Stored, L->Addr, /*SlotIsLive=*/true);
+          else
+            Builder.CreateStore(Stored, L->Addr);
           continue;
         }
         std::string FieldTy;
-        if (auto *Addr = attributeAddress(Name, FieldTy))
-          Builder.CreateStore(coerce(V, InitTy, FieldTy, LD->getLineNumber()),
-                              Addr);
+        if (auto *Addr = attributeAddress(Name, FieldTy)) {
+          auto *Stored = coerce(V, InitTy, FieldTy, LD->getLineNumber());
+          if (isReferenceTypeName(FieldTy))
+            storeReference(Stored, Addr, /*SlotIsLive=*/true);
+          else
+            Builder.CreateStore(Stored, Addr);
+        }
       }
       return V;
     }
@@ -1253,7 +1467,7 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
     if (DeclClass && !InitIsComplete) {
       auto *Obj = constructObject(DeclClass, {}, LD->getLineNumber(),
                                   Name + ".obj");
-      Builder.CreateStore(Obj, Slot);
+      storeReference(Obj, Slot, /*SlotIsLive=*/false);
     } else if (Lowered->isPointerTy()) {
       Builder.CreateStore(llvm::ConstantPointerNull::get(
                               llvm::PointerType::getUnqual(Context)),
@@ -1291,9 +1505,17 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
       (DeclaredType == strings::Int && lookupClass(InitType) != nullptr);
   if (Assignable) {
     llvm::Value *Stored = coerce(V, InitType, DeclaredType, LD->getLineNumber());
-    if (Stored->getType() == Lowered)
-      for (auto *Slot : Slots)
-        Builder.CreateStore(Stored, Slot);
+    if (Stored->getType() == Lowered) {
+      // The slot already holds an object when the declaration constructed
+      // one, and that one is being replaced.
+      const bool SlotIsLive = (DeclClass != nullptr) && !InitIsComplete;
+      for (auto *Slot : Slots) {
+        if (isReferenceTypeName(DeclaredType))
+          storeReference(Stored, Slot, SlotIsLive);
+        else
+          Builder.CreateStore(Stored, Slot);
+      }
+    }
   }
   return V;
 }
@@ -1306,13 +1528,20 @@ llvm::Value *IRGenerator::emitAssignment(Assignment *A) {
   const std::string FromType = staticTypeOf(A->getExpression());
 
   if (auto *L = findLocal(Name)) {
-    Builder.CreateStore(coerce(V, FromType, L->TypeName, A->getLineNumber()),
-                        L->Addr);
+    auto *Stored = coerce(V, FromType, L->TypeName, A->getLineNumber());
+    if (isReferenceTypeName(L->TypeName))
+      storeReference(Stored, L->Addr, /*SlotIsLive=*/true);
+    else
+      Builder.CreateStore(Stored, L->Addr);
     return V;
   }
   std::string FieldTy;
   if (auto *Addr = attributeAddress(Name, FieldTy)) {
-    Builder.CreateStore(coerce(V, FromType, FieldTy, A->getLineNumber()), Addr);
+    auto *Stored = coerce(V, FromType, FieldTy, A->getLineNumber());
+    if (isReferenceTypeName(FieldTy))
+      storeReference(Stored, Addr, /*SlotIsLive=*/true);
+    else
+      Builder.CreateStore(Stored, Addr);
     return V;
   }
   fail(A->getLineNumber(), "assignment to unknown identifier '" + Name + "'");
@@ -1372,8 +1601,10 @@ llvm::Value *IRGenerator::emitBinaryOperator(BinaryOperator *BO) {
   if (LT == strings::String || RT == strings::String) {
     llvm::Value *LS = coerce(L, LT, strings::String, BO->getLineNumber());
     llvm::Value *RS = coerce(R, RT, strings::String, BO->getLineNumber());
-    if (Op == BK::Add)
+    if (Op == BK::Add) {
+      noteAllocation();
       return Builder.CreateCall(Runtime.stringConcat(), {LS, RS}, "concat");
+    }
     if (Op == BK::Equal)
       return Builder.CreateCall(Runtime.stringEqual(), {LS, RS}, "streq");
     if (Op == BK::NotEqual) {
@@ -1561,8 +1792,13 @@ llvm::Value *IRGenerator::emitWhile(WhileStatement *W) {
   Builder.CreateCondBr(Cond, BodyBB, EndBB);
 
   Builder.SetInsertPoint(BodyBB);
+  // One pool per iteration, so a loop that builds strings does not hold all
+  // of them until the method returns.
+  beginPool();
   (void)emit(W->getBody());
-  if (!blockTerminated())
+  const bool BodyFallsThrough = !blockTerminated();
+  endPool(BodyFallsThrough);
+  if (BodyFallsThrough)
     Builder.CreateBr(CondBB);
 
   Builder.SetInsertPoint(EndBB);
@@ -1630,6 +1866,10 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
                                             : strings::Int;
   auto *VarSlot = createEntryAlloca(lowerType(ElemType), IterSym->getName());
   Scopes.back()[IterSym->getName()] = {VarSlot, ElemType};
+  // Cleared before the loop, so the first iteration's store has something
+  // defined to release and the last iteration's value is released at the end.
+  if (isReferenceTypeName(ElemType))
+    Builder.CreateStore(llvm::ConstantPointerNull::get(Ptr), VarSlot);
 
   auto *CondBB = llvm::BasicBlock::Create(Context, "for.cond", CurrentFunction);
   auto *BodyBB = llvm::BasicBlock::Create(Context, "for.body", CurrentFunction);
@@ -1645,24 +1885,28 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
                        EndBB);
 
   Builder.SetInsertPoint(BodyBB);
+  beginPool();
   if (OverList) {
     auto *List = Builder.CreateLoad(Ptr, StrSlot, "for.l");
     auto ListGet = Module.getOrInsertFunction(
         "M4_List_get", llvm::FunctionType::get(Ptr, {Ptr, I32}, false));
-    Builder.CreateStore(Builder.CreateCall(ListGet, {List, Idx}, "for.item"),
-                        VarSlot);
+    storeReference(Builder.CreateCall(ListGet, {List, Idx}, "for.item"),
+                   VarSlot, /*SlotIsLive=*/true);
   } else if (OverString) {
     // substring is a half-open range, so one character at i is [i, i+1).
     auto *Str = Builder.CreateLoad(Ptr, StrSlot, "for.s");
     auto *Next = Builder.CreateAdd(Idx, Builder.getInt32(1), "for.i1");
+    noteAllocation();
     auto *Ch = Builder.CreateCall(Runtime.stringSubstring(), {Str, Idx, Next},
                                   "for.ch");
-    Builder.CreateStore(Ch, VarSlot);
+    storeReference(Ch, VarSlot, /*SlotIsLive=*/true);
   } else {
     Builder.CreateStore(Idx, VarSlot);
   }
   (void)emit(F->getBody());
-  if (!blockTerminated())
+  const bool BodyFallsThrough = !blockTerminated();
+  endPool(BodyFallsThrough);
+  if (BodyFallsThrough)
     Builder.CreateBr(StepBB);
 
   Builder.SetInsertPoint(StepBB);
@@ -1671,8 +1915,9 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
                       IdxSlot);
   Builder.CreateBr(CondBB);
 
-  Scopes.pop_back();
   Builder.SetInsertPoint(EndBB);
+  releaseScopes(1);
+  Scopes.pop_back();
   return nullptr;
 }
 
@@ -1693,19 +1938,17 @@ void IRGenerator::popOpenHandlers() {
 llvm::Value *IRGenerator::emitReturn(ReturnExpression *R) {
   if (CurrentReturnType == strings::Void || CurrentReturnType == "auto" ||
       !R->getRet()) {
-    popOpenHandlers();
-    Builder.CreateRetVoid();
+    emitCleanupAndReturn(nullptr);
     return nullptr;
   }
   llvm::Value *V = emit(R->getRet());
   if (!V) {
-    popOpenHandlers();
-    Builder.CreateRetVoid();
+    emitCleanupAndReturn(nullptr);
     return nullptr;
   }
+  // The conversion comes first, because it may itself allocate.
   V = coerce(V, staticTypeOf(R->getRet()), CurrentReturnType, R->getLineNumber());
-  popOpenHandlers();
-  Builder.CreateRet(V);
+  emitCleanupAndReturn(V);
   return nullptr;
 }
 
@@ -1750,6 +1993,11 @@ llvm::Value *IRGenerator::emitCall(ClassInfo *RecvClass,
     fail(Line, "wrong number of arguments to '" + MethodName + "'");
 
   Builder.CreateCall(Runtime.checkNull(), {Receiver});
+
+  // A method that returns a reference hands it to this frame's pool as it
+  // leaves, so this frame needs one.
+  if (isReferenceTypeName(M->getReturnType()))
+    noteAllocation();
 
   // A method with no virtual table slot -- a constructor -- is always called
   // directly, whatever the call site asked for.
@@ -1815,6 +2063,9 @@ llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,
   }
   if (CallArgs.size() != FT->getNumParams())
     fail(Line, "wrong number of arguments to '" + M->getName() + "'");
+
+  if (isReferenceTypeName(M->getReturnType()))
+    noteAllocation();
 
   auto Callee =
       Module.getOrInsertFunction(runtimeSymbol(Owner, M->getName()), FT);
@@ -1905,6 +2156,7 @@ llvm::Value *IRGenerator::emitStaticDispatch(StaticDispatch *SD) {
 llvm::Value *IRGenerator::constructObject(ClassInfo *CI,
                                           const std::vector<Expression *> &Args,
                                           int Line, const std::string &Name) {
+  noteAllocation();
   auto *Obj = Builder.CreateCall(Runtime.catmintNew(), {CI->RTTI}, Name);
 
   if (CI->Init) {
@@ -1987,7 +2239,10 @@ llvm::Value *IRGenerator::emitFieldAccess(FieldAccess *FA) {
     if (!V)
       return nullptr;
     V = coerce(V, FromType, FieldType, FA->getLineNumber());
-    Builder.CreateStore(V, Addr);
+    if (isReferenceTypeName(FieldType))
+      storeReference(V, Addr, /*SlotIsLive=*/true);
+    else
+      Builder.CreateStore(V, Addr);
     return V;
   }
 
@@ -2028,6 +2283,12 @@ llvm::Value *IRGenerator::emitTry(TryStatement *T) {
   if (auto *SJ = llvm::dyn_cast<llvm::Function>(SetJmp.getCallee()))
     SJ->addFnAttr(llvm::Attribute::ReturnsTwice);
 
+  // The handler's variable is cleared before the try is entered, so that the
+  // store in the handler has something defined to release -- a try inside a
+  // loop would otherwise see the previous iteration's value.
+  auto *CaughtSlot = createEntryAlloca(Ptr, T->getCatchName());
+  Builder.CreateStore(llvm::ConstantPointerNull::get(Ptr), CaughtSlot);
+
   Builder.CreateCall(Push, {Buf});
   auto *Code = Builder.CreateCall(SetJmp, {Buf}, "try.code");
   Code->addFnAttr(llvm::Attribute::ReturnsTwice);
@@ -2053,9 +2314,9 @@ llvm::Value *IRGenerator::emitTry(TryStatement *T) {
   // there is nothing to pop and the next throw goes further out.
   Builder.SetInsertPoint(CatchBB);
   Scopes.emplace_back();
-  auto *Slot = createEntryAlloca(Ptr, T->getCatchName());
-  Builder.CreateStore(Builder.CreateCall(CaughtFn, {}, "caught"), Slot);
-  Scopes.back()[T->getCatchName()] = {Slot, strings::Object};
+  storeReference(Builder.CreateCall(CaughtFn, {}, "caught"), CaughtSlot,
+                 /*SlotIsLive=*/true);
+  Scopes.back()[T->getCatchName()] = {CaughtSlot, strings::Object};
   (void)emit(T->getHandler());
   Scopes.pop_back();
   if (!blockTerminated())
@@ -2123,5 +2384,6 @@ llvm::Value *IRGenerator::emitSubstring(Substring *S) {
   llvm::Value *End = emit(S->getEnd());
   if (!Str || !Start || !End)
     return nullptr;
+  noteAllocation();
   return Builder.CreateCall(Runtime.stringSubstring(), {Str, Start, End}, "substr");
 }

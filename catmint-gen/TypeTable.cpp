@@ -106,10 +106,10 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethods.push_back(new Method(0, strings::Copy, strings::Object,
                                       nullptr, builtinMethodsParams));
 
-  // Slots 3 to 6: giving memory back. These sit on Object, so every class
-  // has them, which means every subclass's own methods now start at slot 7.
-  builtinMethods.push_back(
-      new Method(0, "free", strings::Void, nullptr, builtinMethodsParams));
+  // Slots 3 to 5: reference counting. These sit on Object, so every class has
+  // them, which means every subclass's own methods start at slot 6. There is
+  // no unconditional "free it now": the compiler counts references, so one
+  // would leave counted references pointing at freed memory.
   builtinMethods.push_back(
       new Method(0, "retain", strings::Object, nullptr, builtinMethodsParams));
   builtinMethods.push_back(

@@ -144,6 +144,14 @@ Things worth knowing, because they are not obvious:
   declared return type. There is no limit on the number of parameters. The
   paren-less form the README shows, `def show Int a, Int b:`, is not
   implemented; use parentheses.
+- **Memory looks after itself, without a garbage collector.** The compiler
+  counts references: storing an object keeps it, and letting the variable go
+  out of scope releases it. Anything an expression makes and nobody names is
+  released at the end of the method, or at the end of the loop iteration if
+  it was made in a loop. You do not call anything. `retain()` and `release()`
+  are there for the case a scope cannot express -- something held in a field
+  of a long-lived object -- and `IO.allocated()` tells you how many objects
+  are live, so "does this loop leak?" has an answer.
 - **`throw` and `try`/`catch` are how a failure travels.** `throw
   "insufficient funds"` leaves through the nearest `try: ... catch e: ...
   end`; `e` holds whatever was thrown, typed `Object`, so assign it to a

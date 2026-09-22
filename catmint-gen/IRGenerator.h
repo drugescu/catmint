@@ -185,6 +185,21 @@ private:
   unsigned OpenHandlers = 0;
   /// True while emitting a function that contains a try.
   bool FunctionHasTry = false;
+  /// A pool opened around the code being emitted. It is opened
+  /// speculatively and taken away again if nothing in it turned out to
+  /// allocate, so a loop over integers pays nothing for a mechanism it does
+  /// not use.
+  struct PoolScope {
+    llvm::CallInst *Push;
+    unsigned AllocationsBefore;
+    /// The closes emitted for this pool by returns inside it, so that they
+    /// can be taken away with the open if the pool turns out to be unused.
+    std::vector<llvm::CallInst *> Pops;
+  };
+  std::vector<PoolScope> Pools;
+  /// Counts the points at which the generator has emitted something that can
+  /// put an object in the open pool.
+  unsigned AllocationCount = 0;
 
   // ---- setup -------------------------------------------------------------
   bool collectClasses();
@@ -213,6 +228,32 @@ private:
                       const std::string &To, int Line);
 
   Local *findLocal(const std::string &Name);
+
+  // ---- ownership ---------------------------------------------------------
+  /// True for a type held as an object reference rather than as a value.
+  bool isReferenceTypeName(const std::string &TypeName);
+  void emitRetain(llvm::Value *V);
+  void emitRelease(llvm::Value *V);
+  /// Store a reference into a slot, keeping the counts right: the new value
+  /// gains a holder and the one being replaced loses one. Retaining first
+  /// matters, because storing what is already there must not free it.
+  void storeReference(llvm::Value *V, llvm::Value *Slot, bool SlotIsLive);
+  /// Release every reference local in the innermost \p Count scopes, newest
+  /// first. `self` is left alone: the caller holds it for the whole call.
+  void releaseScopes(unsigned Count);
+  void emitPoolPushCall();
+  llvm::CallInst *emitPoolPopCall();
+  /// Open a pool here, provisionally.
+  void beginPool();
+  /// Close it, or erase it when nothing inside it allocated.
+  void endPool(bool Reachable);
+  /// Note that something allocating has been emitted into the open pool.
+  void noteAllocation();
+  void emitPoolAdd(llvm::Value *V);
+  /// Leave the current function: keep the result alive, release every local,
+  /// close every handler and pool this frame opened, and hand the result to
+  /// the caller's pool. \p RV may be null for a void return.
+  void emitCleanupAndReturn(llvm::Value *RV);
   llvm::Value *selfValue();
   llvm::Value *attributeAddress(const std::string &Name, std::string &TypeOut);
   llvm::AllocaInst *createEntryAlloca(llvm::Type *Ty, const std::string &Name);

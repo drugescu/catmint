@@ -52,9 +52,5 @@ class Main from IO
       Int n = counts.get(key)
       out(text.padRight(key, 14, " ") + n + "\n")
     end
-
-    # The file object holds an operating system handle, so hand it back
-    # rather than waiting for the process to end.
-    input.free()
   end
 end
