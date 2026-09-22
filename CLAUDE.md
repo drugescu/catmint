@@ -302,11 +302,17 @@ Each of these produced a crash or a silent miscompile during development.
 - **Catching an exception by value slices it.** `main.cpp` did this and every
   code generation error printed a useless generic message for years. Catch by
   reference and exit non-zero.
-- **`%` binds less tightly than `/` and `*`.** It sits with `+` and `-` in
-  `additive_expression`, so `a % b / c` means `a % (b / c)`. Every other
-  C-like language puts them on one level. Fixing it would change the meaning
-  of existing programs and the AST of `dispatch_logic_math.cm`, so it is left
-  alone deliberately; parenthesise.
+- **`%` binds less tightly than `/` and `*`, and this is settled.** It sits
+  with `+` and `-` in `additive_expression`, so `a % b / c` means
+  `a % (b / c)` and `a + b % c` means `(a + b) % c`. Every other C-like
+  language puts `%` on one level with `*` and `/`. Catmint does not, and will
+  not: changing it would silently change the meaning of every existing
+  program that uses `%`, and the AST of `dispatch_logic_math.cm` with it.
+  **Do not "fix" this.** Parenthesise instead, and say so in any code review
+  and any documentation that touches arithmetic. It has caught three separate
+  pieces of work so far -- a minute field in `lib/time.cmm`, and twice a
+  benchmark -- so treat an unparenthesised `%` in a mixed expression as a bug
+  in the program, not in the grammar.
 - **String escapes are decoded in the lexer**, not by the AST's JSON round
   trip. They used to be decoded by accident, because JSON spells `\n` and
   `\t` the same way; a quote or a backslash then produced an AST file the

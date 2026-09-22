@@ -140,12 +140,14 @@ operand to start from.
 
 ### Rough edges
 
-**8. `%` binds less tightly than `/` and `*`.** It sits with `+` and `-`, so
-`a + b % c` means `(a + b) % c`. This has now caught me three times, most
-recently in the benchmark in this document, where it silently changed the
-program being measured. Fixing it changes the meaning of existing programs
-and the AST of `dispatch_logic_math.cm`, so it needs a deliberate decision
-rather than a quiet patch.
+**8. `%` binds as loosely as `+` and `-`, and stays that way.** So
+`a + b % c` means `(a + b) % c`. This has caught three pieces of work,
+most recently the benchmark in this document, where it silently changed the
+program being measured. It is nonetheless a *settled decision*, not an open
+item: moving `%` up would silently change what every existing program using
+it computes, and no warning could be given. Parenthesise. The compiler's own
+documentation, `CLAUDE.md` and `COMPILING.md`, both say so at the point where
+someone would reach for it.
 
 **9. No debug information in the generated IR.** No line numbers reach the
 executable, so a debugger shows nothing useful and a crash gives no location.
@@ -203,14 +205,10 @@ In this order.
 3. **Return-type inference.** `def f:` that ends in a value should return
    it. The information is already in the semantic pass; what is missing is
    using it instead of defaulting `auto` to `Void`.
-4. **Decide about `%`.** Either move it up next to `*` and `/`, accepting
-   that two existing programs change meaning and one reference file has to be
-   regenerated, or make the parser reject `a + b % c` without parentheses.
-   Doing nothing is also a decision, but it keeps costing.
-5. **Line numbers in the debug info.** Every AST node already carries one.
+4. **Line numbers in the debug info.** Every AST node already carries one.
    Emitting `DILocation` for each statement turns a crash from a bare address
    into a file and a line, which is worth more than it costs.
-6. **Static methods.** `Math`, `File.exists` and `String.chr` all pretend,
+5. **Static methods.** `Math`, `File.exists` and `String.chr` all pretend,
    and a program that wants a free function has to allocate an object to hold
    it.
 

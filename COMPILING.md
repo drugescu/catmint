@@ -136,6 +136,13 @@ Things worth knowing, because they are not obvious:
   implemented; use parentheses.
 - **`x = expr` on a name that already exists assigns to it**; on a new name it
   declares it. The grammar produces the same node for both.
+- **`%` binds as loosely as `+` and `-`, not as tightly as `*` and `/`.**
+  This is deliberate and will not change, because changing it would silently
+  change what every existing program using `%` computes. So `a + b % c` means
+  `(a + b) % c`, and `a % b / c` means `a % (b / c)`. **Parenthesise every
+  `%` that shares an expression with another operator.** If you write
+  `total + i % 7` expecting C's answer, you will get a different number and
+  no warning.
 - **`for v in n:` counts**, giving `v` the values `0` to `n - 1`, and
   **`for c in someString:`** walks the characters, giving `c` a one-character
   `String` each time. There is no list type in the runtime, so nothing else can
