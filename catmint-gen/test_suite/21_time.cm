@@ -15,6 +15,13 @@ class Main from IO
     out(c.format(c.at(1709164800)))
     out("\n")
 
+    # Past 2038: the seconds count is an Int64, so this is an ordinary date
+    # rather than an overflow.
+    out(c.format(c.at(2524608000)))
+    out("\n")
+    out(c.format(c.at(4102444800)))
+    out("\n")
+
     # ticks is monotonic, so elapsed time can never be negative.
     Int before = c.millis()
     c.pause(20)

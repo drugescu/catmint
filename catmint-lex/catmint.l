@@ -2,6 +2,7 @@
 
 #include "catmint.tab.h"
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 extern std::string gCurrentFile;
@@ -114,7 +115,9 @@ static int gColumnNumber = 1;
 
 [0]|([1-9][0-9]*)	{
 	countColumns();
-	yylval.intValue = atoi(yytext);
+	/* 64-bit, so a literal that does not fit in an Int can still be written;
+	   the generator gives such a literal the type Int64. */
+	yylval.intValue = strtoll(yytext, NULL, 10);
 	return INTEGER_CONSTANT;
 }
 

@@ -124,12 +124,11 @@ the built-in methods. `build-runtime.sh` compiles it for the host into
 `runtime.host.ll`, which is what programs link against.
 
 The original `runtime.ll` was committed without its source and built for
-x86_64 Linux. `runtime.c` was reconstructed from it and verified to be a
-drop-in replacement: identical function and global sets, and the whole
-codegen suite passes against either. The old `.ll` and the
-`make-host-runtime.sh` that patched its target triple and glibc-only
-`__isoc99_scanf` are kept as a fallback for a machine without a C compiler,
-and `build-runtime.sh` picks whichever is available.
+x86_64 Linux. `runtime.c` was reconstructed from it, verified to be a drop-in
+replacement, and is now the only source: the pre-built `.ll` and the
+`make-host-runtime.sh` that patched its target triple were deleted once the
+object model moved past it, because a stale copy of the runtime is a silent
+miscompile rather than a link error. Building therefore needs a C compiler.
 
 The layouts and the virtual table slot order in `runtime.c` are fixed by
 agreement with `IRGenerator.cpp`; changing one without the other silently
@@ -181,6 +180,16 @@ One detail that is easy to trip over, forced by the grammar:
 `for v in n:` counts from `0` to `n - 1`; `for c in str:` walks a string's
 characters as one-character strings. Both lower to the same counted loop.
 There is no list type in the runtime, so nothing else can be iterated.
+
+Integers come in four widths: `Int8`, `Int16`, `Int32` and `Int64`. `Int` is
+`Int32`, and the parser folds the longer spelling into it so only one name
+reaches the type table. Mixing widths in an expression promotes both operands
+to the wider of the two; assigning across widths sign-extends or truncates
+implicitly, as C does, because the language has no cast expression for
+numbers. A literal too large for an `Int` is an `Int64`; arithmetic on two
+`Int`s stays 32 bits, so a 64-bit computation needs a 64-bit operand to start
+from. Boxing goes through a 64-bit `Integer`, so no width loses anything on
+the way into a container. `IO.epoch()` is an `Int64` and works past 2038.
 
 Namespaces: `using math as m` declares that module's classes as `m::Name`.
 A qualified name is joined into a single `IDENTIFIER` by the lexer, because

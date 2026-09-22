@@ -8,6 +8,13 @@ namespace strings {
 const auto Null = "Null";
 const auto Void = "Void";
 const auto Int = "Int";
+// The sized integer types. Int32 is another spelling of Int and is folded
+// into it by the parser, so only these three names ever reach the generator
+// alongside Int.
+const auto Int8 = "Int8";
+const auto Int16 = "Int16";
+const auto Int32 = "Int32";
+const auto Int64 = "Int64";
 const auto Float = "Float";
 
 const auto Self = "self";
@@ -40,6 +47,7 @@ const auto Sleep = "sleep";
 const auto List = "List";
 const auto Integer = "Integer";
 const auto Get = "get";
+const auto GetLong = "getLong";
 const auto Set = "set";
 const auto Append = "append";
 const auto Slice = "slice";

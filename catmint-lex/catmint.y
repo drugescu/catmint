@@ -48,13 +48,20 @@
 	// own classes. The built-in and primitive names are the exception: they are
 	// global, and there is a fixed list of them.
 	static bool isGlobalTypeName(const std::string &name) {
-		return name == "Int" || name == "Float" || name == "Void" ||
+		return name == "Int" || name == "Int8" || name == "Int16" ||
+		       name == "Int32" || name == "Int64" ||
+		       name == "Float" || name == "Void" ||
 		       name == "Null" || name == "Object" || name == "String" ||
 		       name == "IO" || name == "List" || name == "Integer" ||
 		       name == "auto" || name.rfind("_uuid_generic_", 0) == 0;
 	}
 
 	static std::string qualifyTypeName(const std::string &name) {
+		// Int32 is a second spelling of Int, folded away here so that only one
+		// of the two names ever reaches the type table or the generator.
+		if (name == "Int32") {
+			return "Int";
+		}
 		if (gCurrentNamespace.empty() || isGlobalTypeName(name) ||
 		    name.find("::") != std::string::npos) {
 			return name;
@@ -79,7 +86,7 @@
 
 %union {
 	std::string* stringValue;
-	int intValue;
+	long long intValue;
 	double floatValue;
 
 	catmint::Class* catmintClass;

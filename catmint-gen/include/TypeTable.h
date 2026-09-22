@@ -38,6 +38,9 @@ public:
   Type *getType(const std::string &name) const;
 
   Type *getIntType() const;
+  /// \brief Width in bits of an integer type, or 0 when \p name is not one.
+  ///        Int and Int32 are the same 32-bit type.
+  static int integerWidth(const std::string &name);
   Type *getVoidType() const;
   Type *getNullType() const;
   Type *getFloatType() const;
@@ -79,8 +82,10 @@ public:
     // not fresh ones: a fresh Type carries no Class, so anything inferred from
     // a literal -- `s = ""` and then `s.len()` -- would be rejected as a call
     // on a non-class object. Returning fresh ones also leaked.
-    if(dynamic_cast<catmint::IntConstant *>(node)) {
-      return getType(std::string(strings::Int));
+    if(auto intConstant = dynamic_cast<catmint::IntConstant *>(node)) {
+      // A literal too large for an Int is an Int64; everything else is an Int.
+      return getType(std::string(intConstant->fitsInInt() ? strings::Int
+                                                          : strings::Int64));
     }
     if(dynamic_cast<catmint::StringConstant *>(node)) {
       return getType(std::string(strings::String));

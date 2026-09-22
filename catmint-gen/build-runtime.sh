@@ -1,12 +1,11 @@
 #!/bin/sh
 # Produce the runtime LLVM IR to link programs against.
 #
-# runtime.c is the real source. When it is present it is compiled for this
-# host, which is both correct and simpler than patching the committed IR.
-#
-# runtime.ll is the original, committed without its source and built for
-# x86_64 Linux. It is kept as a fallback, and make-host-runtime.sh strips its
-# target triple and glibc-only symbols so it can run elsewhere.
+# runtime.c is the source of the object model and the built-in classes, and
+# is compiled for this host every time. The IR it produces must match what
+# IRGenerator.cpp expects -- layouts, virtual table slot order, helper
+# signatures -- so there is deliberately no second, pre-built copy that could
+# drift out of step with it.
 #
 # Usage: ./build-runtime.sh [output.ll]
 set -e
@@ -15,8 +14,4 @@ OUT=${1:-"$HERE/runtime.host.ll"}
 
 LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v clang 2>/dev/null || echo /opt/homebrew/opt/llvm@22/bin/clang)")}
 
-if [ -f "$HERE/runtime.c" ]; then
-  "$LLVM_BIN/clang" -O0 -emit-llvm -S "$HERE/runtime.c" -o "$OUT"
-else
-  "$HERE/make-host-runtime.sh" "$HERE/runtime.ll" "$OUT" >/dev/null
-fi
+"$LLVM_BIN/clang" -O0 -emit-llvm -S "$HERE/runtime.c" -o "$OUT"

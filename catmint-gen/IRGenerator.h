@@ -44,9 +44,10 @@ public:
 
   llvm::FunctionCallee catmintNew() const { return CatmintNew; }
   llvm::FunctionCallee intToString() const { return IntToString; }
+  llvm::FunctionCallee longToString() const { return LongToString; }
   llvm::FunctionCallee floatToString() const { return FloatToString; }
-  llvm::FunctionCallee boxInt() const { return BoxInt; }
-  llvm::FunctionCallee unboxInt() const { return UnboxInt; }
+  llvm::FunctionCallee boxLong() const { return BoxLong; }
+  llvm::FunctionCallee unboxLong() const { return UnboxLong; }
   llvm::FunctionCallee objectEquals() const { return ObjectEquals; }
   llvm::FunctionCallee isType() const { return IsType; }
   llvm::FunctionCallee checkNull() const { return CheckNull; }
@@ -67,9 +68,10 @@ private:
 
   llvm::FunctionCallee CatmintNew;
   llvm::FunctionCallee IntToString;
+  llvm::FunctionCallee LongToString;
   llvm::FunctionCallee FloatToString;
-  llvm::FunctionCallee BoxInt;
-  llvm::FunctionCallee UnboxInt;
+  llvm::FunctionCallee BoxLong;
+  llvm::FunctionCallee UnboxLong;
   llvm::FunctionCallee ObjectEquals;
   llvm::FunctionCallee IsType;
   llvm::FunctionCallee CheckNull;
@@ -174,6 +176,9 @@ private:
   /// generation does not depend on the semantic pass having annotated a node.
   std::string staticTypeOf(Expression *E);
   bool isSubclassOf(const std::string &Derived, const std::string &Base);
+  /// The truth value of \p V as an i1: any integer width compares against a
+  /// zero of its own type, and a reference against null.
+  llvm::Value *toCondition(llvm::Value *V, const std::string &Name);
   llvm::Value *coerce(llvm::Value *V, const std::string &From,
                       const std::string &To, int Line);
 

@@ -20,6 +20,7 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
   auto &Context = M.getContext();
   auto Ptr = llvm::PointerType::getUnqual(Context);
   auto I32 = llvm::Type::getInt32Ty(Context);
+  auto I64 = llvm::Type::getInt64Ty(Context);
   auto Void = llvm::Type::getVoidTy(Context);
   (void)Void;
 
@@ -48,10 +49,14 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
   FloatToString = M.getOrInsertFunction(
       "__cm_floatToString",
       llvm::FunctionType::get(Ptr, {llvm::Type::getDoubleTy(Context)}, false));
-  BoxInt = M.getOrInsertFunction("__cm_boxInt",
-                                 llvm::FunctionType::get(Ptr, {I32}, false));
-  UnboxInt = M.getOrInsertFunction("__cm_unboxInt",
-                                   llvm::FunctionType::get(I32, {Ptr}, false));
+  LongToString = M.getOrInsertFunction(
+      "__cm_longToString", llvm::FunctionType::get(Ptr, {I64}, false));
+  // The box holds 64 bits, so an Int8 and an Int64 survive a trip through a
+  // container equally well.
+  BoxLong = M.getOrInsertFunction("__cm_boxLong",
+                                  llvm::FunctionType::get(Ptr, {I64}, false));
+  UnboxLong = M.getOrInsertFunction("__cm_unboxLong",
+                                    llvm::FunctionType::get(I64, {Ptr}, false));
   ObjectEquals = M.getOrInsertFunction(
       "__cm_equals", llvm::FunctionType::get(I32, {Ptr, Ptr}, false));
   IsType = M.getOrInsertFunction(
@@ -154,8 +159,9 @@ std::string IRGenerator::runtimeSymbol(ClassInfo *CI,
     if (MethodName == strings::Append) return "M4_List_append";
     if (MethodName == strings::Slice)  return "M4_List_slice";
   } else if (C == strings::Integer) {
-    if (MethodName == strings::Get) return "M7_Integer_get";
-    if (MethodName == strings::Set) return "M7_Integer_set";
+    if (MethodName == strings::Get)     return "M7_Integer_get";
+    if (MethodName == strings::Set)     return "M7_Integer_set";
+    if (MethodName == strings::GetLong) return "M7_Integer_getLong";
   }
   return mangle(C, MethodName);
 }
@@ -169,8 +175,8 @@ llvm::Type *IRGenerator::lowerType(const std::string &TypeName) {
   // mirrors the alias registered in TypeTable::addBuiltinTypes.
   if (TypeName == "auto" || TypeName == strings::Void)
     return llvm::Type::getVoidTy(Context);
-  if (TypeName == strings::Int)
-    return llvm::Type::getInt32Ty(Context);
+  if (int Width = TypeTable::integerWidth(TypeName))
+    return llvm::Type::getIntNTy(Context, static_cast<unsigned>(Width));
   if (TypeName == strings::Float)
     return llvm::Type::getDoubleTy(Context);
   if (TypeName == strings::Void)
@@ -288,9 +294,9 @@ bool IRGenerator::layoutClass(ClassInfo *CI) {
                       llvm::PointerType::getUnqual(Context)};
       CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TList");
     } else if (Name == strings::Integer) {
-      // { rtti, int value }
+      // { rtti, long long value }
       CI->Elements = {llvm::PointerType::getUnqual(Context),
-                      llvm::Type::getInt32Ty(Context)};
+                      llvm::Type::getInt64Ty(Context)};
       CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TInteger");
     } else {
       CI->Ty = Runtime.stringType();
@@ -698,6 +704,17 @@ llvm::Value *IRGenerator::attributeAddress(const std::string &Name,
                            Name + ".addr");
 }
 
+llvm::Value *IRGenerator::toCondition(llvm::Value *V, const std::string &Name) {
+  if (V->getType()->isPointerTy())
+    return Builder.CreateICmpNE(
+        V, llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(Context)),
+        Name);
+  if (V->getType()->isDoubleTy())
+    return Builder.CreateFCmpONE(
+        V, llvm::ConstantFP::get(llvm::Type::getDoubleTy(Context), 0.0), Name);
+  return Builder.CreateICmpNE(V, llvm::ConstantInt::get(V->getType(), 0), Name);
+}
+
 bool IRGenerator::blockTerminated() const {
   auto *BB = Builder.GetInsertBlock();
   return BB && BB->getTerminator() != nullptr;
@@ -711,7 +728,8 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
   if (!E)
     return strings::Void;
 
-  if (dynamic_cast<IntConstant *>(E))    return strings::Int;
+  if (auto *IC = dynamic_cast<IntConstant *>(E))
+    return IC->fitsInInt() ? strings::Int : strings::Int64;
   if (dynamic_cast<FloatConstant *>(E))  return strings::Float;
   if (dynamic_cast<StringConstant *>(E)) return strings::String;
   if (dynamic_cast<NullConstant *>(E))   return strings::Null;
@@ -741,6 +759,10 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
       return strings::String; // '+' concatenates
     if (L == strings::Float || R == strings::Float)
       return strings::Float;
+    const int LWidth = TypeTable::integerWidth(L);
+    const int RWidth = TypeTable::integerWidth(R);
+    if (LWidth && RWidth)
+      return LWidth >= RWidth ? L : R;
     return strings::Int;
   }
   if (auto *UO = dynamic_cast<UnaryOperator *>(E))
@@ -803,24 +825,50 @@ llvm::Value *IRGenerator::coerce(llvm::Value *V, const std::string &From,
   if (!V || From == To)
     return V;
 
-  if (From == strings::Int && To == strings::String)
+  const int FromWidth = TypeTable::integerWidth(From);
+  const int ToWidth = TypeTable::integerWidth(To);
+
+  // Between two integer types: sign-extend to widen, truncate to narrow. Both
+  // directions are implicit, as they are in C, because the language has no
+  // cast expression for numbers.
+  if (FromWidth && ToWidth) {
+    auto *Target = llvm::Type::getIntNTy(Context, static_cast<unsigned>(ToWidth));
+    if (FromWidth == ToWidth)
+      return V;
+    return FromWidth < ToWidth ? Builder.CreateSExt(V, Target, "widen")
+                               : Builder.CreateTrunc(V, Target, "narrow");
+  }
+
+  if (FromWidth && To == strings::String) {
+    // Int64 has its own conversion; the narrower widths go through Int.
+    if (FromWidth == 64)
+      return Builder.CreateCall(Runtime.longToString(), {V}, "long.str");
+    V = coerce(V, From, strings::Int, Line);
     return Builder.CreateCall(Runtime.intToString(), {V}, "int.str");
+  }
   if (From == strings::Float && To == strings::String)
     return Builder.CreateCall(Runtime.floatToString(), {V}, "float.str");
-  if (From == strings::Int && To == strings::Float)
+  if (FromWidth && To == strings::Float)
     return Builder.CreateSIToFP(V, llvm::Type::getDoubleTy(Context), "int.fp");
-  if (From == strings::Float && To == strings::Int)
-    return Builder.CreateFPToSI(V, llvm::Type::getInt32Ty(Context), "fp.int");
-  const bool FromIsValue = (From == strings::Int || From == strings::Float);
-  const bool ToIsValue = (To == strings::Int || To == strings::Float);
+  if (From == strings::Float && ToWidth)
+    return Builder.CreateFPToSI(
+        V, llvm::Type::getIntNTy(Context, static_cast<unsigned>(ToWidth)),
+        "fp.int");
+  const bool FromIsValue = (FromWidth != 0 || From == strings::Float);
+  const bool ToIsValue = (ToWidth != 0 || To == strings::Float);
 
-  // An Int put where object references live is boxed into an Integer, and
+  // An integer put where object references live is boxed into an Integer, and
   // taken back out it is unboxed, checked. This is what lets a List hold
-  // numbers when the language has no generics.
-  if (From == strings::Int && !ToIsValue && To != strings::Void)
-    return Builder.CreateCall(Runtime.boxInt(), {V}, "box");
-  if (!FromIsValue && From != strings::Void && To == strings::Int)
-    return Builder.CreateCall(Runtime.unboxInt(), {V}, "unbox");
+  // numbers when the language has no generics. The box holds 64 bits, so no
+  // width loses anything on the way through.
+  if (FromWidth && !ToIsValue && To != strings::Void) {
+    V = coerce(V, From, strings::Int64, Line);
+    return Builder.CreateCall(Runtime.boxLong(), {V}, "box");
+  }
+  if (!FromIsValue && From != strings::Void && ToWidth) {
+    auto *Boxed = Builder.CreateCall(Runtime.unboxLong(), {V}, "unbox");
+    return coerce(Boxed, strings::Int64, To, Line);
+  }
 
   // Reference types are all `ptr` under opaque pointers, so widening to a base
   // class needs no instruction. Narrowing does need one: assigning an Object
@@ -882,7 +930,12 @@ llvm::Value *IRGenerator::emitBlock(Block *B) {
 }
 
 llvm::Value *IRGenerator::emitIntConstant(IntConstant *IC) {
-  return Builder.getInt32(IC->getValue());
+  // A literal that does not fit in an Int is an Int64, which is the only way
+  // to write a 64-bit value: arithmetic on two Ints stays 32 bits.
+  if (!IC->fitsInInt())
+    return llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context),
+                                  static_cast<uint64_t>(IC->getValue()), true);
+  return Builder.getInt32(static_cast<int32_t>(IC->getValue()));
 }
 
 llvm::Value *IRGenerator::emitFloatConstant(FloatConstant *FC) {
@@ -1131,6 +1184,17 @@ llvm::Value *IRGenerator::emitBinaryOperator(BinaryOperator *BO) {
                               llvm::Type::getInt32Ty(Context), "fcmp.i32");
   }
 
+  // Two integer operands of different widths meet at the wider of the two,
+  // which LLVM requires anyway: an add of an i32 and an i64 is not typeable.
+  const int LWidth = TypeTable::integerWidth(LT);
+  const int RWidth = TypeTable::integerWidth(RT);
+  std::string ResultType = strings::Int;
+  if (LWidth && RWidth) {
+    ResultType = LWidth >= RWidth ? LT : RT;
+    L = coerce(L, LT, ResultType, BO->getLineNumber());
+    R = coerce(R, RT, ResultType, BO->getLineNumber());
+  }
+
   switch (Op) {
   case BK::Add:    return Builder.CreateAdd(L, R, "add");
   case BK::Sub:    return Builder.CreateSub(L, R, "sub");
@@ -1144,25 +1208,29 @@ llvm::Value *IRGenerator::emitBinaryOperator(BinaryOperator *BO) {
   case BK::RShift: return Builder.CreateAShr(L, R, "shr");
   case BK::Pow: {
     // Integer exponentiation by repeated multiplication, so that '**' needs no
-    // libm and stays in the integer domain.
-    auto *Acc = createEntryAlloca(llvm::Type::getInt32Ty(Context), "pow.acc");
-    auto *Cnt = createEntryAlloca(llvm::Type::getInt32Ty(Context), "pow.n");
-    Builder.CreateStore(Builder.getInt32(1), Acc);
+    // libm and stays in the integer domain. It runs at the width of the
+    // promoted operands, so an Int64 base does not lose its high bits.
+    llvm::Type *Wide = L->getType();
+    auto *Acc = createEntryAlloca(Wide, "pow.acc");
+    auto *Cnt = createEntryAlloca(Wide, "pow.n");
+    Builder.CreateStore(llvm::ConstantInt::get(Wide, 1), Acc);
     Builder.CreateStore(R, Cnt);
     auto *Cond = llvm::BasicBlock::Create(Context, "pow.cond", CurrentFunction);
     auto *Body = llvm::BasicBlock::Create(Context, "pow.body", CurrentFunction);
     auto *End  = llvm::BasicBlock::Create(Context, "pow.end", CurrentFunction);
     Builder.CreateBr(Cond);
     Builder.SetInsertPoint(Cond);
-    auto *N = Builder.CreateLoad(llvm::Type::getInt32Ty(Context), Cnt, "n");
-    Builder.CreateCondBr(Builder.CreateICmpSGT(N, Builder.getInt32(0)), Body, End);
+    auto *N = Builder.CreateLoad(Wide, Cnt, "n");
+    Builder.CreateCondBr(
+        Builder.CreateICmpSGT(N, llvm::ConstantInt::get(Wide, 0)), Body, End);
     Builder.SetInsertPoint(Body);
-    auto *A = Builder.CreateLoad(llvm::Type::getInt32Ty(Context), Acc, "acc");
+    auto *A = Builder.CreateLoad(Wide, Acc, "acc");
     Builder.CreateStore(Builder.CreateMul(A, L, "acc.next"), Acc);
-    Builder.CreateStore(Builder.CreateSub(N, Builder.getInt32(1), "n.next"), Cnt);
+    Builder.CreateStore(
+        Builder.CreateSub(N, llvm::ConstantInt::get(Wide, 1), "n.next"), Cnt);
     Builder.CreateBr(Cond);
     Builder.SetInsertPoint(End);
-    return Builder.CreateLoad(llvm::Type::getInt32Ty(Context), Acc, "pow");
+    return Builder.CreateLoad(Wide, Acc, "pow");
   }
   default: break;
   }
@@ -1192,7 +1260,7 @@ llvm::Value *IRGenerator::emitUnaryOperator(UnaryOperator *UO) {
     return Builder.CreateNeg(V, "neg");
   }
   // Logical NOT: zero becomes 1, anything else becomes 0.
-  return Builder.CreateZExt(Builder.CreateICmpEQ(V, Builder.getInt32(0), "notcmp"),
+  return Builder.CreateZExt(Builder.CreateNot(toCondition(V, "notcmp"), "notv"),
                             llvm::Type::getInt32Ty(Context), "not");
 }
 
@@ -1200,12 +1268,7 @@ llvm::Value *IRGenerator::emitIf(IfStatement *If) {
   llvm::Value *Cond = emit(If->getCond());
   if (!Cond)
     return nullptr;
-  if (Cond->getType()->isPointerTy())
-    Cond = Builder.CreateICmpNE(
-        Cond, llvm::ConstantPointerNull::get(
-                  llvm::PointerType::getUnqual(Context)), "ifptr");
-  else
-    Cond = Builder.CreateICmpNE(Cond, Builder.getInt32(0), "ifcond");
+  Cond = toCondition(Cond, "ifcond");
 
   auto *ThenBB = llvm::BasicBlock::Create(Context, "if.then", CurrentFunction);
   auto *ElseBB = llvm::BasicBlock::Create(Context, "if.else", CurrentFunction);
@@ -1253,12 +1316,7 @@ llvm::Value *IRGenerator::emitWhile(WhileStatement *W) {
   llvm::Value *Cond = emit(W->getCond());
   if (!Cond)
     return nullptr;
-  if (Cond->getType()->isPointerTy())
-    Cond = Builder.CreateICmpNE(
-        Cond, llvm::ConstantPointerNull::get(
-                  llvm::PointerType::getUnqual(Context)), "whileptr");
-  else
-    Cond = Builder.CreateICmpNE(Cond, Builder.getInt32(0), "whilecond");
+  Cond = toCondition(Cond, "whilecond");
   Builder.CreateCondBr(Cond, BodyBB, EndBB);
 
   Builder.SetInsertPoint(BodyBB);
@@ -1282,7 +1340,7 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
   const std::string ContType = staticTypeOf(F->getCont());
   const bool OverString = (ContType == strings::String);
   const bool OverList = (ContType == strings::List);
-  if (!OverString && !OverList && ContType != strings::Int)
+  if (!OverString && !OverList && !TypeTable::integerWidth(ContType))
     fail(F->getLineNumber(),
          "cannot iterate over a value of type '" + ContType +
              "'; 'for' takes an Int, a String or a List");
@@ -1311,6 +1369,9 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
         "M6_String_length", llvm::FunctionType::get(I32, {Ptr}, false));
     Builder.CreateCall(Runtime.checkNull(), {Cont});
     Bound = Builder.CreateCall(StrLen, {Cont}, "for.len");
+  } else {
+    // A count of any integer width narrows to the loop counter's Int.
+    Bound = coerce(Cont, ContType, strings::Int, F->getLineNumber());
   }
 
   auto *BoundSlot = createEntryAlloca(I32, "for.bound");

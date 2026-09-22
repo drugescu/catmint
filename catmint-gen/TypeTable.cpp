@@ -35,6 +35,14 @@ void TypeTable::addTypes(Program *p) {
   addBuiltinTypes(p);
 }
 
+int TypeTable::integerWidth(const std::string &name) {
+  if (name == strings::Int8)  return 8;
+  if (name == strings::Int16) return 16;
+  if (name == strings::Int || name == strings::Int32) return 32;
+  if (name == strings::Int64) return 64;
+  return 0;
+}
+
 void TypeTable::addBuiltinTypes(Program *p) {
   typeTable[strings::Int] = new Type(strings::Int);
   typeTable[strings::Null] = new Type(strings::Null);
@@ -47,13 +55,21 @@ void TypeTable::addBuiltinTypes(Program *p) {
   // its type: `def Int square(Int n):`.
   typeTable["auto"] = typeTable[strings::Void];
 
+  // The sized integers. Int32 is registered as an alias of Int rather than as
+  // a type of its own; the parser already folds the spelling away, and this
+  // keeps a .ast written by an older parser working.
+  typeTable[strings::Int8] = new Type(strings::Int8);
+  typeTable[strings::Int16] = new Type(strings::Int16);
+  typeTable[strings::Int64] = new Type(strings::Int64);
+  typeTable[strings::Int32] = typeTable[strings::Int];
+
   // Add additional types
   addBuiltinClasses(p);
 }
 
 bool TypeTable::isBuiltinType(Type *t) const {
   const std::string &name = t->getName();
-  return name == strings::Int || name == strings::Null ||
+  return integerWidth(name) != 0 || name == strings::Null ||
          name == strings::Void || name == strings::Float ||
          isBuiltinClass(t->getClass());
 }
@@ -126,8 +142,9 @@ void TypeTable::addBuiltinClasses(Program *p) {
   // timestamp into a date is integer arithmetic and lives in lib/time.cmm.
   builtinMethods.push_back(
       new Method(0, strings::Ticks, strings::Int, nullptr, builtinMethodsParams));
-  builtinMethods.push_back(
-      new Method(0, strings::Epoch, strings::Int, nullptr, builtinMethodsParams));
+  // Seconds since 1970 is an Int64, so it keeps working past 2038.
+  builtinMethods.push_back(new Method(0, strings::Epoch, strings::Int64,
+                                      nullptr, builtinMethodsParams));
   builtinMethods.push_back(new Method(0, strings::LocalOffset, strings::Int,
                                       nullptr, builtinMethodsParams));
 
@@ -256,6 +273,11 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethods.push_back(new Method(0, strings::Set, strings::Integer,
                                       nullptr, builtinMethodsParams));
 
+  // Appended: the whole 64-bit value, where get() truncates to an Int.
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(new Method(0, strings::GetLong, strings::Int64,
+                                      nullptr, builtinMethodsParams));
+
   std::unique_ptr<Class> integerClass(
       new Class(0, strings::Integer, strings::Object, builtinMethods));
   (void)createNewType(integerClass.get());
@@ -343,6 +365,15 @@ Type *TypeTable::getCommonType(Type *T, Type *U) const {
     return T;
   }
 
+  // Two integer types meet at the wider of the two.
+  const int widthT = integerWidth(TN);
+  const int widthU = integerWidth(UN);
+  if (widthT && widthU) {
+    return widthT >= widthU ? T : U;
+  }
+  if (widthT && widthT != 32) TN = strings::Int;
+  if (widthU && widthU != 32) UN = strings::Int;
+
   // Implicit potential conversions
   if (TN == strings::Int) {
     // Promotion to float if any are float
@@ -383,6 +414,20 @@ Type *TypeTable::getCommonType(Type *T, Type *U) const {
 // Try to do more stuff here - no semantic analysis, just do what is feasible
 std::string TypeTable::getCommonTypeStr(std::string T, std::string U) const {
   // Any object - try to walk hierarchy here as well
+  if (T == U)
+    return T;
+
+  // Two integer types meet at the wider of the two, so mixing an Int with an
+  // Int64 gives an Int64 and the narrower operand is sign-extended.
+  const int widthT = integerWidth(T);
+  const int widthU = integerWidth(U);
+  if (widthT && widthU) {
+    return widthT >= widthU ? T : U;
+  }
+  // Every integer type converts to a Float and prints as a String, and the
+  // rules below are written for Int, so widen the question to it.
+  if (widthT && widthT != 32) T = strings::Int;
+  if (widthU && widthU != 32) U = strings::Int;
   if (T == U)
     return T;
 
@@ -435,7 +480,7 @@ bool TypeTable::isDerivedFrom(const std::string &derived,
 }
 
 bool TypeTable::isReferenceType(const std::string &name) const {
-  if (name == strings::Int || name == strings::Float ||
+  if (integerWidth(name) != 0 || name == strings::Float ||
       name == strings::Void) {
     return false;
   }
@@ -461,10 +506,10 @@ bool TypeTable::isEqualOrImplicitlyConvertibleTo(Type *fromType, Type *toType) {
   // An Int boxes into an Integer wherever object references are held, and
   // unboxes on the way back out. This is what lets a List hold numbers in a
   // language with no generics; the generator inserts the conversion.
-  if (from == strings::Int && isReferenceType(to)) {
+  if (integerWidth(from) && isReferenceType(to)) {
     return true;
   }
-  if (isReferenceType(from) && to == strings::Int) {
+  if (isReferenceType(from) && integerWidth(to)) {
     return true;
   }
 

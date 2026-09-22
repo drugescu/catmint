@@ -108,6 +108,7 @@ private:
 
   void writePair(const Writer::Ch *key, const Writer::Ch *value);
   void writePair(const Writer::Ch *key, int value);
+  void writePair(const Writer::Ch *key, long long value);
   void writePair(const Writer::Ch *key, double value);
 };
 

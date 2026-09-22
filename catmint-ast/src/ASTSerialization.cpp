@@ -121,6 +121,14 @@ void ASTSerializer::writePair(const Writer::Ch *key, int value) {
   writer->Int(value);
 }
 
+// A literal too large for an Int still has to round-trip, so integer values
+// are written and read as 64 bits. Small values encode identically, so this
+// does not change any existing AST file.
+void ASTSerializer::writePair(const Writer::Ch *key, long long value) {
+  writer->Key(key);
+  writer->Int64(value);
+}
+
 void ASTSerializer::writePair(const Writer::Ch *key, double value) {
   writer->Key(key);
   writer->Double(value);
@@ -1061,11 +1069,10 @@ ASTDeserializer::parseIntConstant(rapidjson::Value &tree) {
          "Expected int constant object");
 
   assert(tree.HasMember(keys::Value) && "Int constant without value");
-  assert(tree[keys::Value].IsInt() && "Invalid value for int constant");
-  // TODO: figure out about unsigned etc
+  assert(tree[keys::Value].IsInt64() && "Invalid value for int constant");
 
   return createNode<IntConstant>(tree, parseLineNumber(tree),
-                                 tree[keys::Value].GetInt());
+                                 tree[keys::Value].GetInt64());
 }
 
 std::unique_ptr<FloatConstant>

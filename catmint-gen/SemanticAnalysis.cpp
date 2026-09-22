@@ -284,7 +284,7 @@ bool SemanticAnalysis::visit(FormalParam *param) {
 bool SemanticAnalysis::visit(Expression *e) { return ASTVisitor::visit(e); }
 
 bool SemanticAnalysis::visit(IntConstant *ic) {
-  typeTable.setType(ic, typeTable.getIntType());
+  typeTable.setType(ic, typeTable.getType(static_cast<TreeNode *>(ic)));
   return true;
 }
 
@@ -395,7 +395,7 @@ bool SemanticAnalysis::visit(UnaryOperator *uo) {
     return false;
   }
 
-  if (typeTable.getType(operand) != typeTable.getIntType()) {
+  if (!TypeTable::integerWidth(typeTable.getType(operand)->getName())) {
     throw WrongTypeException(typeTable.getType(operand), typeTable.getIntType(),
                              uo);
   }
@@ -661,7 +661,7 @@ bool SemanticAnalysis::visit(IfStatement *i) {
     return false;
   }
 
-  if (typeTable.getType(condExpr) != typeTable.getIntType()) {
+  if (!TypeTable::integerWidth(typeTable.getType(condExpr)->getName())) {
     throw WrongTypeException(typeTable.getType(condExpr),
                              typeTable.getIntType(), condExpr);
   }
@@ -704,7 +704,7 @@ bool SemanticAnalysis::visit(WhileStatement *w) {
     return false;
   }
 
-  if (typeTable.getType(cond) != typeTable.getIntType()) {
+  if (!TypeTable::integerWidth(typeTable.getType(cond)->getName())) {
     throw WrongTypeException(typeTable.getType(cond), typeTable.getIntType(),
                              cond);
   }
@@ -738,7 +738,7 @@ bool SemanticAnalysis::visit(ForStatement *f) {
   // for constants, so the pointers are not interchangeable.
   auto contType = typeTable.getType(cont);
   Type *elementType = nullptr;
-  if (contType->getName() == strings::Int) {
+  if (TypeTable::integerWidth(contType->getName())) {
     elementType = typeTable.getIntType();
   } else if (contType->getName() == strings::String) {
     elementType = typeTable.getStringType();

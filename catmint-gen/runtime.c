@@ -59,11 +59,13 @@ struct TList {
   void **items;
 };
 
-/* A boxed Int, so that an Int can be stored in a List. The generated code
- * boxes and unboxes automatically where a conversion is needed. */
+/* A boxed integer, so that one can be stored in a List. The generated code
+ * boxes and unboxes automatically where a conversion is needed. The field is
+ * 64 bits wide so that every integer type -- Int8 through Int64 -- survives a
+ * trip through a container without losing anything. */
 struct TInteger {
   struct __catmint_rtti *rtti;
-  int value;
+  long long value;
 };
 
 /* A flexible array member cannot be initialised, so each class's RTTI gets a
@@ -83,6 +85,7 @@ CATMINT_RTTI_TYPE(catmint_rtti7, 7);
 CATMINT_RTTI_TYPE(catmint_rtti12_io, 12);
 CATMINT_RTTI_TYPE(catmint_rtti8_list, 8);
 CATMINT_RTTI_TYPE(catmint_rtti5, 5);
+CATMINT_RTTI_TYPE(catmint_rtti6, 6);
 CATMINT_RTTI_TYPE(catmint_rtti8, 8);
 CATMINT_RTTI_TYPE(catmint_rtti9, 9);
 
@@ -105,7 +108,7 @@ struct TString *M2_IO_readLine(struct TIO *self);
 int M2_IO_eof(struct TIO *self);
 int M2_IO_entropy(struct TIO *self);
 int M2_IO_ticks(struct TIO *self);
-int M2_IO_epoch(struct TIO *self);
+long long M2_IO_epoch(struct TIO *self);
 int M2_IO_localOffset(struct TIO *self);
 struct TIO *M2_IO_sleep(struct TIO *self, int milliseconds);
 
@@ -117,6 +120,7 @@ struct TList *M4_List_slice(struct TList *self, int start, int end);
 
 int M7_Integer_get(struct TInteger *self);
 struct TInteger *M7_Integer_set(struct TInteger *self, int value);
+long long M7_Integer_getLong(struct TInteger *self);
 
 void *__catmint_new(struct __catmint_rtti *rtti);
 void String_init(struct TString *self);
@@ -161,10 +165,11 @@ catmint_rtti8_list RList = {
     (void *)M4_List_append, (void *)M4_List_slice }
 };
 
-catmint_rtti5 RInteger = {
+catmint_rtti6 RInteger = {
   &NInteger, sizeof(struct TInteger), RTTI(RObject),
   { (void *)M6_Object_abort, (void *)M6_Object_typeName, (void *)M6_Object_copy,
-    (void *)M7_Integer_get, (void *)M7_Integer_set }
+    (void *)M7_Integer_get, (void *)M7_Integer_set,
+    (void *)M7_Integer_getLong }
 };
 
 /* -------------------------------------------------------------------------
@@ -416,11 +421,11 @@ int M2_IO_ticks(struct TIO *self) {
   return (int)(seconds * 1000L + millis);
 }
 
-/* Seconds since 1970-01-01 UTC. An Int is 32 bits, so this is good until
- * 2038; widening it means widening catmint's Int. */
-int M2_IO_epoch(struct TIO *self) {
+/* Seconds since 1970-01-01 UTC, as an Int64, so it does not stop working in
+ * 2038. */
+long long M2_IO_epoch(struct TIO *self) {
   (void)self;
-  return (int)time(NULL);
+  return (long long)time(NULL);
 }
 
 /* Seconds to add to UTC to get local time, daylight saving included. Keeping
@@ -537,13 +542,19 @@ struct TList *M4_List_slice(struct TList *self, int start, int end) {
  * Integer, the box that lets an Int live in a List
  * ------------------------------------------------------------------------- */
 
+/* Truncating, because catmint's Int is 32 bits. getLong gives the whole
+ * thing back. */
 int M7_Integer_get(struct TInteger *self) {
-  return self->value;
+  return (int)self->value;
 }
 
 struct TInteger *M7_Integer_set(struct TInteger *self, int value) {
   self->value = value;
   return self;
+}
+
+long long M7_Integer_getLong(struct TInteger *self) {
+  return self->value;
 }
 
 /* -------------------------------------------------------------------------
@@ -597,16 +608,18 @@ void *__cm_cast(void *object, struct __catmint_rtti *target) {
   exit(1);
 }
 
-/* Boxing and unboxing, inserted by the generator where an Int meets a place
- * that holds object references, and on the way back out. */
-void *__cm_boxInt(int value) {
+/* Boxing and unboxing, inserted by the generator where an integer meets a
+ * place that holds object references, and on the way back out. The box is 64
+ * bits wide, so the generator widens before boxing and narrows after
+ * unboxing; no integer type loses anything in a container. */
+void *__cm_boxLong(long long value) {
   struct TInteger *box = (struct TInteger *)__catmint_new(RTTI(RInteger));
   Integer_init(box);
   box->value = value;
   return box;
 }
 
-int __cm_unboxInt(void *object) {
+long long __cm_unboxLong(void *object) {
   __cm_checkNull(object);
   if (((struct TObject *)object)->rtti != RTTI(RInteger)) {
     printf("Runtime error : Expected an Integer, found %s.\n",
@@ -661,6 +674,17 @@ struct TString *__cm_intToString(int value) {
 
   memset(buffer, 0, sizeof(buffer));
   snprintf(buffer, sizeof(buffer), "%d", value);
+
+  return make_string(buffer);
+}
+
+/* The same for Int64. The narrower widths are sign-extended to Int first, so
+ * only these two conversions exist. */
+struct TString *__cm_longToString(long long value) {
+  char buffer[32];
+
+  memset(buffer, 0, sizeof(buffer));
+  snprintf(buffer, sizeof(buffer), "%lld", value);
 
   return make_string(buffer);
 }
