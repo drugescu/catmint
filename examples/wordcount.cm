@@ -1,0 +1,60 @@
+# wordcount -- count how often each word appears in a file.
+#
+# A small program that uses most of what the language has: the command line,
+# a file, the string library, the hash table from the standard library, and
+# giving memory back when it is done with it.
+#
+#   ./catmintc -I lib examples/wordcount.cm -o wordcount
+#   ./wordcount somefile.txt
+
+using dict as d
+using text as tx
+
+class Main from IO
+  def main:
+    if args() < 2:
+      err("usage: wordcount <file>\n")
+      exit(1)
+    end
+
+    String path = arg(1)
+    File input
+    if input.open(path, "r") == 0:
+      err("wordcount: cannot open " + path + "\n")
+      exit(1)
+    end
+
+    d::Dict counts
+    List order
+    tx::Text text
+
+    while input.eof() == 0:
+      String line = input.readLine()
+      # Punctuation becomes a separator, so "cat," and "cat" are one word.
+      String cleaned = line.lower().replace(",", " ").replace(".", " ")
+      cleaned = cleaned.replace("!", " ").replace("?", " ").replace(";", " ")
+
+      for w in text.words(cleaned):
+        String word = w
+        if counts.has(word) == 0:
+          counts.put(word, 0)
+          order.append(word)
+        end
+        Int seen = counts.get(word)
+        counts.put(word, seen + 1)
+      end
+    end
+    input.close()
+
+    out("words " + order.len() + "\n")
+    for k in order:
+      String key = k
+      Int n = counts.get(key)
+      out(text.padRight(key, 14, " ") + n + "\n")
+    end
+
+    # The file object holds an operating system handle, so hand it back
+    # rather than waiting for the process to end.
+    input.free()
+  end
+end
