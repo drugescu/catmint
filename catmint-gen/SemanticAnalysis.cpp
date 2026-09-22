@@ -95,6 +95,10 @@ bool SemanticAnalysis::visit(Class *c) {
     return true;
   }
 
+  // Remembered so that a bare call can be resolved against this class's own
+  // static methods, which have no receiver to look at.
+  currentClass = c;
+
   // Create a scope and add all attributes to it
   SymbolTable::Scope classScope(symbolTable, c->getName());
   for (auto currentClass = c; currentClass;
@@ -144,8 +148,9 @@ void SemanticAnalysis::checkFeatures(Class *c) {
       // A constructor is not an override: a subclass takes whatever arguments
       // it needs, and the signature of the one it inherits says nothing about
       // them. It is never dispatched virtually either, so there is no slot to
-      // keep compatible.
-      if (method->getName() == strings::Init) {
+      // keep compatible. A static method has no slot either, for the same
+      // reason, so neither is checked against what it hides.
+      if (method->getName() == strings::Init || method->isStatic()) {
         continue;
       }
 
@@ -462,10 +467,55 @@ bool SemanticAnalysis::visit(Substring *s) {
   return true;
 }
 
+/// The class a static call names, or null when this dispatch is an ordinary
+/// call. `Math.sqrt(2.0)` reaches the parser as a dispatch whose object is a
+/// Symbol; it is a static call when that name is a class rather than a
+/// variable, so a variable of the same name still wins.
+Class *SemanticAnalysis::staticReceiverClass(Dispatch *d) {
+  auto sym = dynamic_cast<Symbol *>(d->getObject());
+  if (!sym || symbolTable.contains(sym->getName())) {
+    return nullptr;
+  }
+  try {
+    auto type = typeTable.getType(sym->getName());
+    return type ? type->getClass() : nullptr;
+  } catch (const SemanticException &) {
+    return nullptr;
+  }
+}
+
 bool SemanticAnalysis::visit(Dispatch *d) {
   auto obj = d->getObject();
 
   std::cout << "Visiting dispatch " << d->getName() << "\n";
+
+  // A call on a class name rather than on an object.
+  if (auto staticClass = staticReceiverClass(d)) {
+    auto method = typeTable.getMethod(staticClass, d->getName());
+    if (!method || !method->isStatic()) {
+      throw MethodNotFoundException(d->getName(), staticClass);
+    }
+    if (!checkDispatchArgs(d, method)) {
+      return false;
+    }
+    typeTable.setType(d, typeTable.getType(method->getReturnType()));
+    return true;
+  }
+
+  // A bare call inside a class may name one of its own static methods, which
+  // has no receiver to visit.
+  if (!obj) {
+    auto enclosing = currentClass;
+    auto method = enclosing ? typeTable.getMethod(enclosing, d->getName())
+                            : nullptr;
+    if (method && method->isStatic()) {
+      if (!checkDispatchArgs(d, method)) {
+        return false;
+      }
+      typeTable.setType(d, typeTable.getType(method->getReturnType()));
+      return true;
+    }
+  }
 
   if (obj) {
     std::cout << "  Object exists in dispatch and visiting.\n";

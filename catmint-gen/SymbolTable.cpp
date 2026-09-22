@@ -58,6 +58,17 @@ TreeNode *SymbolTable::lookup(const std::string &name) const {
   throw UnknownVariableException(name);
 }
 
+bool SymbolTable::contains(const std::string &name) const {
+  if (symbolTable.empty()) {
+    return false;
+  }
+  const std::string self("self.");
+  const bool startsWithSelf = (name.find(self) == 0);
+  const std::string varName = startsWithSelf ? name.substr(self.size()) : name;
+  auto scope = startsWithSelf ? getScope("self") : getScope(varName);
+  return scope && (scope->uscope)->count(varName) != 0;
+}
+
 auto SymbolTable::getScope(const std::string &name) const -> SymbolTableScope
     * {
   for (int i = symbolTable.size() - 1; i >= 0; i--) {

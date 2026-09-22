@@ -254,6 +254,15 @@ ambiguous with static dispatch (`Program::run.execute(...)`), which begins
 identically; the dispatch rule splits it apart again. In symbols `::` becomes
 `$`, which cannot appear in a catmint identifier, so nothing can collide.
 
+`static def` declares a method with no receiver: it gets no virtual table
+slot and is called on the class, `Geometry.square(7)`. A call whose receiver
+is a bare name is a static call when that name is a class and *not* a
+variable, so a variable shadowing a class name still wins. Inside a class a
+static may be called unqualified, which is how one static calls another.
+The built-ins that never used their receiver are static now -- every `Math`
+method, `File.exists`, `File.remove` and `String.chr` -- so `Math` takes no
+virtual table slots at all and exists only to name its functions.
+
 `and` and `or` are short-circuiting and bind looser than every other
 operator, so `p != null and p.value > 0` needs no parentheses and never
 evaluates the right side when the left has settled the answer. `&` and `|`

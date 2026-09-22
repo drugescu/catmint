@@ -101,6 +101,9 @@ struct ClassInfo {
   std::map<std::string, unsigned> VTableIndex;
   /// method name -> (class that provides the implementation, its Method node)
   std::map<std::string, std::pair<ClassInfo *, Method *>> VTableImpl;
+  /// Static methods, which take no receiver and get no slot. Inherited like
+  /// the virtual table, so a subclass can call its parent's by name.
+  std::map<std::string, std::pair<ClassInfo *, Method *>> StaticImpl;
 
   llvm::GlobalVariable *RTTI = nullptr;
   llvm::GlobalVariable *NameGlobal = nullptr;
@@ -216,6 +219,14 @@ private:
   llvm::Value *emitFieldAccess(FieldAccess *FA);
   llvm::Value *emitCast(Cast *C);
   llvm::Value *emitSubstring(Substring *S);
+
+  /// A call with no receiver: the implementation is called directly and the
+  /// arguments start at parameter zero.
+  llvm::Value *emitStaticCall(ClassInfo *Owner, Method *M,
+                              const std::vector<Expression *> &Args, int Line);
+  /// The class a dispatch's receiver names when it is a class rather than a
+  /// variable, which is what makes `Math.sqrt(2.0)` a static call.
+  ClassInfo *staticReceiver(Dispatch *D);
 
   llvm::Value *emitCall(ClassInfo *RecvClass, const std::string &MethodName,
                         llvm::Value *Receiver,

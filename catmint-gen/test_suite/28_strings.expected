@@ -12,7 +12,6 @@ chr ABC
 roundtrip 90 Z
 toFloat 3.5
 toInt 42
-t.chr cm
 join Hello,-Catmint-World
 repeat ababab
 padLeft [0007]

@@ -14,7 +14,7 @@ class Main from IO
       f.close()
     end
 
-    out("exists " + f.exists(path) + "\n")
+    out("exists " + File.exists(path) + "\n")
 
     File reader
     reader.open(path, "r")
@@ -34,7 +34,7 @@ class Main from IO
     File missing
     out("missing opens " + missing.open("/tmp/catmint_no_such_file", "r") + "\n")
 
-    out("removed " + f.remove(path) + "\n")
-    out("exists now " + f.exists(path) + "\n")
+    out("removed " + File.remove(path) + "\n")
+    out("exists now " + File.exists(path) + "\n")
   end
 end

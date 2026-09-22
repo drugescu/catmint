@@ -75,6 +75,15 @@ bool TypeTable::isBuiltinType(Type *t) const {
 }
 
 // Add 'Object', 'IO', 'String' classes
+/// Mark the method just declared as static: no receiver, no virtual table
+/// slot. Statics are declared after every instance method of their class, so
+/// that declaration order stays equal to slot order for the rest.
+static Method *asStatic(std::vector<Feature *> &methods) {
+  auto method = static_cast<Method *>(methods.back());
+  method->setStatic(true);
+  return method;
+}
+
 void TypeTable::addBuiltinClasses(Program *p) {
   std::vector<Feature *> builtinMethods;
   //std::vector<FormalParam *> builtinMethodsParams;
@@ -257,11 +266,6 @@ void TypeTable::addBuiltinClasses(Program *p) {
       new Method(0, "split", strings::List, nullptr, builtinMethodsParams));
 
   builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "code", strings::Int));
-  builtinMethods.push_back(
-      new Method(0, "chr", strings::String, nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
   builtinMethodsParams.push_back(new Attribute(0, "from", strings::String));
   builtinMethodsParams.push_back(new Attribute(0, "to", strings::String));
   builtinMethods.push_back(
@@ -270,6 +274,14 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethodsParams.clear();
   builtinMethods.push_back(
       new Method(0, "toFloat", strings::Float, nullptr, builtinMethodsParams));
+
+  // Static, and therefore after every slot-taking method: a character code
+  // does not belong to a particular String. Written String.chr(65).
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "code", strings::Int));
+  builtinMethods.push_back(
+      new Method(0, "chr", strings::String, nullptr, builtinMethodsParams));
+  asStatic(builtinMethods);
   builtinMethodsParams.clear();
   
   // Add these methods to class 'String' which inherits 'Object', add class to typeTable,  park it in the program
@@ -390,15 +402,19 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethods.push_back(
       new Method(0, "isOpen", strings::Int, nullptr, builtinMethodsParams));
 
+  // Static, and therefore after every slot-taking method: these two are
+  // about a path, not about an open file. Written File.exists(path).
   builtinMethodsParams.clear();
   builtinMethodsParams.push_back(new Attribute(0, "path", strings::String));
   builtinMethods.push_back(
       new Method(0, "exists", strings::Int, nullptr, builtinMethodsParams));
+  asStatic(builtinMethods);
 
   builtinMethodsParams.clear();
   builtinMethodsParams.push_back(new Attribute(0, "path", strings::String));
   builtinMethods.push_back(
       new Method(0, "remove", strings::Int, nullptr, builtinMethodsParams));
+  asStatic(builtinMethods);
 
   std::unique_ptr<Class> fileClass(
       new Class(0, strings::File, strings::Object, builtinMethods));
@@ -411,8 +427,9 @@ void TypeTable::addBuiltinClasses(Program *p) {
   // ---------------------------------------------------------------------------
   // Add built-in class - 'Math'
   //
-  // A shell over libm, with no state. The language has no free functions, so
-  // this is where they live. Declaration order must match RMath in runtime.c.
+  // A shell over libm, with no state. Every method is static, so the class
+  // contributes no virtual table slots at all and exists to name the
+  // functions: Math.sqrt(2.0).
   // ---------------------------------------------------------------------------
 
   // One entry per slot, in RMath's order. Written out rather than generated
@@ -422,6 +439,7 @@ void TypeTable::addBuiltinClasses(Program *p) {
     builtinMethodsParams.push_back(new Attribute(0, "x", strings::Float));
     builtinMethods.push_back(
         new Method(0, name, strings::Float, nullptr, builtinMethodsParams));
+    asStatic(builtinMethods);
   };
   auto twoFloats = [&](const char *name, const char *first,
                        const char *second) {
@@ -430,6 +448,7 @@ void TypeTable::addBuiltinClasses(Program *p) {
     builtinMethodsParams.push_back(new Attribute(0, second, strings::Float));
     builtinMethods.push_back(
         new Method(0, name, strings::Float, nullptr, builtinMethodsParams));
+    asStatic(builtinMethods);
   };
   auto twoInts = [&](const char *name) {
     builtinMethodsParams.clear();
@@ -437,6 +456,7 @@ void TypeTable::addBuiltinClasses(Program *p) {
     builtinMethodsParams.push_back(new Attribute(0, "b", strings::Int));
     builtinMethods.push_back(
         new Method(0, name, strings::Int, nullptr, builtinMethodsParams));
+    asStatic(builtinMethods);
   };
 
   oneFloat("sqrt");
@@ -457,6 +477,7 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethodsParams.push_back(new Attribute(0, "x", strings::Int));
   builtinMethods.push_back(
       new Method(0, "abs", strings::Int, nullptr, builtinMethodsParams));
+  asStatic(builtinMethods);
 
   twoInts("min");
   twoInts("max");
@@ -464,8 +485,10 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethodsParams.clear();
   builtinMethods.push_back(
       new Method(0, "pi", strings::Float, nullptr, builtinMethodsParams));
+  asStatic(builtinMethods);
   builtinMethods.push_back(
       new Method(0, "e", strings::Float, nullptr, builtinMethodsParams));
+  asStatic(builtinMethods);
 
   std::unique_ptr<Class> mathClass(
       new Class(0, strings::Math, strings::Object, builtinMethods));

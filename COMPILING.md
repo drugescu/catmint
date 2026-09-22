@@ -144,6 +144,10 @@ Things worth knowing, because they are not obvious:
   declared return type. There is no limit on the number of parameters. The
   paren-less form the README shows, `def show Int a, Int b:`, is not
   implemented; use parentheses.
+- **`static def` is a method with no receiver**, called on the class:
+  `Math.sqrt(2.0)`, `String.chr(65)`, `File.exists(path)`, or your own
+  `Geometry.square(7)`. It cannot use `self` or any attribute. Inside the
+  class that declares it, it can be called by name alone.
 - **`x = expr` on a name that already exists assigns to it**; on a new name it
   declares it. The grammar produces the same node for both.
 - **`%` binds as loosely as `+` and `-`, not as tightly as `*` and `/`.**

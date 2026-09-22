@@ -342,6 +342,7 @@ void IRGenerator::buildVTable(ClassInfo *CI) {
     CI->VTableOrder = CI->Parent->VTableOrder;
     CI->VTableIndex = CI->Parent->VTableIndex;
     CI->VTableImpl = CI->Parent->VTableImpl;
+    CI->StaticImpl = CI->Parent->StaticImpl;
   }
 
   for (auto *F : *CI->AST) {
@@ -349,9 +350,14 @@ void IRGenerator::buildVTable(ClassInfo *CI) {
     if (!M)
       continue;
     const std::string MName = M->getName();
-    // A constructor gets no slot. It is always called on a known class, and a
-    // subclass's constructor takes its own arguments, so a shared slot would
-    // hold function pointers of two different types.
+    // A static method gets no slot: there is no receiver to load one from.
+    if (M->isStatic()) {
+      CI->StaticImpl[MName] = {CI, M};
+      continue;
+    }
+    // A constructor gets no slot either. It is always called on a known
+    // class, and a subclass's constructor takes its own arguments, so a
+    // shared slot would hold function pointers of two different types.
     if (MName == strings::Init) {
       CI->VTableImpl[MName] = {CI, M};
       continue;
@@ -368,7 +374,9 @@ void IRGenerator::buildVTable(ClassInfo *CI) {
 
 llvm::FunctionType *IRGenerator::methodType(ClassInfo *CI, Method *M) {
   std::vector<llvm::Type *> Params;
-  Params.push_back(llvm::PointerType::getUnqual(Context)); // self
+  // A static method has no receiver, so its parameters start at zero.
+  if (!M->isStatic())
+    Params.push_back(llvm::PointerType::getUnqual(Context)); // self
   for (auto *P : *M)
     Params.push_back(lowerType(P->getType()));
   return llvm::FunctionType::get(lowerType(M->getReturnType()), Params, false);
@@ -572,13 +580,17 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
   Scopes.emplace_back();
 
   // self, then the declared parameters, each given a stack slot so that
-  // assignment to a parameter works like assignment to any other local.
+  // assignment to a parameter works like assignment to any other local. A
+  // static method has no self, and its parameters start at argument zero.
   auto Ptr = llvm::PointerType::getUnqual(Context);
-  auto *SelfSlot = createEntryAlloca(Ptr, "self");
-  Builder.CreateStore(F->getArg(0), SelfSlot);
-  Scopes.back()["self"] = {SelfSlot, CI->AST->getName()};
+  unsigned Idx = 0;
+  if (!M->isStatic()) {
+    auto *SelfSlot = createEntryAlloca(Ptr, "self");
+    Builder.CreateStore(F->getArg(0), SelfSlot);
+    Scopes.back()["self"] = {SelfSlot, CI->AST->getName()};
+    Idx = 1;
+  }
 
-  unsigned Idx = 1;
   for (auto *P : *M) {
     auto *Slot = createEntryAlloca(lowerType(P->getType()), P->getName());
     Builder.CreateStore(F->getArg(Idx), Slot);
@@ -815,6 +827,17 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
   if (dynamic_cast<ForStatement *>(E))          return strings::Void;
 
   if (auto *D = dynamic_cast<Dispatch *>(E)) {
+    if (ClassInfo *Target = staticReceiver(D)) {
+      auto It = Target->StaticImpl.find(D->getName());
+      if (It != Target->StaticImpl.end())
+        return It->second.second->getReturnType();
+    }
+    if (!D->getObject() && CurrentClass &&
+        !CurrentClass->VTableImpl.count(D->getName())) {
+      auto It = CurrentClass->StaticImpl.find(D->getName());
+      if (It != CurrentClass->StaticImpl.end())
+        return It->second.second->getReturnType();
+    }
     std::string RecvType = D->getObject() ? staticTypeOf(D->getObject())
                                           : (CurrentClass ? CurrentClass->AST->getName()
                                                           : std::string(strings::Object));
@@ -992,8 +1015,11 @@ llvm::Value *IRGenerator::emitNullConstant(NullConstant *) {
 
 llvm::Value *IRGenerator::emitSymbol(Symbol *S) {
   const std::string Name = S->getName();
-  if (Name == strings::Self)
-    return selfValue();
+  if (Name == strings::Self) {
+    if (auto *Self = selfValue())
+      return Self;
+    fail(S->getLineNumber(), "'self' is not available in a static method");
+  }
 
   if (auto *L = findLocal(Name))
     return Builder.CreateLoad(lowerType(L->TypeName), L->Addr, Name);
@@ -1001,6 +1027,10 @@ llvm::Value *IRGenerator::emitSymbol(Symbol *S) {
   std::string FieldTy;
   if (auto *Addr = attributeAddress(Name, FieldTy))
     return Builder.CreateLoad(lowerType(FieldTy), Addr, Name);
+
+  if (CurrentClass && CurrentClass->FieldIndex.count(Name) && !findLocal("self"))
+    fail(S->getLineNumber(), "a static method cannot use the attribute '" +
+                                 Name + "', which belongs to an instance");
 
   fail(S->getLineNumber(), "unknown identifier '" + Name + "'");
 }
@@ -1520,9 +1550,14 @@ llvm::Value *IRGenerator::emitCall(ClassInfo *RecvClass,
                                    int Line, bool Virtual,
                                    const std::string &StaticClass) {
   auto It = RecvClass->VTableImpl.find(MethodName);
-  if (It == RecvClass->VTableImpl.end())
+  if (It == RecvClass->VTableImpl.end()) {
+    if (RecvClass->StaticImpl.count(MethodName))
+      fail(Line, "'" + MethodName + "' is a static method of '" +
+                     RecvClass->AST->getName() + "'; call it on the class, as " +
+                     RecvClass->AST->getName() + "." + MethodName + "(...)");
     fail(Line, "class '" + RecvClass->AST->getName() + "' has no method '" +
                    MethodName + "'");
+  }
 
   ClassInfo *Owner = It->second.first;
   Method *M = It->second.second;
@@ -1580,7 +1615,73 @@ llvm::Value *IRGenerator::emitCall(ClassInfo *RecvClass,
                                         : static_cast<llvm::Value *>(Call);
 }
 
+/// The class a dispatch's receiver names, when the receiver is a class name
+/// rather than a variable. A variable of the same name wins, so a program
+/// that has both is not silently redirected.
+ClassInfo *IRGenerator::staticReceiver(Dispatch *D) {
+  auto *Sym = dynamic_cast<Symbol *>(D->getObject());
+  if (!Sym || findLocal(Sym->getName()))
+    return nullptr;
+  if (CurrentClass && CurrentClass->FieldIndex.count(Sym->getName()))
+    return nullptr;
+  return lookupClass(Sym->getName());
+}
+
+llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,
+                                         const std::vector<Expression *> &Args,
+                                         int Line) {
+  auto *FT = methodType(Owner, M);
+
+  std::vector<llvm::Value *> CallArgs;
+  auto ParamIt = M->begin();
+  for (auto *Arg : Args) {
+    const std::string FromTy = staticTypeOf(Arg);
+    llvm::Value *V = emit(Arg);
+    if (!V)
+      fail(Line, "argument to '" + M->getName() + "' produced no value");
+    if (ParamIt != M->end()) {
+      V = coerce(V, FromTy, (*ParamIt)->getType(), Line);
+      ++ParamIt;
+    }
+    CallArgs.push_back(V);
+  }
+  if (CallArgs.size() != FT->getNumParams())
+    fail(Line, "wrong number of arguments to '" + M->getName() + "'");
+
+  auto Callee =
+      Module.getOrInsertFunction(runtimeSymbol(Owner, M->getName()), FT);
+  auto *Call = Builder.CreateCall(Callee, CallArgs);
+  return (M->getReturnType() == strings::Void || M->getReturnType() == "auto")
+             ? nullptr
+             : static_cast<llvm::Value *>(Call);
+}
+
 llvm::Value *IRGenerator::emitDispatch(Dispatch *D) {
+  std::vector<Expression *> DispatchArgs;
+  for (auto *A : *D)
+    DispatchArgs.push_back(A);
+
+  // A call on a class name: no receiver is evaluated at all.
+  if (ClassInfo *Target = staticReceiver(D)) {
+    auto It = Target->StaticImpl.find(D->getName());
+    if (It == Target->StaticImpl.end())
+      fail(D->getLineNumber(), "class '" + Target->AST->getName() +
+                                   "' has no static method '" + D->getName() +
+                                   "'");
+    return emitStaticCall(It->second.first, It->second.second, DispatchArgs,
+                          D->getLineNumber());
+  }
+
+  // A bare call may name one of this class's own static methods, which is
+  // how one static calls another.
+  if (!D->getObject() && CurrentClass) {
+    auto It = CurrentClass->StaticImpl.find(D->getName());
+    if (It != CurrentClass->StaticImpl.end() &&
+        !CurrentClass->VTableImpl.count(D->getName()))
+      return emitStaticCall(It->second.first, It->second.second, DispatchArgs,
+                            D->getLineNumber());
+  }
+
   std::string RecvType;
   llvm::Value *Receiver = nullptr;
 
@@ -1601,10 +1702,7 @@ llvm::Value *IRGenerator::emitDispatch(Dispatch *D) {
   if (!CI)
     fail(D->getLineNumber(), "unknown class '" + RecvType + "' in dispatch");
 
-  std::vector<Expression *> Args;
-  for (auto *A : *D)
-    Args.push_back(A);
-  return emitCall(CI, D->getName(), Receiver, Args, D->getLineNumber(),
+  return emitCall(CI, D->getName(), Receiver, DispatchArgs, D->getLineNumber(),
                   /*Virtual=*/true, "");
 }
 

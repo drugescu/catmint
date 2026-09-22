@@ -69,6 +69,10 @@ public:
 
   TreeNode *lookup(const std::string &name) const;
 
+  /// \brief Whether \p name resolves to a variable, without throwing.
+  ///        A class name used as the receiver of a static call does not.
+  bool contains(const std::string &name) const;
+
 private:
   void insert(TreeNode *v, const std::string &name);
   void insert(TreeNode *v, const std::vector<std::string> &name);

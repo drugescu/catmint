@@ -31,14 +31,13 @@ class Main from IO
 
     # A character code back to a string, which is what case conversion and
     # any encoder needs. The receiver is not used.
-    out("chr " + s.chr(65) + s.chr(66) + s.chr(67) + "\n")
-    out("roundtrip " + "Z".at(0) + " " + s.chr("Z".at(0)) + "\n")
+    out("chr " + String.chr(65) + String.chr(66) + String.chr(67) + "\n")
+    out("roundtrip " + "Z".at(0) + " " + String.chr("Z".at(0)) + "\n")
 
     out("toFloat " + "3.5".toFloat() + "\n")
     out("toInt " + "42".toInt() + "\n")
 
     tx::Text t
-    out("t.chr " + t.chr(99) + t.chr(109) + "\n")
     out("join " + t.join(words, "-") + "\n")
     out("repeat " + t.repeat("ab", 3) + "\n")
     out("padLeft [" + t.padLeft("7", 4, "0") + "]\n")

@@ -49,6 +49,9 @@ private:
   bool visit(StaticDispatch *sd) override;
   bool visit(NewObject *n) override;
   bool visit(FieldAccess *fa) override;
+
+  /// The class named by a static call's receiver, or null for a normal call.
+  Class *staticReceiverClass(Dispatch *d);
   bool visit(IfStatement *i) override;
   bool visit(WhileStatement *w) override;
   bool visit(LocalDefinition *local) override;
@@ -73,6 +76,9 @@ public:
 private:
   Program *program;
   bool libraryOnly;
+  /// The class currently being analysed, so that a bare call can be resolved
+  /// against its static methods, which have no receiver to look at.
+  Class *currentClass = nullptr;
   /// A `for` binds its loop variable, which has no definition node of its own
   /// in the tree. The synthesised definitions are owned here so that they
   /// outlive the symbol table entries pointing at them.

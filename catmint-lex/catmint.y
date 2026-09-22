@@ -119,7 +119,7 @@
 %token OP_ATTRIB OP_DIV OP_PLUS OP_MINUS OP_MUL
 %token OP_OPAREN OP_CPAREN OP_COLON OP_STATIC_ACCESS
 
-%token KW_CONSTEXPR KW_DEF
+%token KW_CONSTEXPR KW_DEF KW_STATIC
 
 %token <stringValue> IDENTIFIER
 %token <stringValue> STRING_CONSTANT
@@ -379,6 +379,15 @@ method
 		$$ = new catmint::Method(@1.first_line, std::string(catmint::strings::Init),
 		                         std::string("Void"), Expression($5), *params);
 		delete params;
+	}
+  // A static method: no receiver, no virtual table slot, called on the class.
+  // Written as a prefix on any of the six 'def' forms rather than as six more
+  // rules of its own.
+  | KW_STATIC method {
+		if (auto m = dynamic_cast<catmint::Method*>($2)) {
+			m->setStatic(true);
+		}
+		$$ = $2;
 	}
   // constructor(Int a, Int b):
   | KW_CONSTRUCTOR OP_OPAREN method_arguments OP_CPAREN OP_COLON block KW_END {

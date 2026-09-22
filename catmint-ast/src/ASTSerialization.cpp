@@ -21,6 +21,7 @@ const auto Features = "Features";
 const auto Type = "Type";
 const auto Initializer = "Initializer";
 const auto ReturnType = "ReturnType";
+const auto Static = "Static";
 const auto Body = "Body";
 const auto FormalParams = "FormalParams";
 const auto Value = "Value";
@@ -203,6 +204,13 @@ bool ASTSerializer::visit(Method *M) {
   auto ret = M->getReturnType();
   if (!ret.empty()) {
     writePair(keys::ReturnType, ret);
+  }
+
+  // Written only when true, so an AST for a program with no static methods
+  // is byte-for-byte what it was before static methods existed.
+  if (M->isStatic()) {
+    writer->Key(keys::Static);
+    writer->Bool(true);
   }
 
   if (auto body = M->getBody()) {
@@ -945,6 +953,11 @@ std::unique_ptr<Method> ASTDeserializer::parseMethod(rapidjson::Value &tree) {
   auto method = createNode<Method>(tree, parseLineNumber(tree),
                                    tree[keys::Name].GetString(), returnType,
                                    std::move(body));
+
+  if (tree.HasMember(keys::Static)) {
+    assert(tree[keys::Static].IsBool() && "Invalid static flag");
+    method->setStatic(tree[keys::Static].GetBool());
+  }
 
   //if (tree.HasMember(keys::AttributeNodeType)) {
   //  auto &formalParams = tree[keys::AttributeNodeType];

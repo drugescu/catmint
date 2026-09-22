@@ -1,0 +1,50 @@
+# Static methods: a method with no receiver, called on the class.
+
+class Geometry
+  static def Int square(Int n):
+    return n * n
+  end
+
+  # A static may call another one in the same class without naming it.
+  static def Int hypotSquared(Int a, Int b):
+    return square(a) + square(b)
+  end
+end
+
+class Shape
+  Int side
+
+  static def Shape unit:
+    Shape s = new Shape
+    s.side = 1
+    return s
+  end
+
+  def Int area:
+    return side * side
+  end
+end
+
+class Main from IO
+  static def String greet(String who):
+    return "hello " + who
+  end
+
+  def main:
+    out(greet("world") + "\n")
+    out("square " + Geometry.square(7) + "\n")
+    out("hyp " + Geometry.hypotSquared(3, 4) + "\n")
+
+    # A static can build and return an instance, which is what a named
+    # constructor looks like in a language with no overloading.
+    Shape s = Shape.unit()
+    out("unit area " + s.area() + "\n")
+
+    # The built-ins that never used their receiver are static now.
+    out("sqrt " + Math.sqrt(2.0) + "\n")
+    out("max " + Math.max(3, 9) + "\n")
+    out("pi " + Math.pi() + "\n")
+    out("chr " + String.chr(65) + String.chr(66) + "\n")
+    out("exists " + File.exists("/no/such/catmint/path") + "\n")
+  end
+end

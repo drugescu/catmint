@@ -114,9 +114,9 @@ CATMINT_RTTI_TYPE(catmint_rtti7_object, 7);
 CATMINT_RTTI_TYPE(catmint_rtti21_io, 21);
 CATMINT_RTTI_TYPE(catmint_rtti12_list, 12);
 CATMINT_RTTI_TYPE(catmint_rtti10_integer, 10);
-CATMINT_RTTI_TYPE(catmint_rtti16_file, 16);
-CATMINT_RTTI_TYPE(catmint_rtti21_string, 21);
-CATMINT_RTTI_TYPE(catmint_rtti25_math, 25);
+CATMINT_RTTI_TYPE(catmint_rtti14_file, 14);
+CATMINT_RTTI_TYPE(catmint_rtti20_string, 20);
+
 
 #define RTTI(x) ((struct __catmint_rtti *)&(x))
 
@@ -139,7 +139,7 @@ struct TString *M6_String_trim(struct TString *self);
 struct TString *M6_String_upper(struct TString *self);
 struct TString *M6_String_lower(struct TString *self);
 struct TList *M6_String_split(struct TString *self, struct TString *separator);
-struct TString *M6_String_chr(struct TString *self, int code);
+struct TString *M6_String_chr(int code);
 struct TString *M6_String_replace(struct TString *self, struct TString *from,
                                   struct TString *to);
 double M6_String_toFloat(struct TString *self);
@@ -166,27 +166,27 @@ struct TFile *M4_File_write(struct TFile *self, struct TString *text);
 int M4_File_eof(struct TFile *self);
 struct TFile *M4_File_close(struct TFile *self);
 int M4_File_isOpen(struct TFile *self);
-int M4_File_exists(struct TFile *self, struct TString *path);
-int M4_File_remove(struct TFile *self, struct TString *path);
+int M4_File_exists(struct TString *path);
+int M4_File_remove(struct TString *path);
 
-double M4_Math_sqrt(struct TMath *self, double x);
-double M4_Math_pow(struct TMath *self, double x, double y);
-double M4_Math_exp(struct TMath *self, double x);
-double M4_Math_log(struct TMath *self, double x);
-double M4_Math_log10(struct TMath *self, double x);
-double M4_Math_sin(struct TMath *self, double x);
-double M4_Math_cos(struct TMath *self, double x);
-double M4_Math_tan(struct TMath *self, double x);
-double M4_Math_atan2(struct TMath *self, double y, double x);
-double M4_Math_floor(struct TMath *self, double x);
-double M4_Math_ceil(struct TMath *self, double x);
-double M4_Math_round(struct TMath *self, double x);
-double M4_Math_absf(struct TMath *self, double x);
-int M4_Math_abs(struct TMath *self, int x);
-int M4_Math_min(struct TMath *self, int a, int b);
-int M4_Math_max(struct TMath *self, int a, int b);
-double M4_Math_pi(struct TMath *self);
-double M4_Math_e(struct TMath *self);
+double M4_Math_sqrt(double x);
+double M4_Math_pow(double x, double y);
+double M4_Math_exp(double x);
+double M4_Math_log(double x);
+double M4_Math_log10(double x);
+double M4_Math_sin(double x);
+double M4_Math_cos(double x);
+double M4_Math_tan(double x);
+double M4_Math_atan2(double y, double x);
+double M4_Math_floor(double x);
+double M4_Math_ceil(double x);
+double M4_Math_round(double x);
+double M4_Math_absf(double x);
+int M4_Math_abs(int x);
+int M4_Math_min(int a, int b);
+int M4_Math_max(int a, int b);
+double M4_Math_pi(void);
+double M4_Math_e(void);
 
 int M4_List_len(struct TList *self);
 void *M4_List_get(struct TList *self, int index);
@@ -201,7 +201,7 @@ long long M7_Integer_getLong(struct TInteger *self);
 void *__catmint_new(struct __catmint_rtti *rtti);
 void String_init(struct TString *self);
 
-extern catmint_rtti21_string RString;
+extern catmint_rtti20_string RString;
 
 /* Class names. Each is itself a String, so its rtti is RString, and each has
  * a reference count of zero: they are static and must never be freed. */
@@ -224,7 +224,7 @@ catmint_rtti7_object RObject = {
   { CATMINT_OBJECT_SLOTS }
 };
 
-catmint_rtti21_string RString = {
+catmint_rtti20_string RString = {
   &NString, sizeof(struct TString), RTTI(RObject),
   { CATMINT_OBJECT_SLOTS,
     (void *)M6_String_length, (void *)M6_String_toInt,
@@ -232,7 +232,7 @@ catmint_rtti21_string RString = {
     (void *)M6_String_equal, (void *)M6_String_at,
     (void *)M6_String_indexOf, (void *)M6_String_trim,
     (void *)M6_String_upper, (void *)M6_String_lower,
-    (void *)M6_String_split, (void *)M6_String_chr,
+    (void *)M6_String_split,
     (void *)M6_String_replace, (void *)M6_String_toFloat }
 };
 
@@ -249,23 +249,19 @@ catmint_rtti21_io RIO = {
     (void *)M2_IO_exit, (void *)M2_IO_allocated }
 };
 
-catmint_rtti16_file RFile = {
+catmint_rtti14_file RFile = {
   &NFile, sizeof(struct TFile), RTTI(RObject),
   { CATMINT_OBJECT_SLOTS,
     (void *)M4_File_open, (void *)M4_File_readLine, (void *)M4_File_readAll,
     (void *)M4_File_write, (void *)M4_File_eof, (void *)M4_File_close,
-    (void *)M4_File_isOpen, (void *)M4_File_exists, (void *)M4_File_remove }
+    (void *)M4_File_isOpen }
 };
 
-catmint_rtti25_math RMath = {
+/* Every Math method is static, so the class contributes no slots of its own
+ * and its table is Object's. The class exists only to name the functions. */
+catmint_rtti7_object RMath = {
   &NMath, sizeof(struct TMath), RTTI(RObject),
-  { CATMINT_OBJECT_SLOTS,
-    (void *)M4_Math_sqrt, (void *)M4_Math_pow, (void *)M4_Math_exp,
-    (void *)M4_Math_log, (void *)M4_Math_log10, (void *)M4_Math_sin,
-    (void *)M4_Math_cos, (void *)M4_Math_tan, (void *)M4_Math_atan2,
-    (void *)M4_Math_floor, (void *)M4_Math_ceil, (void *)M4_Math_round,
-    (void *)M4_Math_absf, (void *)M4_Math_abs, (void *)M4_Math_min,
-    (void *)M4_Math_max, (void *)M4_Math_pi, (void *)M4_Math_e }
+  { CATMINT_OBJECT_SLOTS }
 };
 
 catmint_rtti12_list RList = {
@@ -1009,12 +1005,10 @@ struct TList *M6_String_split(struct TString *self, struct TString *separator) {
 
 /* A character code as a one-character String: the inverse of at(), and the
  * one string operation that cannot be written in catmint, because there is no
- * way to build a character out of a number. The receiver is not used; call it
- * on any String. */
-struct TString *M6_String_chr(struct TString *self, int code) {
+ * way to build a character out of a number. It is static: String.chr(65). */
+struct TString *M6_String_chr(int code) {
   char buffer[2];
 
-  (void)self;
   buffer[0] = (char)(code & 0xff);
   buffer[1] = '\0';
   return make_string(buffer);
@@ -1230,12 +1224,11 @@ int M4_File_isOpen(struct TFile *self) {
   return self->handle != NULL;
 }
 
-/* These two are about a path, not about this file, so the receiver is not
- * used; call them on any File. */
-int M4_File_exists(struct TFile *self, struct TString *path) {
+/* These two are about a path, not about a particular file, so they are
+ * static: File.exists(path), not someFile.exists(path). */
+int M4_File_exists(struct TString *path) {
   FILE *probe;
 
-  (void)self;
   probe = fopen(path->string, "rb");
   if (!probe) {
     return 0;
@@ -1244,8 +1237,7 @@ int M4_File_exists(struct TFile *self, struct TString *path) {
   return 1;
 }
 
-int M4_File_remove(struct TFile *self, struct TString *path) {
-  (void)self;
+int M4_File_remove(struct TString *path) {
   return remove(path->string) == 0;
 }
 
@@ -1256,29 +1248,23 @@ int M4_File_remove(struct TFile *self, struct TString *path) {
  * has no free functions; `Math m` costs one allocation and then nothing.
  * ------------------------------------------------------------------------- */
 
-double M4_Math_sqrt(struct TMath *self, double x)  { (void)self; return sqrt(x); }
-double M4_Math_pow(struct TMath *self, double x, double y) {
-  (void)self;
-  return pow(x, y);
-}
-double M4_Math_exp(struct TMath *self, double x)   { (void)self; return exp(x); }
-double M4_Math_log(struct TMath *self, double x)   { (void)self; return log(x); }
-double M4_Math_log10(struct TMath *self, double x) { (void)self; return log10(x); }
-double M4_Math_sin(struct TMath *self, double x)   { (void)self; return sin(x); }
-double M4_Math_cos(struct TMath *self, double x)   { (void)self; return cos(x); }
-double M4_Math_tan(struct TMath *self, double x)   { (void)self; return tan(x); }
-double M4_Math_atan2(struct TMath *self, double y, double x) {
-  (void)self;
-  return atan2(y, x);
-}
-double M4_Math_floor(struct TMath *self, double x) { (void)self; return floor(x); }
-double M4_Math_ceil(struct TMath *self, double x)  { (void)self; return ceil(x); }
-double M4_Math_round(struct TMath *self, double x) { (void)self; return round(x); }
-double M4_Math_absf(struct TMath *self, double x)  { (void)self; return fabs(x); }
+double M4_Math_sqrt(double x)  { return sqrt(x); }
+double M4_Math_pow(double x, double y) { return pow(x, y); }
+double M4_Math_exp(double x)   { return exp(x); }
+double M4_Math_log(double x)   { return log(x); }
+double M4_Math_log10(double x) { return log10(x); }
+double M4_Math_sin(double x)   { return sin(x); }
+double M4_Math_cos(double x)   { return cos(x); }
+double M4_Math_tan(double x)   { return tan(x); }
+double M4_Math_atan2(double y, double x) { return atan2(y, x); }
+double M4_Math_floor(double x) { return floor(x); }
+double M4_Math_ceil(double x)  { return ceil(x); }
+double M4_Math_round(double x) { return round(x); }
+double M4_Math_absf(double x)  { return fabs(x); }
 
-int M4_Math_abs(struct TMath *self, int x) { (void)self; return x < 0 ? -x : x; }
-int M4_Math_min(struct TMath *self, int a, int b) { (void)self; return a < b ? a : b; }
-int M4_Math_max(struct TMath *self, int a, int b) { (void)self; return a > b ? a : b; }
+int M4_Math_abs(int x) { return x < 0 ? -x : x; }
+int M4_Math_min(int a, int b) { return a < b ? a : b; }
+int M4_Math_max(int a, int b) { return a > b ? a : b; }
 
-double M4_Math_pi(struct TMath *self) { (void)self; return 3.14159265358979323846; }
-double M4_Math_e(struct TMath *self)  { (void)self; return 2.71828182845904523536; }
+double M4_Math_pi(void) { return 3.14159265358979323846; }
+double M4_Math_e(void)  { return 2.71828182845904523536; }

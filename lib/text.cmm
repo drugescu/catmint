@@ -6,14 +6,6 @@
 # belongs here where it can be read.
 
 class Text from Object
-  String scratch
-
-  # String.chr does not use its receiver, but it has to be called on
-  # something. This is that something, so a program writes t.chr(65) rather
-  # than "".chr(65).
-  def String chr(Int code):
-    return scratch.chr(code)
-  end
 
   def String join(List parts, String separator):
     String out = ""

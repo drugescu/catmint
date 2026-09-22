@@ -54,6 +54,11 @@ public:
   std::string getName() { return name; }
   bool isMethod() const override { return true; }
 
+  /// A static method takes no receiver and gets no virtual table slot, so it
+  /// is called on the class rather than on an object.
+  bool isStatic() const { return staticMethod; }
+  void setStatic(bool value) { staticMethod = value; }
+
   /// @{
   /// \brief Iterate through the parameters
   iterator begin() const { return iterator(parameters.begin()); }
@@ -71,6 +76,7 @@ public:
 private:
   std::string returnType;
   FormalParamsType parameters;
+  bool staticMethod = false;
   
 public:
   std::unique_ptr<Expression> body;

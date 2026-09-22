@@ -25,10 +25,10 @@ source_filename = "runtime.c"
 @.str.6 = private unnamed_addr constant [5 x i8] c"Math\00", align 1
 @NMath = global %struct.TString { ptr @RString, i32 0, i32 4, ptr @.str.6 }, align 8
 @RObject = global { ptr, i32, [4 x i8], ptr, [7 x ptr] } { ptr @NObject, i32 16, [4 x i8] zeroinitializer, ptr null, [7 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_free, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
-@RString = global { ptr, i32, [4 x i8], ptr, [21 x ptr] } { ptr @NString, i32 24, [4 x i8] zeroinitializer, ptr @RObject, [21 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_free, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M6_String_length, ptr @M6_String_toInt, ptr @M6_String_substring, ptr @M6_String_concat, ptr @M6_String_equal, ptr @M6_String_at, ptr @M6_String_indexOf, ptr @M6_String_trim, ptr @M6_String_upper, ptr @M6_String_lower, ptr @M6_String_split, ptr @M6_String_chr, ptr @M6_String_replace, ptr @M6_String_toFloat] }, align 8
+@RString = global { ptr, i32, [4 x i8], ptr, [20 x ptr] } { ptr @NString, i32 24, [4 x i8] zeroinitializer, ptr @RObject, [20 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_free, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M6_String_length, ptr @M6_String_toInt, ptr @M6_String_substring, ptr @M6_String_concat, ptr @M6_String_equal, ptr @M6_String_at, ptr @M6_String_indexOf, ptr @M6_String_trim, ptr @M6_String_upper, ptr @M6_String_lower, ptr @M6_String_split, ptr @M6_String_replace, ptr @M6_String_toFloat] }, align 8
 @RIO = global { ptr, i32, [4 x i8], ptr, [21 x ptr] } { ptr @NIO, i32 16, [4 x i8] zeroinitializer, ptr @RObject, [21 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_free, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M2_IO_in, ptr @M2_IO_out, ptr @M2_IO_readLine, ptr @M2_IO_eof, ptr @M2_IO_entropy, ptr @M2_IO_ticks, ptr @M2_IO_epoch, ptr @M2_IO_localOffset, ptr @M2_IO_sleep, ptr @M2_IO_args, ptr @M2_IO_arg, ptr @M2_IO_err, ptr @M2_IO_exit, ptr @M2_IO_allocated] }, align 8
-@RFile = global { ptr, i32, [4 x i8], ptr, [16 x ptr] } { ptr @NFile, i32 24, [4 x i8] zeroinitializer, ptr @RObject, [16 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_free, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_File_open, ptr @M4_File_readLine, ptr @M4_File_readAll, ptr @M4_File_write, ptr @M4_File_eof, ptr @M4_File_close, ptr @M4_File_isOpen, ptr @M4_File_exists, ptr @M4_File_remove] }, align 8
-@RMath = global { ptr, i32, [4 x i8], ptr, [25 x ptr] } { ptr @NMath, i32 16, [4 x i8] zeroinitializer, ptr @RObject, [25 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_free, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_Math_sqrt, ptr @M4_Math_pow, ptr @M4_Math_exp, ptr @M4_Math_log, ptr @M4_Math_log10, ptr @M4_Math_sin, ptr @M4_Math_cos, ptr @M4_Math_tan, ptr @M4_Math_atan2, ptr @M4_Math_floor, ptr @M4_Math_ceil, ptr @M4_Math_round, ptr @M4_Math_absf, ptr @M4_Math_abs, ptr @M4_Math_min, ptr @M4_Math_max, ptr @M4_Math_pi, ptr @M4_Math_e] }, align 8
+@RFile = global { ptr, i32, [4 x i8], ptr, [14 x ptr] } { ptr @NFile, i32 24, [4 x i8] zeroinitializer, ptr @RObject, [14 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_free, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_File_open, ptr @M4_File_readLine, ptr @M4_File_readAll, ptr @M4_File_write, ptr @M4_File_eof, ptr @M4_File_close, ptr @M4_File_isOpen] }, align 8
+@RMath = global { ptr, i32, [4 x i8], ptr, [7 x ptr] } { ptr @NMath, i32 16, [4 x i8] zeroinitializer, ptr @RObject, [7 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_free, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
 @RList = global { ptr, i32, [4 x i8], ptr, [12 x ptr] } { ptr @NList, i32 32, [4 x i8] zeroinitializer, ptr @RObject, [12 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_free, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_List_len, ptr @M4_List_get, ptr @M4_List_set, ptr @M4_List_append, ptr @M4_List_slice] }, align 8
 @RInteger = global { ptr, i32, [4 x i8], ptr, [10 x ptr] } { ptr @NInteger, i32 24, [4 x i8] zeroinitializer, ptr @RObject, [10 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_free, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Integer_get, ptr @M7_Integer_set, ptr @M7_Integer_getLong] }, align 8
 @gLiveObjects = internal global i32 0, align 4
@@ -933,26 +933,6 @@ define ptr @M6_String_split(ptr noundef %0, ptr noundef %1) #0 {
 81:                                               ; preds = %71, %18
   %82 = load ptr, ptr %3, align 8
   ret ptr %82
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define ptr @M6_String_chr(ptr noundef %0, i32 noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca i32, align 4
-  %5 = alloca [2 x i8], align 1
-  store ptr %0, ptr %3, align 8
-  store i32 %1, ptr %4, align 4
-  %6 = load ptr, ptr %3, align 8
-  %7 = load i32, ptr %4, align 4
-  %8 = and i32 %7, 255
-  %9 = trunc i32 %8 to i8
-  %10 = getelementptr inbounds [2 x i8], ptr %5, i64 0, i64 0
-  store i8 %9, ptr %10, align 1
-  %11 = getelementptr inbounds [2 x i8], ptr %5, i64 0, i64 1
-  store i8 0, ptr %11, align 1
-  %12 = getelementptr inbounds [2 x i8], ptr %5, i64 0, i64 0
-  %13 = call ptr @make_string(ptr noundef %12)
-  ret ptr %13
 }
 
 ; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
@@ -2026,312 +2006,6 @@ define i32 @M4_File_isOpen(ptr noundef %0) #0 {
 }
 
 ; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define i32 @M4_File_exists(ptr noundef %0, ptr noundef %1) #0 {
-  %3 = alloca i32, align 4
-  %4 = alloca ptr, align 8
-  %5 = alloca ptr, align 8
-  %6 = alloca ptr, align 8
-  store ptr %0, ptr %4, align 8
-  store ptr %1, ptr %5, align 8
-  %7 = load ptr, ptr %4, align 8
-  %8 = load ptr, ptr %5, align 8
-  %9 = getelementptr inbounds nuw %struct.TString, ptr %8, i32 0, i32 3
-  %10 = load ptr, ptr %9, align 8
-  %11 = call ptr @"\01_fopen"(ptr noundef %10, ptr noundef @.str.13)
-  store ptr %11, ptr %6, align 8
-  %12 = load ptr, ptr %6, align 8
-  %13 = icmp ne ptr %12, null
-  br i1 %13, label %15, label %14
-
-14:                                               ; preds = %2
-  store i32 0, ptr %3, align 4
-  br label %18
-
-15:                                               ; preds = %2
-  %16 = load ptr, ptr %6, align 8
-  %17 = call i32 @fclose(ptr noundef %16)
-  store i32 1, ptr %3, align 4
-  br label %18
-
-18:                                               ; preds = %15, %14
-  %19 = load i32, ptr %3, align 4
-  ret i32 %19
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define i32 @M4_File_remove(ptr noundef %0, ptr noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca ptr, align 8
-  store ptr %0, ptr %3, align 8
-  store ptr %1, ptr %4, align 8
-  %5 = load ptr, ptr %3, align 8
-  %6 = load ptr, ptr %4, align 8
-  %7 = getelementptr inbounds nuw %struct.TString, ptr %6, i32 0, i32 3
-  %8 = load ptr, ptr %7, align 8
-  %9 = call i32 @remove(ptr noundef %8)
-  %10 = icmp eq i32 %9, 0
-  %11 = zext i1 %10 to i32
-  ret i32 %11
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_sqrt(ptr noundef %0, double noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca double, align 8
-  store ptr %0, ptr %3, align 8
-  store double %1, ptr %4, align 8
-  %5 = load ptr, ptr %3, align 8
-  %6 = load double, ptr %4, align 8
-  %7 = call double @llvm.sqrt.f64(double %6)
-  ret double %7
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_pow(ptr noundef %0, double noundef %1, double noundef %2) #0 {
-  %4 = alloca ptr, align 8
-  %5 = alloca double, align 8
-  %6 = alloca double, align 8
-  store ptr %0, ptr %4, align 8
-  store double %1, ptr %5, align 8
-  store double %2, ptr %6, align 8
-  %7 = load ptr, ptr %4, align 8
-  %8 = load double, ptr %5, align 8
-  %9 = load double, ptr %6, align 8
-  %10 = call double @llvm.pow.f64(double %8, double %9)
-  ret double %10
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_exp(ptr noundef %0, double noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca double, align 8
-  store ptr %0, ptr %3, align 8
-  store double %1, ptr %4, align 8
-  %5 = load ptr, ptr %3, align 8
-  %6 = load double, ptr %4, align 8
-  %7 = call double @llvm.exp.f64(double %6)
-  ret double %7
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_log(ptr noundef %0, double noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca double, align 8
-  store ptr %0, ptr %3, align 8
-  store double %1, ptr %4, align 8
-  %5 = load ptr, ptr %3, align 8
-  %6 = load double, ptr %4, align 8
-  %7 = call double @llvm.log.f64(double %6)
-  ret double %7
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_log10(ptr noundef %0, double noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca double, align 8
-  store ptr %0, ptr %3, align 8
-  store double %1, ptr %4, align 8
-  %5 = load ptr, ptr %3, align 8
-  %6 = load double, ptr %4, align 8
-  %7 = call double @llvm.log10.f64(double %6)
-  ret double %7
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_sin(ptr noundef %0, double noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca double, align 8
-  store ptr %0, ptr %3, align 8
-  store double %1, ptr %4, align 8
-  %5 = load ptr, ptr %3, align 8
-  %6 = load double, ptr %4, align 8
-  %7 = call double @llvm.sin.f64(double %6)
-  ret double %7
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_cos(ptr noundef %0, double noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca double, align 8
-  store ptr %0, ptr %3, align 8
-  store double %1, ptr %4, align 8
-  %5 = load ptr, ptr %3, align 8
-  %6 = load double, ptr %4, align 8
-  %7 = call double @llvm.cos.f64(double %6)
-  ret double %7
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_tan(ptr noundef %0, double noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca double, align 8
-  store ptr %0, ptr %3, align 8
-  store double %1, ptr %4, align 8
-  %5 = load ptr, ptr %3, align 8
-  %6 = load double, ptr %4, align 8
-  %7 = call double @llvm.tan.f64(double %6)
-  ret double %7
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_atan2(ptr noundef %0, double noundef %1, double noundef %2) #0 {
-  %4 = alloca ptr, align 8
-  %5 = alloca double, align 8
-  %6 = alloca double, align 8
-  store ptr %0, ptr %4, align 8
-  store double %1, ptr %5, align 8
-  store double %2, ptr %6, align 8
-  %7 = load ptr, ptr %4, align 8
-  %8 = load double, ptr %5, align 8
-  %9 = load double, ptr %6, align 8
-  %10 = call double @llvm.atan2.f64(double %8, double %9)
-  ret double %10
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_floor(ptr noundef %0, double noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca double, align 8
-  store ptr %0, ptr %3, align 8
-  store double %1, ptr %4, align 8
-  %5 = load ptr, ptr %3, align 8
-  %6 = load double, ptr %4, align 8
-  %7 = call double @llvm.floor.f64(double %6)
-  ret double %7
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_ceil(ptr noundef %0, double noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca double, align 8
-  store ptr %0, ptr %3, align 8
-  store double %1, ptr %4, align 8
-  %5 = load ptr, ptr %3, align 8
-  %6 = load double, ptr %4, align 8
-  %7 = call double @llvm.ceil.f64(double %6)
-  ret double %7
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_round(ptr noundef %0, double noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca double, align 8
-  store ptr %0, ptr %3, align 8
-  store double %1, ptr %4, align 8
-  %5 = load ptr, ptr %3, align 8
-  %6 = load double, ptr %4, align 8
-  %7 = call double @llvm.round.f64(double %6)
-  ret double %7
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_absf(ptr noundef %0, double noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca double, align 8
-  store ptr %0, ptr %3, align 8
-  store double %1, ptr %4, align 8
-  %5 = load ptr, ptr %3, align 8
-  %6 = load double, ptr %4, align 8
-  %7 = call double @llvm.fabs.f64(double %6)
-  ret double %7
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define i32 @M4_Math_abs(ptr noundef %0, i32 noundef %1) #0 {
-  %3 = alloca ptr, align 8
-  %4 = alloca i32, align 4
-  store ptr %0, ptr %3, align 8
-  store i32 %1, ptr %4, align 4
-  %5 = load ptr, ptr %3, align 8
-  %6 = load i32, ptr %4, align 4
-  %7 = icmp slt i32 %6, 0
-  br i1 %7, label %8, label %11
-
-8:                                                ; preds = %2
-  %9 = load i32, ptr %4, align 4
-  %10 = sub nsw i32 0, %9
-  br label %13
-
-11:                                               ; preds = %2
-  %12 = load i32, ptr %4, align 4
-  br label %13
-
-13:                                               ; preds = %11, %8
-  %14 = phi i32 [ %10, %8 ], [ %12, %11 ]
-  ret i32 %14
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define i32 @M4_Math_min(ptr noundef %0, i32 noundef %1, i32 noundef %2) #0 {
-  %4 = alloca ptr, align 8
-  %5 = alloca i32, align 4
-  %6 = alloca i32, align 4
-  store ptr %0, ptr %4, align 8
-  store i32 %1, ptr %5, align 4
-  store i32 %2, ptr %6, align 4
-  %7 = load ptr, ptr %4, align 8
-  %8 = load i32, ptr %5, align 4
-  %9 = load i32, ptr %6, align 4
-  %10 = icmp slt i32 %8, %9
-  br i1 %10, label %11, label %13
-
-11:                                               ; preds = %3
-  %12 = load i32, ptr %5, align 4
-  br label %15
-
-13:                                               ; preds = %3
-  %14 = load i32, ptr %6, align 4
-  br label %15
-
-15:                                               ; preds = %13, %11
-  %16 = phi i32 [ %12, %11 ], [ %14, %13 ]
-  ret i32 %16
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define i32 @M4_Math_max(ptr noundef %0, i32 noundef %1, i32 noundef %2) #0 {
-  %4 = alloca ptr, align 8
-  %5 = alloca i32, align 4
-  %6 = alloca i32, align 4
-  store ptr %0, ptr %4, align 8
-  store i32 %1, ptr %5, align 4
-  store i32 %2, ptr %6, align 4
-  %7 = load ptr, ptr %4, align 8
-  %8 = load i32, ptr %5, align 4
-  %9 = load i32, ptr %6, align 4
-  %10 = icmp sgt i32 %8, %9
-  br i1 %10, label %11, label %13
-
-11:                                               ; preds = %3
-  %12 = load i32, ptr %5, align 4
-  br label %15
-
-13:                                               ; preds = %3
-  %14 = load i32, ptr %6, align 4
-  br label %15
-
-15:                                               ; preds = %13, %11
-  %16 = phi i32 [ %12, %11 ], [ %14, %13 ]
-  ret i32 %16
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_pi(ptr noundef %0) #0 {
-  %2 = alloca ptr, align 8
-  store ptr %0, ptr %2, align 8
-  %3 = load ptr, ptr %2, align 8
-  ret double 0x400921FB54442D18
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define double @M4_Math_e(ptr noundef %0) #0 {
-  %2 = alloca ptr, align 8
-  store ptr %0, ptr %2, align 8
-  %3 = load ptr, ptr %2, align 8
-  ret double 0x4005BF0A8B145769
-}
-
-; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
 define i32 @M4_List_len(ptr noundef %0) #0 {
   %2 = alloca ptr, align 8
   store ptr %0, ptr %2, align 8
@@ -3327,6 +3001,23 @@ define internal ptr @string_mapped(ptr noundef %0, i32 noundef %1) #0 {
   ret ptr %50
 }
 
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define ptr @M6_String_chr(i32 noundef %0) #0 {
+  %2 = alloca i32, align 4
+  %3 = alloca [2 x i8], align 1
+  store i32 %0, ptr %2, align 4
+  %4 = load i32, ptr %2, align 4
+  %5 = and i32 %4, 255
+  %6 = trunc i32 %5 to i8
+  %7 = getelementptr inbounds [2 x i8], ptr %3, i64 0, i64 0
+  store i8 %6, ptr %7, align 1
+  %8 = getelementptr inbounds [2 x i8], ptr %3, i64 0, i64 1
+  store i8 0, ptr %8, align 1
+  %9 = getelementptr inbounds [2 x i8], ptr %3, i64 0, i64 0
+  %10 = call ptr @make_string(ptr noundef %9)
+  ret ptr %10
+}
+
 declare double @"\01_strtod"(ptr noundef, ptr noundef) #6
 
 ; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
@@ -3346,46 +3037,292 @@ declare i32 @"\01_fputs"(ptr noundef, ptr noundef) #6
 
 declare i64 @"\01_fwrite"(ptr noundef, i64 noundef, i64 noundef, ptr noundef) #6
 
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define i32 @M4_File_exists(ptr noundef %0) #0 {
+  %2 = alloca i32, align 4
+  %3 = alloca ptr, align 8
+  %4 = alloca ptr, align 8
+  store ptr %0, ptr %3, align 8
+  %5 = load ptr, ptr %3, align 8
+  %6 = getelementptr inbounds nuw %struct.TString, ptr %5, i32 0, i32 3
+  %7 = load ptr, ptr %6, align 8
+  %8 = call ptr @"\01_fopen"(ptr noundef %7, ptr noundef @.str.13)
+  store ptr %8, ptr %4, align 8
+  %9 = load ptr, ptr %4, align 8
+  %10 = icmp ne ptr %9, null
+  br i1 %10, label %12, label %11
+
+11:                                               ; preds = %1
+  store i32 0, ptr %2, align 4
+  br label %15
+
+12:                                               ; preds = %1
+  %13 = load ptr, ptr %4, align 8
+  %14 = call i32 @fclose(ptr noundef %13)
+  store i32 1, ptr %2, align 4
+  br label %15
+
+15:                                               ; preds = %12, %11
+  %16 = load i32, ptr %2, align 4
+  ret i32 %16
+}
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define i32 @M4_File_remove(ptr noundef %0) #0 {
+  %2 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %3 = load ptr, ptr %2, align 8
+  %4 = getelementptr inbounds nuw %struct.TString, ptr %3, i32 0, i32 3
+  %5 = load ptr, ptr %4, align 8
+  %6 = call i32 @remove(ptr noundef %5)
+  %7 = icmp eq i32 %6, 0
+  %8 = zext i1 %7 to i32
+  ret i32 %8
+}
+
 declare i32 @remove(ptr noundef) #6
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_sqrt(double noundef %0) #0 {
+  %2 = alloca double, align 8
+  store double %0, ptr %2, align 8
+  %3 = load double, ptr %2, align 8
+  %4 = call double @llvm.sqrt.f64(double %3)
+  ret double %4
+}
 
 ; Function Attrs: nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.sqrt.f64(double) #11
 
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_pow(double noundef %0, double noundef %1) #0 {
+  %3 = alloca double, align 8
+  %4 = alloca double, align 8
+  store double %0, ptr %3, align 8
+  store double %1, ptr %4, align 8
+  %5 = load double, ptr %3, align 8
+  %6 = load double, ptr %4, align 8
+  %7 = call double @llvm.pow.f64(double %5, double %6)
+  ret double %7
+}
+
 ; Function Attrs: nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.pow.f64(double, double) #11
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_exp(double noundef %0) #0 {
+  %2 = alloca double, align 8
+  store double %0, ptr %2, align 8
+  %3 = load double, ptr %2, align 8
+  %4 = call double @llvm.exp.f64(double %3)
+  ret double %4
+}
 
 ; Function Attrs: nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.exp.f64(double) #11
 
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_log(double noundef %0) #0 {
+  %2 = alloca double, align 8
+  store double %0, ptr %2, align 8
+  %3 = load double, ptr %2, align 8
+  %4 = call double @llvm.log.f64(double %3)
+  ret double %4
+}
+
 ; Function Attrs: nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.log.f64(double) #11
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_log10(double noundef %0) #0 {
+  %2 = alloca double, align 8
+  store double %0, ptr %2, align 8
+  %3 = load double, ptr %2, align 8
+  %4 = call double @llvm.log10.f64(double %3)
+  ret double %4
+}
 
 ; Function Attrs: nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.log10.f64(double) #11
 
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_sin(double noundef %0) #0 {
+  %2 = alloca double, align 8
+  store double %0, ptr %2, align 8
+  %3 = load double, ptr %2, align 8
+  %4 = call double @llvm.sin.f64(double %3)
+  ret double %4
+}
+
 ; Function Attrs: nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.sin.f64(double) #11
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_cos(double noundef %0) #0 {
+  %2 = alloca double, align 8
+  store double %0, ptr %2, align 8
+  %3 = load double, ptr %2, align 8
+  %4 = call double @llvm.cos.f64(double %3)
+  ret double %4
+}
 
 ; Function Attrs: nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.cos.f64(double) #11
 
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_tan(double noundef %0) #0 {
+  %2 = alloca double, align 8
+  store double %0, ptr %2, align 8
+  %3 = load double, ptr %2, align 8
+  %4 = call double @llvm.tan.f64(double %3)
+  ret double %4
+}
+
 ; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.tan.f64(double) #3
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_atan2(double noundef %0, double noundef %1) #0 {
+  %3 = alloca double, align 8
+  %4 = alloca double, align 8
+  store double %0, ptr %3, align 8
+  store double %1, ptr %4, align 8
+  %5 = load double, ptr %3, align 8
+  %6 = load double, ptr %4, align 8
+  %7 = call double @llvm.atan2.f64(double %5, double %6)
+  ret double %7
+}
 
 ; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.atan2.f64(double, double) #3
 
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_floor(double noundef %0) #0 {
+  %2 = alloca double, align 8
+  store double %0, ptr %2, align 8
+  %3 = load double, ptr %2, align 8
+  %4 = call double @llvm.floor.f64(double %3)
+  ret double %4
+}
+
 ; Function Attrs: nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.floor.f64(double) #11
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_ceil(double noundef %0) #0 {
+  %2 = alloca double, align 8
+  store double %0, ptr %2, align 8
+  %3 = load double, ptr %2, align 8
+  %4 = call double @llvm.ceil.f64(double %3)
+  ret double %4
+}
 
 ; Function Attrs: nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.ceil.f64(double) #11
 
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_round(double noundef %0) #0 {
+  %2 = alloca double, align 8
+  store double %0, ptr %2, align 8
+  %3 = load double, ptr %2, align 8
+  %4 = call double @llvm.round.f64(double %3)
+  ret double %4
+}
+
 ; Function Attrs: nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.round.f64(double) #11
 
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_absf(double noundef %0) #0 {
+  %2 = alloca double, align 8
+  store double %0, ptr %2, align 8
+  %3 = load double, ptr %2, align 8
+  %4 = call double @llvm.fabs.f64(double %3)
+  ret double %4
+}
+
 ; Function Attrs: nocallback nocreateundeforpoison nofree nosync nounwind speculatable willreturn memory(none)
 declare double @llvm.fabs.f64(double) #11
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define i32 @M4_Math_abs(i32 noundef %0) #0 {
+  %2 = alloca i32, align 4
+  store i32 %0, ptr %2, align 4
+  %3 = load i32, ptr %2, align 4
+  %4 = icmp slt i32 %3, 0
+  br i1 %4, label %5, label %8
+
+5:                                                ; preds = %1
+  %6 = load i32, ptr %2, align 4
+  %7 = sub nsw i32 0, %6
+  br label %10
+
+8:                                                ; preds = %1
+  %9 = load i32, ptr %2, align 4
+  br label %10
+
+10:                                               ; preds = %8, %5
+  %11 = phi i32 [ %7, %5 ], [ %9, %8 ]
+  ret i32 %11
+}
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define i32 @M4_Math_min(i32 noundef %0, i32 noundef %1) #0 {
+  %3 = alloca i32, align 4
+  %4 = alloca i32, align 4
+  store i32 %0, ptr %3, align 4
+  store i32 %1, ptr %4, align 4
+  %5 = load i32, ptr %3, align 4
+  %6 = load i32, ptr %4, align 4
+  %7 = icmp slt i32 %5, %6
+  br i1 %7, label %8, label %10
+
+8:                                                ; preds = %2
+  %9 = load i32, ptr %3, align 4
+  br label %12
+
+10:                                               ; preds = %2
+  %11 = load i32, ptr %4, align 4
+  br label %12
+
+12:                                               ; preds = %10, %8
+  %13 = phi i32 [ %9, %8 ], [ %11, %10 ]
+  ret i32 %13
+}
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define i32 @M4_Math_max(i32 noundef %0, i32 noundef %1) #0 {
+  %3 = alloca i32, align 4
+  %4 = alloca i32, align 4
+  store i32 %0, ptr %3, align 4
+  store i32 %1, ptr %4, align 4
+  %5 = load i32, ptr %3, align 4
+  %6 = load i32, ptr %4, align 4
+  %7 = icmp sgt i32 %5, %6
+  br i1 %7, label %8, label %10
+
+8:                                                ; preds = %2
+  %9 = load i32, ptr %3, align 4
+  br label %12
+
+10:                                               ; preds = %2
+  %11 = load i32, ptr %4, align 4
+  br label %12
+
+12:                                               ; preds = %10, %8
+  %13 = phi i32 [ %9, %8 ], [ %11, %10 ]
+  ret i32 %13
+}
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_pi() #0 {
+  ret double 0x400921FB54442D18
+}
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define double @M4_Math_e() #0 {
+  ret double 0x4005BF0A8B145769
+}
 
 ; Function Attrs: nounwind
 declare ptr @__strcpy_chk(ptr noundef, ptr noundef, i64 noundef) #2
