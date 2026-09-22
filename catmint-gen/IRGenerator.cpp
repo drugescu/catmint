@@ -185,6 +185,16 @@ bool IRGenerator::collectClasses() {
     CI.Builtin = (Name == strings::Object || Name == strings::Io ||
                   Name == strings::String || Name == strings::List ||
                   Name == strings::Integer);
+    // Two definitions of one name used to overwrite each other here, so a
+    // program importing two modules that both define a Point silently got
+    // whichever came last. Until there are namespaces, say so instead.
+    auto existing = Classes.find(Name);
+    if (existing != Classes.end() && existing->second.AST != C) {
+      std::cerr << "[ CODEGEN ERROR ] class '" << Name
+                << "' is defined more than once; all classes share one global "
+                   "namespace\n";
+      return false;
+    }
     Classes[Name] = CI;
   }
 
