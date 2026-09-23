@@ -176,7 +176,17 @@ for one to have a usable runtime, which is enough to run programs under
 
 The layouts and the virtual table slot order in `runtime.c` are fixed by
 agreement with `IRGenerator.cpp`; changing one without the other silently
-miscompiles.
+miscompiles, which is what `42_builtin_slots.cm` exists to catch.
+
+Two things in there are performance work rather than semantics, and both
+have a benchmark behind them. A `String`'s characters live in the same
+allocation as the String, so building one costs a single `malloc`;
+`owns_inline_chars` is how `free` knows not to release them separately, and
+`Object.copy` gives the copy its own buffer because the copy is only as long
+as the RTTI says. And integers from -128 to 1024 are shared boxes with a
+reference count of zero, so a `List` of flags or counts allocates nothing --
+which is also why `Integer` has no setter: changing a shared box would
+change that number for every holder.
 
 ## Errors
 
@@ -401,6 +411,11 @@ static may be called unqualified, which is how one static calls another.
 The built-ins that never used their receiver are static now -- every `Math`
 method, `File.exists`, `File.remove` and `String.chr` -- so `Math` takes no
 virtual table slots at all and exists only to name its functions.
+
+A chain of string concatenations is emitted as one `__cm_concatAll` rather
+than a tree of `M6_String_concat` calls, so the result is allocated once and
+the intermediates are never made. Every interpolated string is exactly that
+shape, which is what makes the special case worth having.
 
 `and` and `or` are short-circuiting and bind looser than every other
 operator, so `p != null and p.value > 0` needs no parentheses and never

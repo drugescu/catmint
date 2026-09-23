@@ -287,6 +287,11 @@ private:
   llvm::Value *emitLocalDefinition(LocalDefinition *LD);
   llvm::Value *emitAssignment(Assignment *A);
   llvm::Value *emitBinaryOperator(BinaryOperator *BO);
+  /// The pieces of a chain of string concatenations, left to right. `"a" + b
+  /// + "c"` is three pieces rather than two nested additions.
+  void collectConcatenation(Expression *E, std::vector<Expression *> &Parts);
+  /// Emit a whole chain as one call, or null when this is not one.
+  llvm::Value *emitConcatenation(BinaryOperator *BO);
   llvm::Value *emitUnaryOperator(UnaryOperator *UO);
   llvm::Value *emitIf(IfStatement *If);
   llvm::Value *emitWhile(WhileStatement *W);

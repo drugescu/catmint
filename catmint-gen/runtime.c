@@ -146,7 +146,7 @@ struct TWorker {
 CATMINT_RTTI_TYPE(catmint_rtti6_object, 6);
 CATMINT_RTTI_TYPE(catmint_rtti20_io, 20);
 CATMINT_RTTI_TYPE(catmint_rtti11_list, 11);
-CATMINT_RTTI_TYPE(catmint_rtti9_integer, 9);
+CATMINT_RTTI_TYPE(catmint_rtti8_integer, 8);
 CATMINT_RTTI_TYPE(catmint_rtti13_file, 13);
 CATMINT_RTTI_TYPE(catmint_rtti11_process, 11);
 CATMINT_RTTI_TYPE(catmint_rtti19_string, 19);
@@ -242,11 +242,11 @@ struct TList *M4_List_append(struct TList *self, void *value);
 struct TList *M4_List_slice(struct TList *self, int start, int end);
 
 int M7_Integer_get(struct TInteger *self);
-struct TInteger *M7_Integer_set(struct TInteger *self, int value);
 long long M7_Integer_getLong(struct TInteger *self);
 
 void *__catmint_new(struct __catmint_rtti *rtti);
 void String_init(struct TString *self);
+struct TString *__cm_concatAll(void **parts, int count);
 void __cm_runtimeError(const char *message);
 void __cm_throw(void *object);
 void __cm_retain(void *object);
@@ -340,11 +340,10 @@ catmint_rtti11_list RList = {
     (void *)M4_List_append, (void *)M4_List_slice }
 };
 
-catmint_rtti9_integer RInteger = {
+catmint_rtti8_integer RInteger = {
   &NInteger, sizeof(struct TInteger), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS,
-    (void *)M7_Integer_get, (void *)M7_Integer_set,
-    (void *)M7_Integer_getLong }
+    (void *)M7_Integer_get, (void *)M7_Integer_getLong }
 };
 
 /* -------------------------------------------------------------------------
@@ -419,13 +418,44 @@ void Worker_init(struct TWorker *self) {
   (void)self;
 }
 
+/* A String of a given length, with room for its characters in the same
+ * allocation. Two allocations per string -- the object and its buffer --
+ * was half the cost of building one, and a program that builds strings
+ * spends most of its time here.
+ *
+ * The characters live immediately after the struct, which is how free()
+ * recognises them: an inline buffer is not freed separately. */
+static struct TString *new_string(int length) {
+  struct TString *result =
+      malloc(sizeof(struct TString) + (size_t)length + 1);
+
+  if (!result) {
+    printf("Runtime error : out of memory making a String.\n");
+    exit(1);
+  }
+
+  result->rtti = RTTI(RString);
+  result->refs = 1;
+  result->length = length;
+  result->string = (char *)(result + 1);
+  result->string[length] = '\0';
+
+  gLiveObjects += 1;
+  __cm_poolAdd(result);
+  return result;
+}
+
+/* Whether a String's characters are in the same block as the String. */
+static int owns_inline_chars(struct TString *text) {
+  return text->string == (char *)(text + 1);
+}
+
 /* Build a catmint String from a NUL-terminated buffer. */
 static struct TString *make_string(const char *text) {
-  struct TString *result = (struct TString *)__catmint_new(RTTI(RString));
-  String_init(result);
-  result->length = (int)strlen(text);
-  result->string = calloc((size_t)result->length + 1, 1);
-  strcpy(result->string, text);
+  size_t length = strlen(text);
+  struct TString *result = new_string((int)length);
+
+  memcpy(result->string, text, length);
   return result;
 }
 
@@ -457,6 +487,8 @@ struct TObject *M6_Object_copy(struct TObject *self) {
    * references and sharing them is what a shallow copy means. */
   if (copy->rtti == RTTI(RString)) {
     struct TString *text = (struct TString *)copy;
+    /* The copy is exactly as long as the RTTI says, so an inline buffer did
+     * not come with it: whatever the original owned, the copy gets its own. */
     if (text->string == gEmptyChars) {
       /* nothing owned */
     } else {
@@ -503,7 +535,8 @@ static void release_owned_buffers(struct TObject *self) {
     struct TString *text = (struct TString *)self;
     /* A String built by the runtime owns its characters. A freshly
      * initialised one points at the shared empty buffer and owns nothing. */
-    if (text->string && text->string != gEmptyChars) {
+    if (text->string && text->string != gEmptyChars &&
+        !owns_inline_chars(text)) {
       free(text->string);
     }
     text->string = gEmptyChars;
@@ -613,23 +646,44 @@ struct TString *M6_String_substring(struct TString *self, int start, int end) {
     __cm_runtimeError("Substring indices out of bounds.");
   }
 
-  result = (struct TString *)__catmint_new(RTTI(RString));
-  String_init(result);
-  result->length = end - start;
-  result->string = calloc(end - start + 1, 1);
-  memcpy(result->string, self->string + start, end - start);
+  result = new_string(end - start);
+  memcpy(result->string, self->string + start, (size_t)(end - start));
   return result;
 }
 
 struct TString *M6_String_concat(struct TString *self, struct TString *other) {
-  int length = self->length + other->length;
-  struct TString *result = (struct TString *)__catmint_new(RTTI(RString));
+  struct TString *result = new_string(self->length + other->length);
 
-  String_init(result);
-  result->length = length;
-  result->string = calloc(length + 1, 1);
-  strncpy(result->string, self->string, self->length);
-  strncat(result->string, other->string, other->length);
+  memcpy(result->string, self->string, (size_t)self->length);
+  memcpy(result->string + self->length, other->string, (size_t)other->length);
+  return result;
+}
+
+/* Several at once, which is what a chain of '+' and every interpolated
+ * string really is. Joining them in one pass allocates the answer once
+ * instead of once per '+', and the intermediate strings nobody asked for
+ * are never made at all. */
+struct TString *__cm_concatAll(void **parts, int count) {
+  struct TString *result;
+  int length = 0;
+  int at = 0;
+  int i;
+
+  for (i = 0; i < count; ++i) {
+    if (parts[i]) {
+      length += ((struct TString *)parts[i])->length;
+    }
+  }
+
+  result = new_string(length);
+  for (i = 0; i < count; ++i) {
+    struct TString *part = (struct TString *)parts[i];
+    if (!part) {
+      continue;
+    }
+    memcpy(result->string + at, part->string, (size_t)part->length);
+    at += part->length;
+  }
   return result;
 }
 
@@ -899,11 +953,6 @@ int M7_Integer_get(struct TInteger *self) {
   return (int)self->value;
 }
 
-struct TInteger *M7_Integer_set(struct TInteger *self, int value) {
-  self->value = value;
-  return self;
-}
-
 long long M7_Integer_getLong(struct TInteger *self) {
   return self->value;
 }
@@ -1013,12 +1062,46 @@ void *__cm_cast(void *object, struct __catmint_rtti *target) {
   return NULL;
 }
 
+/* Small values are shared rather than allocated. A List of flags, of counts,
+ * of character codes -- the common case -- then costs no allocation at all:
+ * the sieve benchmark made two hundred thousand boxes and now makes none.
+ *
+ * A shared box has a reference count of zero, which already means "static,
+ * never free", so retain and release ignore it and it never joins a pool.
+ * It is also why Integer has no setter: mutating one of these would change
+ * it for everyone holding that number. */
+#define CATMINT_SMALL_MIN (-128)
+#define CATMINT_SMALL_MAX 1024
+
+static struct TInteger gSmallIntegers[CATMINT_SMALL_MAX - CATMINT_SMALL_MIN + 1];
+static int gSmallIntegersReady = 0;
+
+static void prepare_small_integers(void) {
+  long long value;
+  for (value = CATMINT_SMALL_MIN; value <= CATMINT_SMALL_MAX; ++value) {
+    struct TInteger *box = &gSmallIntegers[value - CATMINT_SMALL_MIN];
+    box->rtti = RTTI(RInteger);
+    box->refs = 0;
+    box->value = value;
+  }
+  gSmallIntegersReady = 1;
+}
+
 /* Boxing and unboxing, inserted by the generator where an integer meets a
  * place that holds object references, and on the way back out. The box is 64
  * bits wide, so the generator widens before boxing and narrows after
  * unboxing; no integer type loses anything in a container. */
 void *__cm_boxLong(long long value) {
-  struct TInteger *box = (struct TInteger *)__catmint_new(RTTI(RInteger));
+  struct TInteger *box;
+
+  if (value >= CATMINT_SMALL_MIN && value <= CATMINT_SMALL_MAX) {
+    if (!gSmallIntegersReady) {
+      prepare_small_integers();
+    }
+    return &gSmallIntegers[value - CATMINT_SMALL_MIN];
+  }
+
+  box = (struct TInteger *)__catmint_new(RTTI(RInteger));
   Integer_init(box);
   box->value = value;
   return box;
@@ -1218,11 +1301,8 @@ struct TString *M6_String_replace(struct TString *self, struct TString *from,
   }
 
   growth = occurrences * (to->length - from->length);
-  result = (struct TString *)__catmint_new(RTTI(RString));
-  String_init(result);
-  result->length = self->length + growth;
-  out = calloc((size_t)result->length + 1, 1);
-  result->string = out;
+  result = new_string(self->length + growth);
+  out = result->string;
 
   for (i = 0; i < self->length;) {
     if (i + from->length <= self->length &&

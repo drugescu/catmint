@@ -71,8 +71,6 @@ class Main from IO
     Object box = boxes.get(0)
     Integer n = box
     out("Integer.get ${n.get()}\n")
-    n.set(8)
-    out("Integer.set ${n.get()}\n")
     out("Integer.getLong ${n.getLong()}\n")
 
     # File.

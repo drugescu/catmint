@@ -199,6 +199,7 @@ Written in catmint, in `lib/`: `Vector`, `Dict` (a real hash table),
 | `IO` | `out`, `input`, `readLine`, `eof`, `err`, `exit`, `args`, `arg`, `ticks`, `epoch`, `sleep`, `allocated` |
 | `String` | see above |
 | `List` | a growable array of object references |
+| `Integer` | the box a number gets when it goes into a `List`; `get`, `getLong`. Values from -128 to 1024 are shared, so a list of small numbers allocates nothing |
 | `File` | `open`, `readLine`, `readAll`, `write`, `eof`, `close`, and static `File.exists` / `File.remove` |
 | `Math` | all static: `sqrt`, `pow`, `sin`, `floor`, `abs`, `min`, `max`, `pi`, … |
 | `Process` | another program: `Process.run`, `Process.start`, `Process.wait`, and a pipe |

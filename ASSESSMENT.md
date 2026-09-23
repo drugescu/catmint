@@ -141,24 +141,53 @@ checked to give the same answer before being timed. Best of five runs.
 
 | benchmark | catmint | C `-O2` | C++ `-O2` |
 |---|---|---|---|
-| tight integer loop | 0.038 s | 0.039 s | 0.037 s |
-| prime counting | 0.019 s | 0.020 s | 0.018 s |
-| `fib(32)`, recursive | 0.012 s | 0.008 s | 0.010 s (virtual) |
-| building 400,000 strings | 0.098 s | 0.031 s | 0.021 s |
-| sieve over 200,000 | 0.036 s | 0.005 s | 0.005 s |
+| tight integer loop | 0.036 s | 0.036 s | 0.036 s |
+| prime counting | 0.020 s | 0.018 s | 0.016 s |
+| `fib(32)`, recursive | 0.013 s | 0.007 s | 0.009 s (virtual) |
+| building 400,000 strings | 0.068 s | 0.030 s | 0.019 s |
+| sieve over 200,000 | 0.011 s | 0.004 s | 0.003 s |
 
-Arithmetic is at parity. Calls cost about half as much again as C's, because
-they go through a virtual table; the C++ column for `fib` is a virtual call
-too, and catmint is within a fifth of it. Strings cost three times what C
-does, mostly because an interpolated string allocates three times where C
-allocates once. The sieve is the worst case and worth being plain about:
-catmint has no array type, so `List` holds boxed objects, and that is seven
-times the cost of a byte array.
+**Arithmetic is at parity.** Not approximately: catmint and C trade places
+between runs on the loop and the primes.
 
-Catmint beats unoptimised C and is within a factor of two of optimised C. The
-remaining gap is virtual dispatch: `fib` calls itself through the vtable
-about two million times, and each call is a null check, two loads and an
-indirect branch the optimiser cannot see through. The loop half is at parity.
+**Calls cost about twice C's**, because every one goes through a virtual
+table. The C++ column for `fib` is a virtual call too, and catmint is within
+a half of that. What is left is the indirect branch the optimiser cannot see
+through, which is the price of the object model rather than a defect in it.
+
+**Strings cost a little over twice C's, and three times C++'s.** The reason
+is worth stating plainly, because it is architectural. A catmint String is a
+heap object: a type pointer, a reference count, a length and its characters.
+C's is a raw buffer. C++'s, at this length, is not on the heap at all --
+libc++ keeps up to 22 characters inside the `std::string` itself, so the
+benchmark's `"row 1234 of the table"` never allocates. Catmint has no
+equivalent, because every value that can be passed as an `Object` has to have
+a type pointer in front of it.
+
+Two things closed most of the gap. A String used to be two allocations, the
+object and a separate buffer; the characters now live in the same block, so
+it is one. And a chain of concatenations -- which is what every interpolated
+string is -- used to allocate an intermediate per `+`; the generator now
+folds the chain into a single `__cm_concatAll`. Together those took the
+benchmark from 0.098 s to 0.068 s. Getting closer would mean small-string
+optimisation, which the object model does not allow, or writing the numbers
+straight into the result buffer instead of converting each to a String first,
+which is a real but narrow further win.
+
+**The sieve was the worst case, and is no longer.** Catmint has no array
+type: `List` holds object references, so a list of flags was a list of
+heap-allocated boxed `Integer`s -- two hundred thousand allocations where C
+has one `malloc` of bytes. It ran seven times slower than C for that reason
+alone.
+
+Small integers are now shared: values from -128 to 1024 are preallocated
+static boxes with a reference count of zero, so a list of flags, counts or
+character codes allocates nothing at all. That took the sieve from 0.036 s to
+0.011 s, or from seven times C to under three. The remaining gap is the
+pointer indirection on every element, which only a primitive array type would
+remove, and that is the one container feature still worth adding. Sharing is
+also why `Integer` has no setter any more: changing a shared box in place
+would change that number for everyone holding it.
 
 Two measurements worth keeping. The table used to read 0.039 s, and the fix
 was not in the compiler: `catmintc` invoked clang at `-O0` on the linked

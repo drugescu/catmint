@@ -34,8 +34,7 @@ List.set 99
 List.append returned a list 2
 List.slice 1
 Integer.get 7
-Integer.set 8
-Integer.getLong 8
+Integer.getLong 7
 File.open 1
 File.write returned
 File.close returned

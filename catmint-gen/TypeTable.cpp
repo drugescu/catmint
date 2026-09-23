@@ -200,8 +200,9 @@ void TypeTable::addBuiltinClasses(Program *p) {
   addBuiltinClass(p, strings::List, strings::Object, methods);
 
   // --- Integer, the box that lets a number live in a List -------------
+  // No setter: small values are shared boxes, so changing one in place
+  // would change that number for everyone holding it.
   declare(methods, strings::Get, strings::Int);
-  declare(methods, strings::Set, strings::Integer, {{"value", strings::Int}});
   declare(methods, strings::GetLong, strings::Int64);
   addBuiltinClass(p, strings::Integer, strings::Object, methods);
 
