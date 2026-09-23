@@ -21,8 +21,12 @@ public:
   using ASTVisitor::visit;
 
   bool Found = false;
+  /// The returns themselves, so that a method with no declared type can be
+  /// given the type of what it returns.
+  std::vector<ReturnExpression *> Returns;
   bool visit(ReturnExpression *R) override {
     Found = true;
+    Returns.push_back(R);
     return ASTVisitor::visit(R);
   }
 };
@@ -350,6 +354,45 @@ bool SemanticAnalysis::visit(Method *m) {
     auto bodyType = typeTable.getType(body);
     ReturnFinder returns;
     returns.visit(body);
+
+    // Return-type inference. `def f:` parses as the type "auto", which has
+    // always meant Void. It now means the type of what the body returns --
+    // and only when the body has a `return <expression>` in it, which is
+    // what makes this safe to add to a language that already has programs
+    // written in it: a method returning nothing today has no such statement,
+    // so nothing changes meaning. (The Python rule, where the last
+    // expression is the result, would have quietly given
+    // `def greet: out("hi") end` whatever `out` returns.)
+    if (m->getReturnType() == "auto") {
+      Type *inferred = nullptr;
+      for (auto *r : returns.Returns) {
+        if (!r->getRet()) {
+          continue;
+        }
+        auto *t = typeTable.getType(r);
+        if (!inferred || inferred == t) {
+          inferred = t;
+          continue;
+        }
+        // Two returns of different types settle on whichever covers the
+        // other. Nothing covers, say, an Int and a String, and guessing there
+        // would be worse than asking.
+        if (auto *common = commonReturnType(inferred, t)) {
+          inferred = common;
+          continue;
+        }
+        throw SemanticException(
+            "'" + m->getName() + "' returns both '" + inferred->getName() +
+                "' and '" + t->getName() + "'; say which with 'def <type> " +
+                m->getName() + "'",
+            r);
+      }
+      if (inferred && inferred != typeTable.getVoidType()) {
+        m->setReturnType(inferred->getName());
+        returnType = inferred;
+      }
+    }
+
     if (returnType != typeTable.getVoidType() && !returns.Found &&
         !typeTable.isEqualOrImplicitlyConvertibleTo(bodyType, returnType)) {
       throw WrongTypeException(bodyType, returnType, m);
@@ -706,6 +749,44 @@ bool SemanticAnalysis::visit(StaticDispatch *d) {
 
   typeTable.setType(d, typeTable.getType(method->getReturnType()));
   return true;
+}
+
+Type *SemanticAnalysis::commonReturnType(Type *a, Type *b) {
+  if (a == b) {
+    return a;
+  }
+
+  // Null stands in for any object, so it settles on whatever it is paired
+  // with.
+  if (a->getName() == strings::Null) {
+    return typeTable.isReferenceType(b->getName()) ? b : nullptr;
+  }
+  if (b->getName() == strings::Null) {
+    return typeTable.isReferenceType(a->getName()) ? a : nullptr;
+  }
+
+  // Two integers settle on the wider, which is what an expression mixing
+  // them does too.
+  const int wa = TypeTable::integerWidth(a->getName());
+  const int wb = TypeTable::integerWidth(b->getName());
+  if (wa && wb) {
+    return wa >= wb ? a : b;
+  }
+
+  // A class and one of its ancestors settle on the ancestor. Anything else --
+  // an Int and a String, two unrelated classes -- has no answer worth
+  // guessing.
+  if (typeTable.isReferenceType(a->getName()) &&
+      typeTable.isReferenceType(b->getName())) {
+    if (typeTable.isDerivedFrom(a->getName(), b->getName())) {
+      return b;
+    }
+    if (typeTable.isDerivedFrom(b->getName(), a->getName())) {
+      return a;
+    }
+  }
+
+  return nullptr;
 }
 
 /// Walk the class and its ancestors for `abstract def`s, and ask what the

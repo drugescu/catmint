@@ -62,6 +62,14 @@ private:
   bool workerSafe(Class *c, Method *m, std::set<Method *> &seen,
                   std::string &why);
 
+  /// The type a method returns when two of its `return`s disagree, or null
+  /// when they cannot be reconciled and the programmer has to say. Stricter
+  /// on purpose than isEqualOrImplicitlyConvertibleTo, which allows boxing in
+  /// either direction -- under that rule a method returning an Int and a
+  /// String infers Int and fails at run time, which is the error inference
+  /// exists to move to compile time.
+  Type *commonReturnType(Type *a, Type *b);
+
   /// The abstract methods \p c still has no body for: its own, and any it
   /// inherited without overriding. Empty means the class is concrete and can
   /// be made.

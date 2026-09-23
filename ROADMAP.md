@@ -63,9 +63,10 @@ the grammar file defines `main` and an in-process harness would mean building
 a second copy of the parser -- surgery on the most fragile part of the build
 for throughput this does not need. `fuzz/fuzz.py --runs N` for a longer run.
 
-## Phase 1 — ergonomics — in progress
+## Phase 1 — ergonomics — **done**
 
-`elif` and `break`/`continue` are in. The rest of this section stands.
+All six items. `difftest/generate.py` learned `break` and `continue`;
+`catmintc --asan` is new and all 47 tests are clean under it.
 
 Friction found by writing `examples/mini.cm`, which is a 200-line
 interpreter and the evidence that the language can carry a real program.
@@ -92,22 +93,25 @@ interpreter and the evidence that the language can carry a real program.
   `difftest/generate.py` now emits both, and 250 random programs containing
   them agree with C. All 45 tests are clean under `catmintc --asan`, which is
   new: the documented manual ASan procedure is now a flag.
-- **Abstract methods on classes** (~90 lines). `mini.cm` is the argument: its
-  `Node` base carries a dummy `eval` returning 0, so a typo in a subclass
-  silently inherits the dummy rather than failing. An interface cannot cover
-  this, because the base class has state and real methods too.
-- **Return-type inference** (~110 lines). **Only from an explicit
-  `return <expr>`**; a body with no such statement stays `Void`. That rule
-  cannot change what any existing program means, because a method returning
-  nothing today has no `return` with a value in it. The Python-style "last
-  expression is the value" rule was considered and rejected for exactly that
-  reason: `def f: out("x") end` would silently stop being `Void`.
-- **Line numbers on semantic errors** (~120 lines, mechanical).
-  `SemanticException` already prints `Line N` when handed a `TreeNode`;
-  roughly twenty derived classes in `SemanticException.h` simply never pass
-  one, which is why `Method 'nosuch' not found in class 'Main'` arrives with
-  no idea where. Add the node parameter, pass it at each throw site.
-- **Character literals: nothing to do.** Measured: `"0".at(0)` folds to a
+- ~~**Abstract methods on classes**~~ **done.** `abstract def` reuses the
+  `interface_method` rules, since a body-less signature is what those already
+  parse. A class is abstract when any entry in its finished virtual table has
+  no body, which handles inheritance for free. `new` on one is a semantic
+  error naming what is missing; *declaring* a variable of the type gives null,
+  the same as an interface. `examples/mini.cm` lost its dummy `eval`.
+- ~~**Return-type inference**~~ **done**, on the explicit-`return` rule; the
+  whole suite stayed green, which is the evidence that nothing changed
+  meaning. Reconciling two returns needed a **stricter** rule than the
+  compiler's general convertibility test, which allows boxing in either
+  direction: under it a method returning an `Int` and a `String` inferred
+  `Int` and failed at run time, which is the error inference exists to
+  prevent. `commonReturnType` allows only the same type, the wider of two
+  integers, `Null` with a reference, or a class and its ancestor.
+- ~~**Line numbers on semantic errors**~~ **done.** Six exception classes
+  never passed a node. Five of the six most common errors -- unknown method,
+  unknown variable, unknown type, field not found, bad override -- arrived
+  with no line at all, and now all carry one.
+- ~~**Character literals**~~ **nothing to do.** Measured: `"0".at(0)` folds to a
   compile-time constant at `-O2` -- a 20,000,000-iteration loop containing it
   optimised away entirely. This is a `LANGUAGE.md` note, not a language
   feature.

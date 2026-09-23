@@ -1,0 +1,64 @@
+# Return-type inference: `def f:` means what the body returns.
+#
+# The rule is deliberately narrow. A method's return type is inferred only
+# from an explicit `return <expression>`; a body with no such statement is
+# still Void. That is what makes this safe to add to a language that already
+# has programs in it -- a method returning nothing today has no `return` with
+# a value in it, so nothing written before this changes meaning.
+#
+# The Python rule, where the last expression is the result, would have made
+# `def greet: out("hi") end` start returning whatever `out` returns.
+
+class Box
+  Int v = 0
+
+  constructor(Int x):
+    v = x
+  end
+
+  # Inferred Int.
+  def get:
+    return v
+  end
+
+  # Inferred String, from a return inside an if.
+  def describe:
+    if v > 10:
+      return "big"
+    end
+    return "small"
+  end
+end
+
+class Main from IO
+  def square(Int n):
+    return n * n
+  end
+
+  # No `return` with a value, so still Void, as it has always been.
+  def greet:
+    out("hi")
+  end
+
+  # Two returns of the same type.
+  def sign(Int n):
+    if n > 0:
+      return 1
+    elif n < 0:
+      return 0 - 1
+    end
+    return 0
+  end
+
+  def main:
+    out("${square(7)}\n")
+    greet()
+    out("\n")
+    out("${sign(5)} ${sign(0 - 5)} ${sign(0)}\n")
+
+    Box big = new Box(42)
+    Box small = new Box(2)
+    Int got = big.get()
+    out("${got} ${big.describe()} ${small.describe()}\n")
+  end
+end

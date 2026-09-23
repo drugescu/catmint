@@ -457,6 +457,28 @@ declaration order in `TypeTable::addBuiltinClasses` is that slot order. A new
 built-in method must be appended, never inserted, or every already-compiled
 caller silently calls the wrong slot.
 
+**Return-type inference.** `def f:` parses as the return type "auto", which
+the type table maps to Void. The semantic pass now, after visiting the body,
+collects its `return`s and gives the method the type of what they return,
+writing it back onto the `Method` node so the generator sees it. **Only an
+explicit `return <expression>` counts**: a body with no such statement stays
+Void, which is what makes this safe to add to a language that already has
+programs in it -- nothing written before it changes meaning. The Python rule,
+where the last expression is the value, would have given
+`def greet: out("hi") end` whatever `out` returns.
+
+Two returns of different types go through `commonReturnType`, which is
+deliberately **stricter** than `isEqualOrImplicitlyConvertibleTo`: that one
+allows boxing in either direction, so a method returning an `Int` and a
+`String` inferred `Int` and died at run time with "Expected an Integer, found
+String" -- the exact error inference exists to move to compile time. The
+narrow rule is: the same type, the wider of two integers, `Null` with any
+reference, or a class and one of its ancestors. Anything else is a compile
+error asking for `def <type>`. Inference does not cross a recursive call,
+whose own type is not known while its body is being visited, and it needs no
+help for separate compilation: the module's `.ast` carries the bodies, and
+the importing unit runs the same analysis over them.
+
 `abstract def Int area` declares a method with no body that a subclass must
 supply. It reuses the `interface_method` grammar rules, since a signature
 with no body is exactly what those parse; the only difference is that this

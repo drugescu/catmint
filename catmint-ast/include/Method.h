@@ -72,6 +72,10 @@ public:
   /// @}
 
   std::string getReturnType() const { return returnType; }
+  /// Set by the semantic pass when the declared type was "auto" and the body
+  /// returns a value. The generator reads the string, so the inference has to
+  /// land on the node rather than only in the type table.
+  void setReturnType(const std::string &type) { returnType = type; }
 
   Expression *getBody() const { return body.get(); }
   

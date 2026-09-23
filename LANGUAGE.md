@@ -125,6 +125,27 @@ nothing. A method with no declared return type returns nothing.
 `Geometry.square(7)`. It cannot use `self` or any field.
 → `34_static.cm`
 
+## Return types
+
+`def Int f` says what comes back. `def f` infers it from the `return`s:
+
+```
+def square(Int n):
+  return n * n          # infers Int
+end
+
+def greet:
+  out("hi")             # no `return` with a value: still Void
+end
+```
+
+Only an explicit `return <expression>` counts, so a method that returns
+nothing keeps meaning that. Two returns settle on the wider integer or on the
+class they share; an `Int` and a `String` have no common type and are a
+compile error asking for `def <type>`. A recursive method needs its type
+written out, since its own body cannot supply it.
+→ `47_inference.cm`
+
 ## Abstract methods
 
 ```
