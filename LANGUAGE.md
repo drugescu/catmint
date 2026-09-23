@@ -323,9 +323,14 @@ nothing downstream writes `unsafe` at all. A subclass without one inherits it.
 
 ## The standard library
 
-Written in catmint, in `lib/`: `Vector`, `Dict` (a real hash table),
-`Random`, `Time`, `Text`.
-→ `16_stdlib.cm`, `19_dict_hash.cm`, `20_random.cm`, `21_time.cm`
+Written in catmint, in `lib/`: `Vector`, `Dict` (a hash table keyed by
+String), `Map` (keyed by anything that says how), `Random`, `Time`, `Text`.
+
+A `Map` key may be a String, an Int, or a class that `does Hashable` --
+`def Int hash` and `def Int equalTo(Object other)`. String and Int are
+answered for inside the Map, since a built-in class cannot be made to promise
+a user interface. A key it cannot hash is a caught error, not a guess.
+→ `16_stdlib.cm`, `19_dict_hash.cm`, `53_map.cm`, `20_random.cm`, `21_time.cm`
 
 ## Built-in classes
 

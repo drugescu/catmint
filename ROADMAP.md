@@ -314,9 +314,11 @@ is only worth it if Windows becomes a first-class target.
   131. **All 51 tests are now clean under AddressSanitizer and LeakSanitizer
   together on Linux**, down from 11 leaking, so CI gates on leaks rather than
   reporting them.
-- **A `Map` keyed by anything, not just String** (~130 lines of `.cmm`).
-  Needs only an `Object.hash` interface, which `interface` made expressible.
-  Pure library; writable whenever someone needs it.
+- ~~**A `Map` keyed by anything, not just String**~~ **done**, in
+  `lib/map.cmm`, 164 lines of catmint and nothing in the compiler. A key is a
+  String, an Int, or a class that `does Hashable`; the first two are answered
+  for inside the Map, because a built-in class cannot be made to promise a
+  user interface, and `is` is what lets it tell them apart at run time.
 - ~~**Line numbers in runtime error messages under `-g`**~~ **done.**
   `setDebugLine` also stores to the runtime's `__cm_line`, and
   `__cm_runtimeError` puts it in the message. Nothing is emitted without

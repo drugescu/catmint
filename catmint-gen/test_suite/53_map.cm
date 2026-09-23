@@ -1,0 +1,95 @@
+# A hash table keyed by anything, not only by String.
+#
+# `Dict` hashes Strings. `Map` asks the key, which is what interfaces bought:
+# a class that says it `does Hashable` can be one. String and Int are
+# answered for inside the Map, because a built-in class cannot be made to
+# promise a user interface.
+
+using map as m
+
+class Point does m::Hashable
+  Int x
+  Int y
+
+  constructor(Int across, Int down):
+    x = across
+    y = down
+  end
+
+  def Int hash:
+    return x * 31 + y
+  end
+
+  def Int equalTo(Object other):
+    if other is Point:
+      Point p = other
+      if p.x == x and p.y == y:
+        return 1
+      end
+    end
+    return 0
+  end
+end
+
+class Main from IO
+  def main:
+    m::Map byName
+    byName.put("alpha", 1)
+    byName.put("beta", 2)
+    byName.put("alpha", 10)
+    # A value comes back as Object, as it does from any container here, so
+    # it goes into a typed variable to be used -- the same rule List follows.
+    Int alpha = byName.get("alpha")
+    Int beta = byName.get("beta")
+    out("strings ${byName.size()} ${alpha} ${beta}\n")
+
+    m::Map byNumber
+    Int i = 0
+    while i < 50:
+      byNumber.put(i * 1000, i)
+      i = i + 1
+    end
+    Int seven = byNumber.get(7000)
+    out("numbers ${byNumber.size()} ${seven} ${byNumber.has(7001)}\n")
+
+    # A key that answers for itself. Two equal Points are one key even though
+    # they are two objects.
+    m::Map byPoint
+    byPoint.put(new Point(1, 2), "first")
+    byPoint.put(new Point(3, 4), "second")
+    byPoint.put(new Point(1, 2), "replaced")
+    String atOneTwo = byPoint.get(new Point(1, 2))
+    out("points ${byPoint.size()} ${atOneTwo}\n")
+    out("absent ${byPoint.has(new Point(9, 9))}\n")
+
+    # Different kinds of key never collide, whatever they hash to.
+    m::Map mixed
+    mixed.put("7", "a string")
+    mixed.put(7, "a number")
+    String asText = mixed.get("7")
+    String asNumber = mixed.get(7)
+    out("mixed ${mixed.size()} ${asText} ${asNumber}\n")
+
+    out("keys ${byName.keyList().len()}\n")
+
+    # A key it cannot hash says so rather than guessing.
+    try:
+      m::Map bad
+      List unhashable
+      bad.put(unhashable, 1)
+      out("unreachable\n")
+    catch e:
+      out("rejected an unhashable key\n")
+    end
+
+    Int before = allocated()
+    Int n = 0
+    while n < 200:
+      m::Map scratch
+      scratch.put("key " + n, n)
+      n = n + 1
+    end
+    out("leaked ${allocated() - before}\n")
+    out("done\n")
+  end
+end

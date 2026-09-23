@@ -1,0 +1,164 @@
+# Map: a hash table keyed by anything, not only by String.
+#
+# `dict.cmm` hashes Strings and nothing else, which is most of what a program
+# wants and not all of it. This one asks the key how to hash itself, which is
+# the thing interfaces made expressible: a class that says it `does Hashable`
+# can be a key. String and Int are answered for here instead, because a
+# built-in class cannot be made to promise a user interface.
+#
+# Nothing in this file needs the runtime. It is List, `is`, and arithmetic.
+
+interface Hashable
+  def Int hash
+  def Int equalTo(Object other)
+end
+
+class MapEntry
+  Object k
+  Object v
+  Int h
+
+  constructor(Object key, Object value, Int hashed):
+    k = key
+    v = value
+    h = hashed
+  end
+end
+
+class Map
+  List buckets
+  Int count
+
+  def Int bucketCount:
+    return 16
+  end
+
+  # An attribute initialiser is a single expression, so the buckets are built
+  # on first use, as in dict.cmm.
+  def Void ensure:
+    if buckets.len() == 0:
+      Int i = 0
+      while i < bucketCount():
+        List b
+        buckets.append(b)
+        i = i + 1
+      end
+    end
+  end
+
+  # Masked rather than negated: negating the most negative Int gives itself
+  # back, and a negative bucket index is not a thing.
+  def Int positive(Int n):
+    return n & 2147483647
+  end
+
+  def Int hashOf(Object key):
+    if key is Hashable:
+      Hashable asked = key
+      return positive(asked.hash())
+    elif key is String:
+      String s = key
+      Int acc = 5381
+      Int i = 0
+      while i < s.len():
+        acc = acc * 33 + s.at(i)
+        i = i + 1
+      end
+      return positive(acc)
+    elif key is Integer:
+      Integer n = key
+      return positive(n.get())
+    end
+    throw "a Map key must be a String, an Int, or a class that does Hashable"
+  end
+
+  # Two keys are the same when the key itself says so. Different kinds are
+  # never equal, whatever they hash to.
+  def Int same(Object a, Object b):
+    if a is Hashable:
+      Hashable asked = a
+      return asked.equalTo(b)
+    elif a is String:
+      if b is String:
+        String x = a
+        String y = b
+        return x.equals(y)
+      end
+      return 0
+    elif a is Integer:
+      if b is Integer:
+        Integer x = a
+        Integer y = b
+        if x.get() == y.get():
+          return 1
+        end
+        return 0
+      end
+      return 0
+    end
+    return 0
+  end
+
+  def List bucketFor(Int hashed):
+    ensure()
+    return buckets.get((hashed % bucketCount()))
+  end
+
+  def Int size:
+    return count
+  end
+
+  # Null when the key is absent. Use has() when null is a legal value.
+  def Object get(Object key):
+    Int hashed = hashOf(key)
+    List bucket = bucketFor(hashed)
+    for e in bucket:
+      MapEntry entry = e
+      if entry.h == hashed and same(entry.k, key) == 1:
+        return entry.v
+      end
+    end
+    return null
+  end
+
+  def Int has(Object key):
+    Int hashed = hashOf(key)
+    List bucket = bucketFor(hashed)
+    for e in bucket:
+      MapEntry entry = e
+      if entry.h == hashed and same(entry.k, key) == 1:
+        return 1
+      end
+    end
+    return 0
+  end
+
+  # Replaces the value when the key is already present.
+  def Map put(Object key, Object value):
+    Int hashed = hashOf(key)
+    List bucket = bucketFor(hashed)
+    for e in bucket:
+      MapEntry entry = e
+      if entry.h == hashed and same(entry.k, key) == 1:
+        entry.v = value
+        return self
+      end
+    end
+    bucket.append(new MapEntry(key, value, hashed))
+    count = count + 1
+    return self
+  end
+
+  def List keyList:
+    ensure()
+    List out
+    for b in buckets:
+      List bucket = b
+      for e in bucket:
+        MapEntry entry = e
+        out.append(entry.k)
+      end
+    end
+    return out
+  end
+end
