@@ -136,6 +136,25 @@ iterations plus `fib(32)`, best of seven runs on this machine.
 | C at `-O0` | 0.029 s |
 | C at `-O2` | 0.014 s |
 
+`bench/run.sh` is the fuller picture: five problems in catmint, C and C++,
+checked to give the same answer before being timed. Best of five runs.
+
+| benchmark | catmint | C `-O2` | C++ `-O2` |
+|---|---|---|---|
+| tight integer loop | 0.038 s | 0.039 s | 0.037 s |
+| prime counting | 0.019 s | 0.020 s | 0.018 s |
+| `fib(32)`, recursive | 0.012 s | 0.008 s | 0.010 s (virtual) |
+| building 400,000 strings | 0.098 s | 0.031 s | 0.021 s |
+| sieve over 200,000 | 0.036 s | 0.005 s | 0.005 s |
+
+Arithmetic is at parity. Calls cost about half as much again as C's, because
+they go through a virtual table; the C++ column for `fib` is a virtual call
+too, and catmint is within a fifth of it. Strings cost three times what C
+does, mostly because an interpolated string allocates three times where C
+allocates once. The sieve is the worst case and worth being plain about:
+catmint has no array type, so `List` holds boxed objects, and that is seven
+times the cost of a byte array.
+
 Catmint beats unoptimised C and is within a factor of two of optimised C. The
 remaining gap is virtual dispatch: `fib` calls itself through the vtable
 about two million times, and each call is a null check, two loads and an
@@ -295,8 +314,10 @@ information and one short lookup.
 ## How to check any of this yourself
 
 ```sh
-cd catmint-lex && ./wtest.sh     # 11 parser tests
-cd catmint-gen && ./ctest.sh     # 40 end-to-end tests
+./test.sh                        # builds, then runs everything
+./bench/run.sh                   # catmint against C and C++
+cd catmint-lex && ./wtest.sh     # 11 parser tests on their own
+cd catmint-gen && ./ctest.sh     # 41 end-to-end tests on their own
 ./catmintc --run -I lib examples/tour.cm
 ./catmintc -I lib examples/wordcount.cm -o wordcount && ./wordcount somefile
 ./catmintc -g -O0 app.cm         # line numbers a debugger can use

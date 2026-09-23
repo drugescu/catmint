@@ -523,6 +523,16 @@ Each of these produced a crash or a silent miscompile during development.
   `LocalDefinition` with the type `auto`; the generator decides between
   assignment and declaration by whether the name already resolves.
 
+## Documents
+
+- `LANGUAGE.md` -- one brief entry per language feature, each pointing at the
+  test that exercises it. The first thing to read, and the first thing to
+  update when a feature changes.
+- `COMPILING.md` -- how to build the compiler and a program, and the things
+  about the language that surprise people.
+- `ASSESSMENT.md` -- what works, what does not, what it would take, and the
+  benchmarks against C and C++.
+
 ## Conventions
 
 - Method mangling is `M<len><Class>_<method>`, e.g. `M2_IO_out`, `M4_Main_main`.

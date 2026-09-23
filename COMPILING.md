@@ -1,5 +1,8 @@
 # Compiling and running a catmint program
 
+For the language itself, one brief entry per feature with a runnable example
+for each, see `LANGUAGE.md`.
+
 Written for someone who has just cloned this repository and wants to get a
 program running, then understand what the compiler did with it.
 
