@@ -79,6 +79,16 @@ if [ -n "$THOROUGH" ]; then
   fi
 fi
 
+if [ -n "$THOROUGH" ]; then
+  printf "\n${BOLD}portability${NC}\n"
+  if ( cd "$ROOT" && ./portability.sh ) > "$ROOT/.portability.log" 2>&1; then
+    grep -o "portable across every target checked" "$ROOT/.portability.log" | sed 's/^/  /'
+  else
+    printf "  ${RED}not portable${NC} - see .portability.log\n"
+    failed=1
+  fi
+fi
+
 printf "\n${BOLD}examples${NC}\n"
 for source in "$ROOT"/examples/*.cm; do
   name=$(basename "$source" .cm)

@@ -89,6 +89,14 @@ IRGenerator::IRGenerator(llvm::StringRef ModuleName, Program *P,
     : Context(), Module(ModuleName, Context), Builder(Context),
       // A generic little-endian 64-bit layout. Only used to size objects; the
       // module carries no datalayout of its own so lli/clang supply the host's.
+      // One fixed data layout for computing every instance's size, which is
+      // then baked into the run-time type information. It is spelled as
+      // x86-64's, and it is safe on every target this compiler serves
+      // because catmint objects are built only from pointers, i32, i64 and
+      // double -- all naturally aligned, all agreeing on any LP64 target.
+      // The f80 and stack-alignment parts never come up: the language has no
+      // long double. `./portability.sh` asserts the resulting sizes against
+      // each target's real layout, so this is checked rather than hoped.
       SizingLayout("e-m:e-i64:64-f80:128-n8:16:32:64-S128"), Runtime(Module),
       AST(P), ASTTypes(ASTTypes), DefinitionsMap(std::move(DefinitionsMap)),
       ExternalClasses(std::move(ExternalClasses)), LibraryOnly(LibraryOnly),

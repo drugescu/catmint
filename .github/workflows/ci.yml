@@ -1,0 +1,112 @@
+# Continuous integration.
+#
+# The Linux job is the point of this file. Everything in the repository has
+# been developed and verified on arm64 macOS; whether it works on x86-64 Linux
+# has been an assumption, and an assumption that was wrong once already -- the
+# checked-in runtime.ll said "target-cpu"="apple-m1" on all thirty of its
+# functions while the documentation called it portable. ./portability.sh now
+# catches that class of thing without another machine, but only a Linux box
+# can say whether the result runs.
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: x86-64 Linux
+    runs-on: ubuntu-latest
+    env:
+      LLVM_VERSION: "20"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM, flex and bison
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flex bison
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh "$LLVM_VERSION"
+          sudo apt-get install -y "llvm-$LLVM_VERSION-dev" "clang-$LLVM_VERSION"
+          echo "/usr/lib/llvm-$LLVM_VERSION/bin" >> "$GITHUB_PATH"
+
+      - name: Versions
+        run: |
+          llvm-config --version
+          clang --version | head -1
+          bison --version | head -1
+
+      # The three components, in dependency order. LLVM_CONFIG is how both
+      # Makefiles are told where LLVM is.
+      - name: Build
+        run: |
+          export LLVM_CONFIG="$(command -v llvm-config)"
+          make -C catmint-ast -f GNUmakefile build
+          make -C catmint-lex LLVM_CONFIG="$LLVM_CONFIG"
+          make -C catmint-gen LLVM_CONFIG="$LLVM_CONFIG"
+
+      # --thorough is the whole net: both suites, every test at -O0 through
+      # -O3 and separately compiled, 50 random programs differentially tested
+      # against C, and 300 mutants through the front end.
+      - name: Test
+        run: ./test.sh --no-build --thorough
+
+      - name: Portability
+        run: ./portability.sh
+
+      # The check to repeat after anything touching reference counting: a
+      # release too many is a use-after-free here and nothing at all
+      # otherwise.
+      - name: AddressSanitizer
+        run: |
+          fails=0
+          for source in catmint-gen/test_suite/*.cm; do
+            name=$(basename "$source" .cm)
+            ./catmintc --asan -I lib -I catmint-gen/test_suite/modules \
+              "$source" -o "/tmp/asan-$name" >/dev/null 2>&1 || continue
+            args=""
+            [ -f "catmint-gen/test_suite/$name.args" ] && \
+              args=$(cat "catmint-gen/test_suite/$name.args")
+            if [ -f "catmint-gen/test_suite/$name.stdin" ]; then
+              out=$("/tmp/asan-$name" $args < "catmint-gen/test_suite/$name.stdin" 2>&1)
+            else
+              out=$("/tmp/asan-$name" $args < /dev/null 2>&1)
+            fi
+            if printf '%s' "$out" | grep -q AddressSanitizer; then
+              echo "=== $name ==="
+              printf '%s\n' "$out" | grep -A5 'ERROR: AddressSanitizer' | head -12
+              fails=$((fails + 1))
+            fi
+          done
+          echo "sanitizer findings: $fails"
+          [ "$fails" -eq 0 ]
+
+      # Not a gate: the numbers vary far too much on a shared runner to fail a
+      # build over. It is here so a catastrophic regression is visible in the
+      # log, which is how the -O0 runtime and the stray Int64 store were both
+      # found.
+      - name: Benchmarks
+        continue-on-error: true
+        run: ./bench/run.sh
+
+  macos:
+    name: arm64 macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM and bison
+        run: |
+          brew install llvm@22 bison flex
+          echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+
+      - name: Build and test
+        run: ./test.sh --thorough
+
+      - name: Portability
+        run: ./portability.sh

@@ -105,3 +105,4 @@ difftest/failures/
 .difftest.log
 fuzz/failures/
 .fuzz.log
+.portability.log
