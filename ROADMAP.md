@@ -11,7 +11,10 @@ rewrite of anything.
 
 ---
 
-## Phase 0 — verification, before the grammar is touched
+## Phase 0 — verification, before the grammar is touched — **done**
+
+All four landed, and `./test.sh --thorough` runs the three that are
+repeatable. Findings are recorded below each item.
 
 Everything in Phase 1 and Phase 2 edits the grammar or the code generator.
 This phase builds the net first.
@@ -36,6 +39,29 @@ The differential tester emits fully parenthesised arithmetic, so the
 deliberate `%` precedence never shows up as a false difference. Once
 `break` and `continue` exist it learns to emit them, and `31_memory.cm`
 gains a loop that breaks out of, so the leak count covers that path.
+
+**What it found.**
+
+- The conflicts have **one** cause: `block : block expression` has no
+  separator, so at every statement boundary bison decides whether the next
+  token continues the expression or starts a new one, and resolves all ten by
+  shifting. `Int c = a` then `- b` computes `a - b`; `twice` then `(x)` is a
+  call. Confirmed by running both. Settled and documented, not fixed -- like
+  the `%` precedence, changing it would silently change existing programs.
+  One dead nonterminal (`new_dict`) was removed.
+- **All 43 tests pass at -O0, -O1, -O2 and -O3**, and 36 of them also pass
+  separately compiled. That guarantee did not exist before: the everyday run
+  JITs one build.
+- **200 random programs agree with C**, each checked at two optimisation
+  levels. No disagreement found yet -- which is the expected result for
+  arithmetic and control flow, and is the baseline the risky work will be
+  measured against.
+- **2,000 mutants found no crash** in the parser or in the semantic analyser.
+
+The fuzzer runs a process per input rather than linking libFuzzer in, because
+the grammar file defines `main` and an in-process harness would mean building
+a second copy of the parser -- surgery on the most fragile part of the build
+for throughput this does not need. `fuzz/fuzz.py --runs N` for a longer run.
 
 ## Phase 1 — ergonomics
 

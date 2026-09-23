@@ -103,3 +103,5 @@ catmint-lex/test_suite/*.errlog.txt
 # Sources of a differential-testing disagreement, kept for inspection.
 difftest/failures/
 .difftest.log
+fuzz/failures/
+.fuzz.log

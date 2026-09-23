@@ -69,6 +69,16 @@ if [ -n "$THOROUGH" ]; then
   fi
 fi
 
+if [ -n "$THOROUGH" ]; then
+  printf "\n${BOLD}fuzzing the front end${NC}\n"
+  if ( cd "$ROOT" && python3 fuzz/fuzz.py --runs 300 ) > "$ROOT/.fuzz.log" 2>&1; then
+    grep -o "[0-9]* mutants.*findings" "$ROOT/.fuzz.log" | sed 's/^/  /'
+  else
+    printf "  ${RED}crashed${NC} - see .fuzz.log and fuzz/failures/\n"
+    failed=1
+  fi
+fi
+
 printf "\n${BOLD}examples${NC}\n"
 for source in "$ROOT"/examples/*.cm; do
   name=$(basename "$source" .cm)
