@@ -18,7 +18,7 @@ class Main from IO
   def main:
     Int count = 0
     Int n = 0
-    while n < 400000:
+    while n < 2000000:
       count = count + isPrime(n)
       n = n + 1
     end

@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 int main(void) {
-  int limit = 200000;
+  int limit = 5000000;
   char *flags = malloc((size_t)limit);
   for (int i = 0; i < limit; i++) flags[i] = 1;
   for (int p = 2; p * p < limit; p++)

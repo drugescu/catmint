@@ -4,7 +4,7 @@ class Main from IO
   def main:
     Int total = 0
     Int i = 0
-    while i < 400000:
+    while i < 2000000:
       String line = "row ${i} of the table"
       total = total + line.len()
       i = i + 1

@@ -5,9 +5,13 @@
 #   ./run.sh            all of them
 #   ./run.sh fib loop   just those
 #
-# Times are the best of five runs, which is the fairest thing to report for
-# a program this short: the best run is the one least disturbed by whatever
-# else the machine was doing.
+# Times are the best of five runs, which is the fairest thing to report: the
+# best run is the one least disturbed by whatever else the machine was doing.
+#
+# The last row is an empty program, so you can see how much of each number is
+# just starting a process. The benchmarks are sized so that it is a small
+# part, which the first version of them was not: a sieve that took four
+# milliseconds was measuring the loader.
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
@@ -23,7 +27,7 @@ CC=${CC:-clang}
 CXX=${CXX:-clang++}
 OPT=${OPT:--O2}
 
-BENCHES=${*:-fib loop primes strings sieve}
+BENCHES=${*:-fib loop primes strings sieve empty}
 
 printf "%-10s %12s %12s %12s   %s\n" "benchmark" "catmint" "C $OPT" "C++ $OPT" "answer"
 printf "%-10s %12s %12s %12s   %s\n" "---------" "-------" "------" "--------" "------"

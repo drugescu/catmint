@@ -1,0 +1,7 @@
+# Nothing at all, so the table shows how much of every other row is just
+# starting a process.
+class Main from IO
+  def main:
+    out("0\n")
+  end
+end

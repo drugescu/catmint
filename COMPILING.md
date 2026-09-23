@@ -147,6 +147,10 @@ Things worth knowing, because they are not obvious:
   declared return type. There is no limit on the number of parameters. The
   paren-less form the README shows, `def show Int a, Int b:`, is not
   implemented; use parentheses.
+- **`Bytes`, `Ints` and `Floats` are arrays of numbers.** `new Ints(1000)`
+  gives a thousand 64-bit slots in one allocation, with `len`, `get`, `set`
+  and `fill`. They do not grow -- `List` and `Vector` are for that -- and
+  reading past the end is a catchable error.
 - **`interface` says what a value can do.** Declare one with `interface
   Shape ... end`, listing `def Float area` style signatures with a return
   type and no body; a class promises them with `class Circle does Shape`. A

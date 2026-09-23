@@ -335,6 +335,11 @@ private:
   /// The class a dispatch's receiver names when it is a class rather than a
   /// variable, which is what makes `Math.sqrt(2.0)` a static call.
   ClassInfo *staticReceiver(Dispatch *D);
+  /// Whether a call on \p RecvClass can skip the virtual table because no
+  /// class in the program overrides \p MethodName below it. Only ever true
+  /// when the whole program is in front of us: a separately compiled module
+  /// may hold the subclass that would have overridden it.
+  bool canCallDirectly(ClassInfo *RecvClass, const std::string &MethodName);
 
   /// \p ReceiverKnown skips the null check: it is set where the receiver is
   /// `self`, which the caller is holding for the duration of the call.

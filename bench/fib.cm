@@ -9,6 +9,6 @@ class Main from IO
   end
 
   def main:
-    out("${fib(32)}\n")
+    out("${fib(35)}\n")
   end
 end

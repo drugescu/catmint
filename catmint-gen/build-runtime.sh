@@ -39,7 +39,10 @@ strip_target() {
 
 if [ -x "$CLANG" ] && [ -f "$SOURCE" ]; then
   TMP="$OUT.tmp.$$"
-  "$CLANG" -O0 -emit-llvm -S "$SOURCE" -o "$TMP"
+  # -O2, not -O0: at -O0 clang marks every function `optnone noinline`,
+  # which stops the program that links against it from inlining anything --
+  # every array element access stayed a function call because of it.
+  "$CLANG" -O2 -emit-llvm -S "$SOURCE" -o "$TMP"
   strip_target "$TMP" "$OUT"
   rm -f "$TMP"
 

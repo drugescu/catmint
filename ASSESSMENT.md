@@ -137,70 +137,68 @@ iterations plus `fib(32)`, best of seven runs on this machine.
 | C at `-O2` | 0.014 s |
 
 `bench/run.sh` is the fuller picture: five problems in catmint, C and C++,
-checked to give the same answer before being timed. Best of five runs.
+checked to give the same answer before being timed. Best of five runs, and an
+empty program in the last row so that the cost of merely starting one is
+visible rather than hidden inside every other number.
 
 | benchmark | catmint | C `-O2` | C++ `-O2` |
 |---|---|---|---|
-| tight integer loop | 0.036 s | 0.036 s | 0.036 s |
-| prime counting | 0.020 s | 0.018 s | 0.016 s |
-| `fib(32)`, recursive | 0.013 s | 0.007 s | 0.009 s (virtual) |
-| building 400,000 strings | 0.068 s | 0.030 s | 0.019 s |
-| sieve over 200,000 | 0.011 s | 0.004 s | 0.003 s |
+| tight integer loop | 0.037 s | 0.036 s | 0.035 s |
+| prime counting | 0.117 s | 0.112 s | 0.117 s |
+| `fib(35)`, recursive | 0.021 s | 0.021 s | 0.027 s (virtual) |
+| building 2,000,000 strings | 0.214 s | 0.123 s | 0.089 s |
+| sieve over 5,000,000 | 0.013 s | 0.008 s | 0.011 s |
+| nothing at all | 0.005 s | 0.004 s | 0.004 s |
 
-**Arithmetic is at parity.** Not approximately: catmint and C trade places
-between runs on the loop and the primes.
+**Arithmetic, calls and array work are at parity with C.** Not approximately:
+catmint and C trade places between runs on the loop, the primes and `fib`,
+and `fib` beats the C++ column because that one is a virtual call and
+catmint's, here, is not.
 
-**Calls cost about twice C's**, because every one goes through a virtual
-table. The C++ column for `fib` is a virtual call too, and catmint is within
-a half of that. What is left is the indirect branch the optimiser cannot see
-through, which is the price of the object model rather than a defect in it.
+**Strings cost about 1.7 times C's and 2.4 times C++'s**, and that part is
+architectural. A catmint String is a heap object: a type pointer, a reference
+count, a length and its characters. C's is a raw buffer. C++'s, at this
+length, is not on the heap at all, because libc++ keeps up to 22 characters
+inside the `std::string` itself. Catmint has no equivalent, because anything
+that can be passed as an `Object` needs a type pointer in front of it.
 
-**Strings cost a little over twice C's, and three times C++'s.** The reason
-is worth stating plainly, because it is architectural. A catmint String is a
-heap object: a type pointer, a reference count, a length and its characters.
-C's is a raw buffer. C++'s, at this length, is not on the heap at all --
-libc++ keeps up to 22 characters inside the `std::string` itself, so the
-benchmark's `"row 1234 of the table"` never allocates. Catmint has no
-equivalent, because every value that can be passed as an `Object` has to have
-a type pointer in front of it.
+Four changes got it here, and three of them were finding waste rather than
+cleverness.
 
-Two things closed most of the gap. A String used to be two allocations, the
-object and a separate buffer; the characters now live in the same block, so
-it is one. And a chain of concatenations -- which is what every interpolated
-string is -- used to allocate an intermediate per `+`; the generator now
-folds the chain into a single `__cm_concatAll`. Together those took the
-benchmark from 0.098 s to 0.068 s. Getting closer would mean small-string
-optimisation, which the object model does not allow, or writing the numbers
-straight into the result buffer instead of converting each to a String first,
-which is a real but narrow further win.
+- A String was two allocations, the object and a separate buffer. The
+  characters now live in the same block, so it is one.
+- A chain of concatenations -- which is what every interpolated string is --
+  allocated an intermediate per `+`. The generator folds the chain into a
+  single `__cm_concatAll`.
+- Small integers, -128 to 1024, are shared static boxes, so a `List` of flags
+  or counts allocates nothing. It is also why `Integer` has no setter:
+  changing a shared box would change that number for everyone.
+- **The runtime was compiled at `-O0`**, which marks every function
+  `optnone noinline`, so nothing in it could ever be inlined into a program
+  that linked against it. One flag in `build-runtime.sh`. That alone took the
+  sieve from 0.050 s to 0.014 s and string building from 0.302 s to 0.212 s.
 
-**The sieve was the worst case, and is no longer.** Catmint has no array
-type: `List` holds object references, so a list of flags was a list of
-heap-allocated boxed `Integer`s -- two hundred thousand allocations where C
-has one `malloc` of bytes. It ran seven times slower than C for that reason
-alone.
+And a fifth in the compiler: a call now goes straight to the implementation
+when no class in the program overrides the method, which is what made `fib`
+match C. It is switched off for separate compilation, where an override could
+be hiding in a module this one cannot see.
 
-Small integers are now shared: values from -128 to 1024 are preallocated
-static boxes with a reference count of zero, so a list of flags, counts or
-character codes allocates nothing at all. That took the sieve from 0.036 s to
-0.011 s, or from seven times C to under three. The remaining gap is the
-pointer indirection on every element, which only a primitive array type would
-remove, and that is the one container feature still worth adding. Sharing is
-also why `Integer` has no setter any more: changing a shared box in place
-would change that number for everyone holding it.
+`Bytes`, `Ints` and `Floats` -- fixed-length arrays of numbers -- are why the
+sieve is no longer the worst case. It used to run seven times slower than C,
+because `List` holds object references and every flag was a separately
+allocated box.
 
-Two measurements worth keeping. The table used to read 0.039 s, and the fix
-was not in the compiler: `catmintc` invoked clang at `-O0` on the linked
-bitcode, so the fast register allocator spilled every value to the stack.
-Running LLVM's pass pipeline inside `catmint-gen` as well was tried, measured
-and removed again, because it made no further difference.
+Two earlier measurements are worth keeping, because both were costs no test
+could have shown. `catmintc` used to invoke clang at `-O0` on the linked
+bitcode, so the fast register allocator spilled every value to the stack;
+one flag was worth a third of the runtime. And reference counting,
+implemented the obvious way, made a loop benchmark **seven times slower**,
+because every iteration opened and closed a temporary pool it never put
+anything in -- pools are now emitted speculatively and erased when nothing
+inside them allocated.
 
-And reference counting, implemented the obvious way, made this benchmark
-**seven times slower** -- 0.164 s -- because every loop iteration opened and
-closed a pool it never put anything in. Emitting the pool speculatively and
-erasing it when nothing inside allocated brought it back to 0.023 s. If you
-touch that machinery, re-run the benchmark; it is the kind of cost that does
-not show up in a test suite.
+If you touch code generation or the runtime, re-run `bench/run.sh`. Four
+separate costs have been found that way and none of them failed a test.
 
 ## What is missing
 
@@ -318,6 +316,9 @@ information and one short lookup.
 - **A `Map` in the standard library that is not String-keyed.** `Dict` hashes
   strings; hashing any object would need only an `Object.hash` interface,
   which is now expressible.
+- **A `Bytes` bridge to `String` and `File`.** The arrays exist now, but
+  filling one from a file means reading a String and converting a character
+  at a time. Two methods would fix it.
 
 **Still not worth taking.**
 

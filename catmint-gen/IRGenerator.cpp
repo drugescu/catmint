@@ -421,6 +421,13 @@ bool IRGenerator::layoutClass(ClassInfo *CI) {
       // { rtti, int refs } -- Worker has no state of its own.
       CI->Elements = {Ptr, I32};
       CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TWorker");
+    } else if (Name == strings::Bytes || Name == strings::Ints ||
+               Name == strings::Floats) {
+      // { rtti, int refs, int length, T *data } -- the same shape for all
+      // three, since the element type only matters to the runtime.
+      CI->Elements = {Ptr, I32, I32, Ptr};
+      CI->Ty = llvm::StructType::create(Context, CI->Elements,
+                                        "struct.T" + Name);
     } else if (Name == strings::Integer) {
       // { rtti, int refs, long long value }
       CI->Elements = {Ptr, I32, llvm::Type::getInt64Ty(Context)};
@@ -2187,8 +2194,10 @@ llvm::Value *IRGenerator::emitCall(ClassInfo *RecvClass,
     noteAllocation();
 
   // A method with no virtual table slot -- a constructor -- is always called
-  // directly, whatever the call site asked for.
-  if (!Virtual || !RecvClass->VTableIndex.count(MethodName)) {
+  // directly, whatever the call site asked for, and so is one that nothing
+  // overrides.
+  if (!Virtual || !RecvClass->VTableIndex.count(MethodName) ||
+      canCallDirectly(RecvClass, MethodName)) {
     ClassInfo *Target = StaticClass.empty() ? Owner : lookupClass(StaticClass);
     if (!Target)
       Target = Owner;
@@ -2248,6 +2257,49 @@ ClassInfo *IRGenerator::staticReceiver(Dispatch *D) {
   if (CurrentClass && CurrentClass->FieldIndex.count(Sym->getName()))
     return nullptr;
   return lookupClass(Sym->getName());
+}
+
+/// A virtual table exists for the case where the answer is not known until
+/// run time. When nothing overrides a method, it is known: the call goes
+/// straight to the implementation, and the optimiser can then inline it,
+/// which is what takes an array element access from a call to a load.
+///
+/// Only sound with the whole program in view. Compiling a module on its own,
+/// or a program that imports separately compiled ones, leaves somewhere for
+/// an override to hide, so this answers no there.
+bool IRGenerator::canCallDirectly(ClassInfo *RecvClass,
+                                  const std::string &MethodName) {
+  if (LibraryOnly || !ExternalClasses.empty())
+    return false;
+  if (RecvClass->IsInterface)
+    return false;
+
+  auto It = RecvClass->VTableImpl.find(MethodName);
+  if (It == RecvClass->VTableImpl.end())
+    return false;
+  ClassInfo *Chosen = It->second.first;
+
+  const std::string &Base = RecvClass->AST->getName();
+  for (auto &Entry : Classes) {
+    ClassInfo *Candidate = &Entry.second;
+    if (Candidate == RecvClass)
+      continue;
+    // Only classes below this one can change the answer.
+    bool Below = false;
+    for (auto *Up = Candidate->Parent; Up; Up = Up->Parent) {
+      if (Up == RecvClass) {
+        Below = true;
+        break;
+      }
+    }
+    if (!Below)
+      continue;
+
+    auto Other = Candidate->VTableImpl.find(MethodName);
+    if (Other == Candidate->VTableImpl.end() || Other->second.first != Chosen)
+      return false;
+  }
+  return true;
 }
 
 llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,

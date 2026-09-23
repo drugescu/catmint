@@ -25,6 +25,14 @@
 #include <ctype.h>
 #include <math.h>
 #include <setjmp.h>
+/* Spelled through a macro so the file still compiles as plain C89 anywhere
+ * that does not know the attribute. */
+#if defined(__GNUC__) || defined(__clang__)
+#define CATMINT_NORETURN __attribute__((noreturn))
+#else
+#define CATMINT_NORETURN
+#endif
+
 #include <pthread.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -121,6 +129,36 @@ struct TProcess {
   int pid;
 };
 
+/* A fixed-length run of numbers, stored as numbers rather than as object
+ * references. This is the one thing List cannot be: a List holds pointers to
+ * boxed values, so a million flags is a million allocations and a pointer
+ * chase per element.
+ *
+ * Three of them rather than one generic one, because catmint has no generics
+ * and is not getting any. Each is the same eight lines three times over,
+ * which is a smaller price than a type system that could express `Array of
+ * Int`. */
+struct TBytes {
+  struct __catmint_rtti *rtti;
+  int refs;
+  int length;
+  unsigned char *data;
+};
+
+struct TInts {
+  struct __catmint_rtti *rtti;
+  int refs;
+  int length;
+  long long *data;
+};
+
+struct TFloats {
+  struct __catmint_rtti *rtti;
+  int refs;
+  int length;
+  double *data;
+};
+
 /* Worker has no state: it exists to name the two static methods that wait
  * for a thread and report how many cores there are. */
 struct TWorker {
@@ -149,12 +187,13 @@ CATMINT_RTTI_TYPE(catmint_rtti11_list, 11);
 CATMINT_RTTI_TYPE(catmint_rtti8_integer, 8);
 CATMINT_RTTI_TYPE(catmint_rtti13_file, 13);
 CATMINT_RTTI_TYPE(catmint_rtti11_process, 11);
+CATMINT_RTTI_TYPE(catmint_rtti10_array, 10);
 CATMINT_RTTI_TYPE(catmint_rtti19_string, 19);
 
 
 #define RTTI(x) ((struct __catmint_rtti *)&(x))
 
-void  M6_Object_abort(struct TObject *self);
+void  M6_Object_abort(struct TObject *self) CATMINT_NORETURN;
 struct TString *M6_Object_typeName(struct TObject *self);
 struct TObject *M6_Object_copy(struct TObject *self);
 struct TObject *M6_Object_retain(struct TObject *self);
@@ -216,6 +255,24 @@ int M7_Process_pid(void);
 long long M6_Worker_wait(int handle);
 int M6_Worker_count(void);
 
+void M5_Bytes_init(struct TBytes *self, int count);
+int M5_Bytes_len(struct TBytes *self);
+int M5_Bytes_get(struct TBytes *self, int index);
+int M5_Bytes_set(struct TBytes *self, int index, int value);
+struct TBytes *M5_Bytes_fill(struct TBytes *self, int value);
+
+void M4_Ints_init(struct TInts *self, int count);
+int M4_Ints_len(struct TInts *self);
+long long M4_Ints_get(struct TInts *self, int index);
+long long M4_Ints_set(struct TInts *self, int index, long long value);
+struct TInts *M4_Ints_fill(struct TInts *self, long long value);
+
+void M6_Floats_init(struct TFloats *self, int count);
+int M6_Floats_len(struct TFloats *self);
+double M6_Floats_get(struct TFloats *self, int index);
+double M6_Floats_set(struct TFloats *self, int index, double value);
+struct TFloats *M6_Floats_fill(struct TFloats *self, double value);
+
 double M4_Math_sqrt(double x);
 double M4_Math_pow(double x, double y);
 double M4_Math_exp(double x);
@@ -247,8 +304,12 @@ long long M7_Integer_getLong(struct TInteger *self);
 void *__catmint_new(struct __catmint_rtti *rtti);
 void String_init(struct TString *self);
 struct TString *__cm_concatAll(void **parts, int count);
-void __cm_runtimeError(const char *message);
-void __cm_throw(void *object);
+/* Neither of these comes back: one jumps to a handler or exits, the other
+ * always jumps. Saying so is not decoration -- it is what lets the optimiser
+ * treat a bounds check as a predictable branch and inline the accessor
+ * around it. Without it, every array element access stayed a function call. */
+void __cm_runtimeError(const char *message) CATMINT_NORETURN;
+void __cm_throw(void *object) CATMINT_NORETURN;
 void __cm_retain(void *object);
 void __cm_release(void *object);
 void __cm_poolAdd(void *object);
@@ -269,6 +330,9 @@ struct TString NFile    = { RTTI(RString), 0, 4, "File" };
 struct TString NMath    = { RTTI(RString), 0, 4, "Math" };
 struct TString NProcess = { RTTI(RString), 0, 7, "Process" };
 struct TString NWorker  = { RTTI(RString), 0, 6, "Worker" };
+struct TString NBytes   = { RTTI(RString), 0, 5, "Bytes" };
+struct TString NInts    = { RTTI(RString), 0, 4, "Ints" };
+struct TString NFloats  = { RTTI(RString), 0, 6, "Floats" };
 
 #define CATMINT_OBJECT_SLOTS                                                   \
   (void *)M6_Object_abort, (void *)M6_Object_typeName,                         \
@@ -323,6 +387,27 @@ catmint_rtti6_object RMath = {
 catmint_rtti6_object RWorker = {
   &NWorker, sizeof(struct TWorker), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS }
+};
+
+catmint_rtti10_array RBytes = {
+  &NBytes, sizeof(struct TBytes), RTTI(RObject), NULL,
+  { CATMINT_OBJECT_SLOTS,
+    (void *)M5_Bytes_len, (void *)M5_Bytes_get, (void *)M5_Bytes_set,
+    (void *)M5_Bytes_fill }
+};
+
+catmint_rtti10_array RInts = {
+  &NInts, sizeof(struct TInts), RTTI(RObject), NULL,
+  { CATMINT_OBJECT_SLOTS,
+    (void *)M4_Ints_len, (void *)M4_Ints_get, (void *)M4_Ints_set,
+    (void *)M4_Ints_fill }
+};
+
+catmint_rtti10_array RFloats = {
+  &NFloats, sizeof(struct TFloats), RTTI(RObject), NULL,
+  { CATMINT_OBJECT_SLOTS,
+    (void *)M6_Floats_len, (void *)M6_Floats_get, (void *)M6_Floats_set,
+    (void *)M6_Floats_fill }
 };
 
 catmint_rtti11_process RProcess = {
@@ -418,6 +503,12 @@ void Worker_init(struct TWorker *self) {
   (void)self;
 }
 
+/* Declaring one without a length gives an empty array; `new Bytes(n)` then
+ * runs the constructor below. */
+void Bytes_init(struct TBytes *self)   { self->length = 0; self->data = NULL; }
+void Ints_init(struct TInts *self)     { self->length = 0; self->data = NULL; }
+void Floats_init(struct TFloats *self) { self->length = 0; self->data = NULL; }
+
 /* A String of a given length, with room for its characters in the same
  * allocation. Two allocations per string -- the object and its buffer --
  * was half the cost of building one, and a program that builds strings
@@ -463,7 +554,7 @@ static struct TString *make_string(const char *text) {
  * Object
  * ------------------------------------------------------------------------- */
 
-void M6_Object_abort(struct TObject *self) {
+CATMINT_NORETURN void M6_Object_abort(struct TObject *self) {
   (void)self;
   exit(1);
 }
@@ -514,6 +605,20 @@ struct TObject *M6_Object_copy(struct TObject *self) {
     ((struct TFile *)copy)->handle = NULL;
   } else if (copy->rtti == RTTI(RProcess)) {
     ((struct TProcess *)copy)->pipe = NULL;
+  } else if (copy->rtti == RTTI(RBytes) || copy->rtti == RTTI(RInts) ||
+             copy->rtti == RTTI(RFloats)) {
+    /* Two arrays must not share one buffer, or freeing both would free it
+     * twice. The element width comes from which class it is. */
+    struct TBytes *array = (struct TBytes *)copy;
+    size_t width = copy->rtti == RTTI(RBytes)  ? sizeof(unsigned char)
+                   : copy->rtti == RTTI(RInts) ? sizeof(long long)
+                                               : sizeof(double);
+    if (array->data && array->length > 0) {
+      size_t bytes = (size_t)array->length * width;
+      unsigned char *fresh = malloc(bytes);
+      memcpy(fresh, ((struct TBytes *)self)->data, bytes);
+      array->data = fresh;
+    }
   }
   return copy;
 }
@@ -566,6 +671,14 @@ static void release_owned_buffers(struct TObject *self) {
       pclose(process->pipe);
       process->pipe = NULL;
     }
+  } else if (self->rtti == RTTI(RBytes) || self->rtti == RTTI(RInts) ||
+             self->rtti == RTTI(RFloats)) {
+    /* All three have their length and their buffer in the same two fields,
+     * which is what makes one branch enough. */
+    struct TBytes *array = (struct TBytes *)self;
+    free(array->data);
+    array->data = NULL;
+    array->length = 0;
   }
 }
 
@@ -1594,7 +1707,7 @@ void *__cm_caught(void) {
 /* Hand the object to the innermost handler and jump to it. The handler is
  * popped first, so a throw from inside a catch block reaches the next one
  * out rather than looping back into itself. */
-void __cm_throw(void *object) {
+CATMINT_NORETURN void __cm_throw(void *object) {
   struct __cm_handler *handler = gHandlers;
   jmp_buf *buffer;
 
@@ -1626,7 +1739,7 @@ void __cm_throw(void *object) {
 /* What the runtime's own checks call. With a handler installed the message
  * becomes an ordinary thrown String, so a program can catch a null dispatch
  * or an index out of bounds; with none it prints and stops, as before. */
-void __cm_runtimeError(const char *message) {
+CATMINT_NORETURN void __cm_runtimeError(const char *message) {
   if (gHandlers) {
     __cm_throw(make_string(message));
   }
@@ -1966,4 +2079,126 @@ long long M6_Worker_wait(int handle) {
 int M6_Worker_count(void) {
   long cores = sysconf(_SC_NPROCESSORS_ONLN);
   return cores > 0 ? (int)cores : 1;
+}
+
+/* -------------------------------------------------------------------------
+ * Bytes, Ints, Floats
+ *
+ * The one thing a List cannot be: numbers stored as numbers. A List holds
+ * object references, so a million flags is a million allocations and a
+ * pointer chase per element; these are one allocation and an indexed load.
+ *
+ * Fixed length on purpose. Growing is what List and Vector are for, and both
+ * are expressible on top of what is already here, which is the test for
+ * whether something belongs in the runtime at all.
+ * ------------------------------------------------------------------------- */
+
+/* One message for all three, because the mistake is the same one. */
+static void array_bounds(int index, int length, const char *what) {
+  if (index < 0 || index >= length) {
+    char message[128];
+    snprintf(message, sizeof(message),
+             "%s index %d is outside 0 to %d.", what, index, length - 1);
+    __cm_runtimeError(message);
+  }
+}
+
+static void *array_allocate(int count, size_t width, const char *what) {
+  void *data;
+
+  if (count < 0) {
+    char message[128];
+    snprintf(message, sizeof(message), "%s cannot have %d elements.", what,
+             count);
+    __cm_runtimeError(message);
+  }
+  if (count == 0) {
+    return NULL;
+  }
+
+  data = calloc((size_t)count, width);
+  if (!data) {
+    __cm_runtimeError("Out of memory making an array.");
+  }
+  return data;
+}
+
+void M5_Bytes_init(struct TBytes *self, int count) {
+  free(self->data);
+  self->data = array_allocate(count, sizeof(unsigned char), "Bytes");
+  self->length = count;
+}
+
+int M5_Bytes_len(struct TBytes *self) { return self->length; }
+
+int M5_Bytes_get(struct TBytes *self, int index) {
+  array_bounds(index, self->length, "Bytes");
+  return (int)self->data[index];
+}
+
+int M5_Bytes_set(struct TBytes *self, int index, int value) {
+  array_bounds(index, self->length, "Bytes");
+  self->data[index] = (unsigned char)(value & 0xff);
+  return value;
+}
+
+struct TBytes *M5_Bytes_fill(struct TBytes *self, int value) {
+  if (self->data) {
+    memset(self->data, value & 0xff, (size_t)self->length);
+  }
+  return self;
+}
+
+void M4_Ints_init(struct TInts *self, int count) {
+  free(self->data);
+  self->data = array_allocate(count, sizeof(long long), "Ints");
+  self->length = count;
+}
+
+int M4_Ints_len(struct TInts *self) { return self->length; }
+
+long long M4_Ints_get(struct TInts *self, int index) {
+  array_bounds(index, self->length, "Ints");
+  return self->data[index];
+}
+
+long long M4_Ints_set(struct TInts *self, int index, long long value) {
+  array_bounds(index, self->length, "Ints");
+  self->data[index] = value;
+  return value;
+}
+
+struct TInts *M4_Ints_fill(struct TInts *self, long long value) {
+  int i;
+  for (i = 0; i < self->length; ++i) {
+    self->data[i] = value;
+  }
+  return self;
+}
+
+void M6_Floats_init(struct TFloats *self, int count) {
+  free(self->data);
+  self->data = array_allocate(count, sizeof(double), "Floats");
+  self->length = count;
+}
+
+int M6_Floats_len(struct TFloats *self) { return self->length; }
+
+double M6_Floats_get(struct TFloats *self, int index) {
+  array_bounds(index, self->length, "Floats");
+  return self->data[index];
+}
+
+double M6_Floats_set(struct TFloats *self, int index, double value) {
+  array_bounds(index, self->length, "Floats");
+  self->data[index] = value;
+  return value;
+}
+
+struct TFloats *M6_Floats_fill(struct TFloats *self, double value) {
+  int i;
+  for (i = 0; i < self->length; ++i) {
+    self->data[i] = value;
+  }
+  return self;
 }

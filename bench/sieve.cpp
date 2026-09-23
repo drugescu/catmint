@@ -1,7 +1,7 @@
 #include <cstdio>
 #include <vector>
 int main() {
-  int limit = 200000;
+  int limit = 5000000;
   std::vector<char> flags(limit, 1);
   for (int p = 2; p * p < limit; p++)
     if (flags[p])

@@ -6,7 +6,7 @@ static bool isPrime(int n) {
 }
 int main() {
   int count = 0;
-  for (int n = 0; n < 400000; n++) count += isPrime(n) ? 1 : 0;
+  for (int n = 0; n < 2000000; n++) count += isPrime(n) ? 1 : 0;
   std::printf("%d\n", count);
   return 0;
 }

@@ -186,6 +186,24 @@ Inclusion is recursive and each module is included once.
 `catmintc --separate` compiles each module to its own object instead.
 → `12_modules.cm`, `17_namespaces.cm`, `13_separate.cm`
 
+## Arrays
+
+```
+Bytes flags = new Bytes(1000000)    # one byte each
+Ints counts = new Ints(64)          # 64 bits each
+Floats xs = new Floats(3)           # doubles
+
+flags.fill(1)
+flags.set(7, 0)
+out("${flags.get(7)} of ${flags.len()}\n")
+```
+
+Fixed length, numbers stored as numbers. This is the one thing `List` cannot
+be: a `List` holds object references, so a million flags would be a million
+allocations. Three concrete classes rather than one generic one, because
+there are no generics. Out of bounds is a catchable error.
+→ `43_arrays.cm`
+
 ## The standard library
 
 Written in catmint, in `lib/`: `Vector`, `Dict` (a real hash table),
@@ -199,6 +217,7 @@ Written in catmint, in `lib/`: `Vector`, `Dict` (a real hash table),
 | `IO` | `out`, `input`, `readLine`, `eof`, `err`, `exit`, `args`, `arg`, `ticks`, `epoch`, `sleep`, `allocated` |
 | `String` | see above |
 | `List` | a growable array of object references |
+| `Bytes`, `Ints`, `Floats` | fixed-length arrays of numbers: `len`, `get`, `set`, `fill` |
 | `Integer` | the box a number gets when it goes into a `List`; `get`, `getLong`. Values from -128 to 1024 are shared, so a list of small numbers allocates nothing |
 | `File` | `open`, `readLine`, `readAll`, `write`, `eof`, `close`, and static `File.exists` / `File.remove` |
 | `Math` | all static: `sqrt`, `pow`, `sin`, `floor`, `abs`, `min`, `max`, `pi`, … |

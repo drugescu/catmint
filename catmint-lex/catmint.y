@@ -66,7 +66,8 @@
 		       name == "Null" || name == "Object" || name == "String" ||
 		       name == "IO" || name == "List" || name == "Integer" ||
 		       name == "File" || name == "Math" || name == "Process" ||
-		       name == "Worker" ||
+		       name == "Worker" || name == "Bytes" ||
+		       name == "Ints" || name == "Floats" ||
 		       name == "auto" || name.rfind("_uuid_generic_", 0) == 0;
 	}
 

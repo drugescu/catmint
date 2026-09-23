@@ -250,6 +250,26 @@ void TypeTable::addBuiltinClasses(Program *p) {
   declareStatic(methods, "pid", strings::Int);
   addBuiltinClass(p, strings::Process, strings::Object, methods);
 
+  // --- Bytes, Ints, Floats: numbers stored as numbers -----------------
+  //
+  // Three concrete classes rather than one generic one, because catmint has
+  // no generics. Each has the same four slot-taking methods in the same
+  // order, and a constructor, which takes no slot.
+  struct { const char *name; const char *element; } arrays[] = {
+      {strings::Bytes, strings::Int},
+      {strings::Ints, strings::Int64},
+      {strings::Floats, strings::Float},
+  };
+  for (const auto &array : arrays) {
+    declare(methods, strings::Init, strings::Void, {{"count", strings::Int}});
+    declare(methods, strings::Length, strings::Int);
+    declare(methods, strings::Get, array.element, {{"index", strings::Int}});
+    declare(methods, strings::Set, array.element,
+            {{"index", strings::Int}, {"value", array.element}});
+    declare(methods, strings::Fill, array.name, {{"value", array.element}});
+    addBuiltinClass(p, array.name, strings::Object, methods);
+  }
+
   // --- Worker, a thread reached only through `spawn` ------------------
   declareStatic(methods, "wait", strings::Int64, {{"handle", strings::Int}});
   declareStatic(methods, "count", strings::Int);

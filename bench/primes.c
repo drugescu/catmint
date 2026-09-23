@@ -6,7 +6,7 @@ static int isPrime(int n) {
 }
 int main(void) {
   int count = 0;
-  for (int n = 0; n < 400000; n++) count += isPrime(n);
+  for (int n = 0; n < 2000000; n++) count += isPrime(n);
   printf("%d\n", count);
   return 0;
 }

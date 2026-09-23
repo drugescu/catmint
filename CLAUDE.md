@@ -412,6 +412,32 @@ The built-ins that never used their receiver are static now -- every `Math`
 method, `File.exists`, `File.remove` and `String.chr` -- so `Math` takes no
 virtual table slots at all and exists only to name its functions.
 
+`Bytes`, `Ints` and `Floats` are fixed-length runs of numbers stored as
+numbers: `{ rtti, refs, int length, T *data }`, one allocation and an indexed
+load per element. They are three concrete classes rather than one generic
+one, because catmint has no generics and is not getting any; the same eight
+lines three times is a smaller price than a type system that could say
+"array of Int". They earn their place in the runtime by the same test `List`
+did, stated in `lib/vector.cmm`: the language cannot express them, because
+there is no way to reach raw memory. Growing is left to `List` and `Vector`,
+which are expressible on top.
+
+**A call goes straight to the implementation when nothing overrides it.**
+`canCallDirectly` checks whether any class in the program overrides the
+method below the receiver's static type; if none does, the virtual table is
+skipped and the optimiser can inline through. It answers no when compiling a
+module alone or a program that imports separately compiled ones, because an
+override could be hiding there. This took `fib` to parity with C.
+
+**The runtime is compiled at `-O2`, and that is not about the runtime's own
+speed.** At `-O0` clang marks every function `optnone noinline`, so nothing
+in `runtime.c` could ever be inlined into a program that linked against it --
+not `String.len`, not an array element access, nothing. Changing the one flag
+in `build-runtime.sh` took the sieve benchmark from 0.050 s to 0.014 s and
+string building from 0.302 s to 0.212 s. The emitted IR stays portable:
+generic LLVM intrinsics and generic vector types, which every backend
+lowers.
+
 A chain of string concatenations is emitted as one `__cm_concatAll` rather
 than a tree of `M6_String_concat` calls, so the result is allocated once and
 the intermediates are never made. Every interpolated string is exactly that

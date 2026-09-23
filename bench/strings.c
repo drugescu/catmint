@@ -4,7 +4,7 @@
 #include <string.h>
 int main(void) {
   long total = 0;
-  for (int i = 0; i < 400000; i++) {
+  for (int i = 0; i < 2000000; i++) {
     char *line = malloc(64);
     snprintf(line, 64, "row %d of the table", i);
     total += (long)strlen(line);
