@@ -103,7 +103,7 @@ class Program:
     # ---- statements ------------------------------------------------------
 
     def statements(self, count, depth, scope, targets, indent, cm, c,
-                   loop_id):
+                   loop_id, in_loop=False):
         """`scope` is what may be read, `targets` what may be assigned to.
 
         They differ, and the difference is load-bearing. A `for` variable is
@@ -117,6 +117,15 @@ class Program:
             kind = self.rng.random()
             target = self.rng.choice(targets)
 
+            # `break` and `continue`, which mean the same in both languages
+            # and terminate the rest of this block in both. Only inside a
+            # loop: outside one catmint rejects them and C does too.
+            if in_loop and self.rng.random() < 0.12:
+                word = self.rng.choice(["break", "continue"])
+                cm.append("%s%s" % (pad, word))
+                c.append("%s%s;" % (pad, word))
+                return
+
             if kind < 0.45 or depth <= 0:
                 e = self.expr(2, scope)
                 cm.append("%s%s = %s" % (pad, target, e[0]))
@@ -127,11 +136,11 @@ class Program:
                 cm.append("%sif %s:" % (pad, cond[0]))
                 c.append("%sif %s {" % (pad, cond[1]))
                 self.statements(self.rng.randint(1, 2), depth - 1, scope,
-                                targets, indent + 1, cm, c, loop_id)
+                                targets, indent + 1, cm, c, loop_id, in_loop)
                 cm.append("%selse" % pad)
                 c.append("%s} else {" % pad)
                 self.statements(self.rng.randint(1, 2), depth - 1, scope,
-                                targets, indent + 1, cm, c, loop_id)
+                                targets, indent + 1, cm, c, loop_id, in_loop)
                 cm.append("%send" % pad)
                 c.append("%s}" % pad)
 
@@ -145,7 +154,7 @@ class Program:
                          % (pad, var, var, n, var))
                 self.statements(self.rng.randint(1, 3), depth - 1,
                                 scope + [var], targets, indent + 1, cm, c,
-                                loop_id)
+                                loop_id, in_loop=True)
                 cm.append("%send" % pad)
                 c.append("%s}" % pad)
 
@@ -158,11 +167,15 @@ class Program:
                 c.append("%sint32_t %s = 0;" % (pad, var))
                 cm.append("%swhile %s < %d:" % (pad, var, n))
                 c.append("%swhile (%s < %d) {" % (pad, var, n))
-                self.statements(self.rng.randint(1, 2), depth - 1,
-                                scope + [var], targets, indent + 1, cm, c,
-                                loop_id)
+                # The counter advances at the top of the body, not the
+                # bottom. A `continue` emitted below would skip a bottom
+                # increment and the loop would never end -- in both
+                # languages, so it would hang rather than disagree.
                 cm.append("%s  %s = %s + 1" % (pad, var, var))
                 c.append("%s  %s = %s + 1;" % (pad, var, var))
+                self.statements(self.rng.randint(1, 2), depth - 1,
+                                scope + [var], targets, indent + 1, cm, c,
+                                loop_id, in_loop=True)
                 cm.append("%send" % pad)
                 c.append("%s}" % pad)
 

@@ -81,13 +81,16 @@ while n > 0:  ...  end
 for i in 10:  ...  end          # 0 to 9
 for c in "abc":  ...  end       # one-character Strings
 for item in someList:  ...  end
+
+break                           # leave the innermost loop
+continue                        # start its next iteration
 ```
 `elif` chains a condition without nesting, and `else if` on a *single line*
 is the same keyword. `else` and `if` on separate lines are still a nested if
 and still need two `end`s. An end-terminated language cannot spell this the
 way C does, which is why Python, Ruby, Lua and sh all have the extra keyword.
 → `04_if.cm`, `05_while.cm`, `09_for.cm`, `10_for_string.cm`, `15_list.cm`,
-`44_elif.cm`
+`44_elif.cm`, `45_break.cm`
 
 ## Classes
 

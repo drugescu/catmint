@@ -854,7 +854,10 @@ bool SemanticAnalysis::visit(WhileStatement *w) {
   auto body = w->getBody();
   if (body) {
     SymbolTable::Scope whileScope(symbolTable, "anonymous_while");
-    if (!visit(body)) {
+    ++loopDepth;
+    const bool ok = visit(body);
+    --loopDepth;
+    if (!ok) {
       return false;
     }
   }
@@ -912,11 +915,29 @@ bool SemanticAnalysis::visit(ForStatement *f) {
     return false;
   }
 
-  if (!visit(f->getBody())) {
+  ++loopDepth;
+  const bool bodyOk = visit(f->getBody());
+  --loopDepth;
+  if (!bodyOk) {
     return false;
   }
 
   typeTable.setType(f, typeTable.getVoidType());
+  return true;
+}
+
+/// `break` and `continue` need a loop to act on. A method called from inside
+/// a loop does not count: its own body is a separate function, and the
+/// generator has no way to branch out of the caller's loop from it.
+bool SemanticAnalysis::visit(LoopControl *lc) {
+  if (loopDepth == 0) {
+    throw SemanticException(
+        std::string(lc->isBreak() ? "'break'" : "'continue'") +
+            " is only meaningful inside a 'while' or a 'for'",
+        lc);
+  }
+
+  typeTable.setType(lc, typeTable.getVoidType());
   return true;
 }
 

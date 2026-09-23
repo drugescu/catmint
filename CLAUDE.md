@@ -457,6 +457,35 @@ declaration order in `TypeTable::addBuiltinClasses` is that slot order. A new
 built-in method must be appended, never inserted, or every already-compiled
 caller silently calls the wrong slot.
 
+`break` and `continue` leave the innermost loop and start its next
+iteration. Neither takes a label. The branch is the easy part: what matters
+is that they leave blocks the way a `return` leaves the function, and undo
+the same four things on the way out -- the deferred expressions of every
+block being left, the references its locals hold, the handler stack if a
+`try` is being jumped out of, and every temporary pool opened inside the
+loop. `LoopContext` records the depth of each of those at loop entry and
+`emitLoopControl` unwinds down to it; a `continue` in a `for` goes to the
+step block rather than the condition, or the counter would never advance,
+and neither statement releases the `for` variable's own scope because the
+end block does that for the ordinary exit and the break alike. Getting any
+one of the four wrong leaks silently, which is why `45_break.cm` ends by
+counting live objects.
+
+`elif` chains a condition without nesting, and `else if` on a single line
+lexes to the same token -- flex takes the longest match. `else` and `if` on
+separate lines are still a nested if needing two `end`s, which is what every
+program written before this does. The chain is right-recursive and each link
+is an ordinary `IfStatement` with the rest as its else branch, so there is no
+new AST node and neither the semantic pass nor the generator changed. The
+three alternatives are told apart by the token after the block, so it adds no
+conflict: the count stayed at 10 shift/reduce and 1 reduce/reduce.
+
+`catmintc --asan` builds a program under AddressSanitizer. It instruments the
+linked bitcode, which is the program *and* the runtime, since the runtime is
+linked as IR rather than as an object -- so it covers reference counting,
+where a release too many shows up as a use-after-free and as nothing at all
+otherwise. All 45 tests are clean under it.
+
 `spawn Class.method(n)` runs a static method on a thread and gives back a
 handle; `Worker.wait(handle)` collects what it returned, and
 `Worker.count()` says how many cores there are. The door is deliberately

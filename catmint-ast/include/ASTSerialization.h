@@ -63,6 +63,7 @@ public:
   bool visit(TryStatement *Try) override;
   bool visit(ThrowStatement *Throw) override;
   bool visit(DeferStatement *Defer) override;
+  bool visit(LoopControl *LC) override;
   bool visit(SpawnStatement *Spawn) override;
   bool visit(IfStatement *If) override;
   bool visit(WhileStatement *While) override;
@@ -196,6 +197,8 @@ private:
   std::unique_ptr<TryStatement> parseTryStatement(rapidjson::Value &tree);
   std::unique_ptr<ThrowStatement> parseThrowStatement(rapidjson::Value &tree);
   std::unique_ptr<DeferStatement> parseDeferStatement(rapidjson::Value &tree);
+  std::unique_ptr<LoopControl> parseLoopControl(rapidjson::Value &tree,
+                                               bool isBreak);
   std::unique_ptr<SpawnStatement> parseSpawnStatement(rapidjson::Value &tree);
   std::unique_ptr<IfStatement> parseIfStatement(rapidjson::Value &tree);
   std::unique_ptr<WhileStatement> parseWhileStatement(rapidjson::Value &tree);

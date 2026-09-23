@@ -63,21 +63,35 @@ the grammar file defines `main` and an in-process harness would mean building
 a second copy of the parser -- surgery on the most fragile part of the build
 for throughput this does not need. `fuzz/fuzz.py --runs N` for a longer run.
 
-## Phase 1 — ergonomics
+## Phase 1 — ergonomics — in progress
+
+`elif` and `break`/`continue` are in. The rest of this section stands.
 
 Friction found by writing `examples/mini.cm`, which is a 200-line
 interpreter and the evidence that the language can carry a real program.
 
-- **`else if`** (~15 lines of grammar). An `if_tail` rule: `KW_END`,
-  `KW_ELSE block KW_END`, or `KW_ELSE if_statement`. No dangling-else
-  ambiguity, because every block is `end`-terminated. A tokenizer is a chain
-  of these; `mini.cm` nests three deep and closes with three stacked `end`s.
-- **`break` and `continue`** (~180 lines). A loop-context stack in
-  `IRGenerator` holding the target block, the scope depth, the pool depth and
-  the handler depth at loop entry; the statement unwinds down to those and
-  branches. Pool closes are recorded on the pool the way `emitCleanupAndReturn`
-  records a `return`'s, so a pool nothing used still takes its closes away
-  with it. A `break` outside a loop is a semantic error.
+- ~~**`else if`**~~ **done: `elif`.** `else if` with one `end` turned out to
+  be impossible in an end-terminated grammar -- after `KW_ELSE`, a lookahead
+  of `KW_IF` cannot tell an empty `block` containing an if from a chained
+  else-if, and the two differ only in how many `end`s arrive much later.
+  Python, Ruby, Lua and sh all answer this with a dedicated keyword, so
+  catmint has `elif`, plus `else if` on a *single line* as a lexer alias,
+  which flex resolves by longest match. `else` and `if` on separate lines are
+  unchanged. Right-recursive chain, each link an ordinary `IfStatement`, so no
+  new AST node and no change to the semantic pass or the generator. Conflicts
+  stayed at 10 and 1. `examples/mini.cm` lost three levels of nesting.
+- ~~**`break` and `continue`**~~ **done.** `LoopContext` records the target
+  block and the scope, pool and handler depths at loop entry;
+  `emitLoopControl` unwinds down to them and branches. One AST node for both,
+  since they are the same shape. A `break` outside a loop is a semantic error
+  with a line number, and `defer break` was already a syntax error.
+  `45_break.cm` covers break and continue in both loop kinds, nested, inside
+  an `if`, inside a `try`, with a `defer` in the body, and ends by counting
+  live objects -- which is what caught the one real problem, a measurement
+  taken across `main`'s own pool.
+  `difftest/generate.py` now emits both, and 250 random programs containing
+  them agree with C. All 45 tests are clean under `catmintc --asan`, which is
+  new: the documented manual ASan procedure is now a flag.
 - **Abstract methods on classes** (~90 lines). `mini.cm` is the argument: its
   `Node` base carries a dummy `eval` returning 0, so a typo in a subclass
   silently inherits the dummy rather than failing. An interface cannot cover

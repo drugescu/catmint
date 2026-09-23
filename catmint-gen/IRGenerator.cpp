@@ -1145,7 +1145,7 @@ void IRGenerator::emitCleanupAndReturn(llvm::Value *RV) {
 
   runDeferred(static_cast<unsigned>(Scopes.size()));
   releaseScopes(static_cast<unsigned>(Scopes.size()));
-  popOpenHandlers();
+  popOpenHandlers(OpenHandlers);
   // Every pool open around this return is closed here. Each close is
   // remembered by its pool, so that a pool nothing used takes its closes
   // away along with its open.
@@ -1400,6 +1400,7 @@ llvm::Value *IRGenerator::emit(Expression *E) {
   if (auto *N = dynamic_cast<BinaryOperator *>(E))   return emitBinaryOperator(N);
   if (auto *N = dynamic_cast<UnaryOperator *>(E))    return emitUnaryOperator(N);
   if (auto *N = dynamic_cast<IfStatement *>(E))      return emitIf(N);
+  if (auto *N = dynamic_cast<LoopControl *>(E))      return emitLoopControl(N);
   if (auto *N = dynamic_cast<WhileStatement *>(E))   return emitWhile(N);
   if (auto *N = dynamic_cast<ForStatement *>(E))     return emitFor(N);
   if (auto *N = dynamic_cast<ReturnExpression *>(E)) return emitReturn(N);
@@ -1979,10 +1980,14 @@ llvm::Value *IRGenerator::emitWhile(WhileStatement *W) {
   Builder.CreateCondBr(Cond, BodyBB, EndBB);
 
   Builder.SetInsertPoint(BodyBB);
+  // Recorded before the pool is opened, so that a break closes this
+  // iteration's pool along with any the body opens inside it.
+  Loops.push_back({EndBB, CondBB, Scopes.size(), Pools.size(), OpenHandlers});
   // One pool per iteration, so a loop that builds strings does not hold all
   // of them until the method returns.
   beginPool();
   (void)emit(W->getBody());
+  Loops.pop_back();
   const bool BodyFallsThrough = !blockTerminated();
   endPool(BodyFallsThrough);
   if (BodyFallsThrough)
@@ -2072,6 +2077,11 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
                        EndBB);
 
   Builder.SetInsertPoint(BodyBB);
+  // `continue` goes to the step block, not the condition, or the counter
+  // would never advance. Scopes.size() already counts the loop variable's own
+  // scope, which a break must *not* release here: the end block does that,
+  // for the ordinary exit and the break alike.
+  Loops.push_back({EndBB, StepBB, Scopes.size(), Pools.size(), OpenHandlers});
   beginPool();
   if (OverList) {
     auto *List = Builder.CreateLoad(Ptr, StrSlot, "for.l");
@@ -2091,6 +2101,7 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
     Builder.CreateStore(Idx, VarSlot);
   }
   (void)emit(F->getBody());
+  Loops.pop_back();
   const bool BodyFallsThrough = !blockTerminated();
   endPool(BodyFallsThrough);
   if (BodyFallsThrough)
@@ -2113,14 +2124,50 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
 /// around this point; otherwise the next throw jumps into a frame that has
 /// already gone. The value is computed first, since computing it may itself
 /// throw, and that throw should still find this try's handler.
-void IRGenerator::popOpenHandlers() {
-  if (OpenHandlers == 0)
+/// Pop \p Count handlers. A return pops every one that is open; a break or a
+/// continue pops only those opened inside the loop it is leaving, because the
+/// ones outside it are still live.
+void IRGenerator::popOpenHandlers(unsigned Count) {
+  if (Count == 0)
     return;
   auto Pop = Module.getOrInsertFunction(
       "__cm_popHandler",
       llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {}, false));
-  for (unsigned N = 0; N < OpenHandlers; ++N)
+  for (unsigned N = 0; N < Count; ++N)
     Builder.CreateCall(Pop, {});
+}
+
+/// `break` and `continue` leave blocks the way a `return` leaves the function,
+/// and undo the same four things on the way: the deferred expressions of every
+/// block being left, the references those blocks' locals hold, the handler
+/// stack if a `try` is being jumped out of, and every temporary pool opened
+/// inside the loop. Forgetting any one of them leaks silently rather than
+/// failing, which is why `45_break.cm` ends by counting live objects.
+llvm::Value *IRGenerator::emitLoopControl(LoopControl *LC) {
+  if (Loops.empty()) {
+    // The semantic pass rejects this with a line number; reaching here means
+    // the two disagree.
+    fail(LC->getLineNumber(),
+         "'break' or 'continue' outside any loop reached code generation");
+  }
+
+  const LoopContext Loop = Loops.back();
+
+  // Deferred work first, for the reason it goes first at a return too: it
+  // almost always uses one of the locals the release below is about to drop.
+  const unsigned Leaving =
+      static_cast<unsigned>(Scopes.size() - Loop.ScopeDepth);
+  runDeferred(Leaving);
+  releaseScopes(Leaving);
+  popOpenHandlers(OpenHandlers - Loop.HandlerDepth);
+
+  // Innermost pool first. Each close is remembered by its pool, so a pool
+  // that turned out to hold nothing takes these closes away with its open.
+  for (size_t N = Pools.size(); N-- > Loop.PoolDepth;)
+    Pools[N].Pops.push_back(emitPoolPopCall());
+
+  Builder.CreateBr(LC->isBreak() ? Loop.BreakTarget : Loop.ContinueTarget);
+  return nullptr;
 }
 
 llvm::Value *IRGenerator::emitReturn(ReturnExpression *R) {

@@ -54,6 +54,7 @@ private:
   bool visit(ThrowStatement *t) override;
   bool visit(DeferStatement *d) override;
   bool visit(SpawnStatement *s) override;
+  bool visit(LoopControl *lc) override;
 
   /// Whether \p m may run on a worker: it must do arithmetic and nothing
   /// else, so that it cannot touch a reference count, the temporary pool or
@@ -90,6 +91,11 @@ private:
   /// The class currently being analysed, so that a bare call can be resolved
   /// against its static methods, which have no receiver to look at.
   Class *currentClass = nullptr;
+  /// How many loops enclose the node being visited. `break` and `continue`
+  /// outside all of them have nothing to branch to, and the generator would
+  /// have no target to emit -- so it is rejected here, where the message can
+  /// name a line.
+  unsigned loopDepth = 0;
   /// A `for` binds its loop variable, which has no definition node of its own
   /// in the tree. The synthesised definitions are owned here so that they
   /// outlive the symbol table entries pointing at them.

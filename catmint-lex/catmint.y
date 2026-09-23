@@ -155,7 +155,7 @@
 
 %start catmint_program
 
-%token KW_WHILE KW_FOR KW_RETURN
+%token KW_WHILE KW_FOR KW_RETURN KW_BREAK KW_CONTINUE
 %token KW_CLASS KW_SELF KW_FROM KW_END KW_VAR KW_NULL KW_DO KW_IN
 %token KW_INTERFACE KW_DOES
 %token KW_USING KW_IS
@@ -201,6 +201,7 @@ expression
                   spawn_expression
                   if_expression
                   elif_chain
+                  loop_control
     conditional_expression
     dispatch_expression
 	void_expression
@@ -1139,7 +1140,23 @@ void_expression
   | try_expression
   | throw_expression
   | defer_expression
+  | loop_control
   ;
+
+// `break` leaves the innermost enclosing loop and `continue` starts its next
+// iteration. Neither takes a label: one level is what the cases that come up
+// need, and a labelled break would have to name something the grammar has no
+// way to attach a name to. Being inside a loop at all is checked by the
+// semantic pass, which knows the shape of the tree; the grammar does not.
+loop_control
+    : KW_BREAK {
+		$$ = new catmint::LoopControl(@1.first_line, catmint::LoopControl::Break);
+	}
+    | KW_CONTINUE {
+		$$ = new catmint::LoopControl(@1.first_line,
+		                              catmint::LoopControl::Continue);
+	}
+    ;
 
 // `defer <expression>` runs the expression where the enclosing block ends,
 // on every path out of it. It is emitted there rather than recorded, so it

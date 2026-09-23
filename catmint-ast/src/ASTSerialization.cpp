@@ -68,6 +68,8 @@ const auto FieldAccessNodeType = "FieldAccess";
 const auto TryStatementNodeType = "TryStatement";
 const auto ThrowStatementNodeType = "ThrowStatement";
 const auto DeferStatementNodeType = "DeferStatement";
+const auto BreakNodeType = "Break";
+const auto ContinueNodeType = "Continue";
 const auto SpawnStatementNodeType = "SpawnStatement";
 const auto Handler = "Handler";
 const auto IfStatementNodeType = "IfStatement";
@@ -706,6 +708,17 @@ bool ASTSerializer::visit(DeferStatement *Defer) {
   return visit(action);
 }
 
+bool ASTSerializer::visit(LoopControl *LC) {
+  assert(isValid() && "Invalid serializer");
+  assert(LC && "Expected non-null loop control statement");
+
+  CreateJSONObject loopObject(
+      *this, LC->isBreak() ? keys::BreakNodeType : keys::ContinueNodeType, LC);
+  writePair(keys::LineNumber, LC->getLineNumber());
+
+  return true;
+}
+
 bool ASTSerializer::visit(SpawnStatement *Spawn) {
   assert(isValid() && "Invalid serializer");
   assert(Spawn && "Expected non-null spawn statement");
@@ -1152,6 +1165,10 @@ ASTDeserializer::parseExpression(rapidjson::Value &tree) {
     return parseThrowStatement(tree);
   } else if (nodeType == keys::DeferStatementNodeType) {
     return parseDeferStatement(tree);
+  } else if (nodeType == keys::BreakNodeType) {
+    return parseLoopControl(tree, /*isBreak=*/true);
+  } else if (nodeType == keys::ContinueNodeType) {
+    return parseLoopControl(tree, /*isBreak=*/false);
   } else if (nodeType == keys::SpawnStatementNodeType) {
     return parseSpawnStatement(tree);
   } else if (nodeType == keys::IfStatementNodeType) {
@@ -1616,6 +1633,16 @@ ASTDeserializer::parseDeferStatement(rapidjson::Value &tree) {
 
   return createNode<DeferStatement>(tree, parseLineNumber(tree),
                                     std::move(action));
+}
+
+std::unique_ptr<LoopControl>
+ASTDeserializer::parseLoopControl(rapidjson::Value &tree, bool isBreak) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         "Expected loop control object");
+
+  return createNode<LoopControl>(
+      tree, parseLineNumber(tree),
+      isBreak ? LoopControl::Break : LoopControl::Continue);
 }
 
 std::unique_ptr<SpawnStatement>

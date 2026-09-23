@@ -55,6 +55,7 @@ public:
   virtual bool visit(TryStatement *Try);   /// Default order: body, handler
   virtual bool visit(ThrowStatement *Throw);
   virtual bool visit(DeferStatement *Defer);
+  virtual bool visit(LoopControl *LC);
   virtual bool visit(SpawnStatement *Spawn);
   virtual bool visit(IfStatement *If); /// Default order: condition, then, else
   virtual bool visit(WhileStatement *While);  /// Default order: condition, body

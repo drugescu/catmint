@@ -200,6 +200,20 @@ private:
   /// from inside a try has to pop them, or the next throw jumps into a frame
   /// that has gone.
   unsigned OpenHandlers = 0;
+
+  /// Where `break` and `continue` branch to in the innermost enclosing loop,
+  /// and how much of the frame has to be given back before they can. A
+  /// `break` leaves blocks exactly the way a `return` leaves the function,
+  /// and has to undo the same four things on the way out -- which is what the
+  /// three depths here record the starting point of.
+  struct LoopContext {
+    llvm::BasicBlock *BreakTarget;
+    llvm::BasicBlock *ContinueTarget;
+    size_t ScopeDepth;    ///< Scopes.size() on entry; deeper ones are released
+    size_t PoolDepth;     ///< Pools.size() on entry; deeper ones are closed
+    unsigned HandlerDepth; ///< OpenHandlers on entry; the rest are popped
+  };
+  std::vector<LoopContext> Loops;
   /// True while emitting a function that contains a try.
   bool FunctionHasTry = false;
   /// A pool opened around the code being emitted. It is opened
@@ -311,6 +325,7 @@ private:
   llvm::Value *emitThrow(ThrowStatement *T);
   llvm::Value *emitDefer(DeferStatement *D);
   llvm::Value *emitSpawn(SpawnStatement *S);
+  llvm::Value *emitLoopControl(LoopControl *LC);
   /// Emit the deferred expressions of the innermost \p Count scopes, newest
   /// scope first and, within a scope, last registered first. Run before the
   /// scope's locals are released, because a deferred call almost always uses
@@ -324,7 +339,7 @@ private:
   /// the programmer.
   void makeLocalsVolatile(llvm::Function *F);
   /// Emit one __cm_popHandler for each try open around this point.
-  void popOpenHandlers();
+  void popOpenHandlers(unsigned Count);
   llvm::Value *emitCast(Cast *C);
   llvm::Value *emitSubstring(Substring *S);
 

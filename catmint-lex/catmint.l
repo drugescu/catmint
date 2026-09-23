@@ -83,6 +83,8 @@ static int gColumnNumber = 1;
 "or"          { countColumns(); return OP_ORELSE; }
 "do"		      { countColumns(); return KW_DO; }
 "while"	      { countColumns(); return KW_WHILE; }
+"break"       { countColumns(); return KW_BREAK; }
+"continue"    { countColumns(); return KW_CONTINUE; }
 "try"         { countColumns(); return KW_TRY; }
 "catch"       { countColumns(); return KW_CATCH; }
 "throw"       { countColumns(); return KW_THROW; }

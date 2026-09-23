@@ -9,6 +9,7 @@
 #   ./catmintc --run examples/tour.cm      -> compile, then run it
 #   ./catmintc -O0 app.cm                  -> no optimisation, for debugging
 #   ./catmintc -g -O0 app.cm               -> line numbers a debugger can use
+#   ./catmintc --asan app.cm               -> build under AddressSanitizer
 #
 # Set LLVM_BIN if llvm-link/clang are not on PATH.
 set -e
@@ -41,12 +42,18 @@ SEPARATE=0
 OPT=-O2
 # -g asks the generator for line numbers and clang to keep them.
 DEBUG=""
+# --asan instruments the linked bitcode, which is the program *and* the
+# runtime, since the runtime is linked as IR rather than as an object. That is
+# what makes it the check to run after touching reference counting: a release
+# too many shows up as a use-after-free here and as nothing at all otherwise.
+SAN=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --run) RUN=1; shift ;;
     --separate) SEPARATE=1; shift ;;
     -O0|-O1|-O2|-O3) OPT="$1"; shift ;;
     -g) DEBUG=1; shift ;;
+    --asan) SAN=-fsanitize=address; shift ;;
     -o)    OUT="$2"; shift 2 ;;
     -I)    INCLUDES="$INCLUDES -I $2"; shift 2 ;;
     -I*)   INCLUDES="$INCLUDES -I ${1#-I}"; shift ;;
@@ -56,7 +63,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$SRC" ]; then
-  echo "usage: catmintc [--run] [--separate] [-g] [-O0|-O1|-O2|-O3] [-o output] [-I moduledir]... <program.cm>" >&2
+  echo "usage: catmintc [--run] [--separate] [-g] [--asan] [-O0|-O1|-O2|-O3] [-o output] [-I moduledir]... <program.cm>" >&2
   exit 2
 fi
 for tool in "$PARSER" "$GEN"; do
@@ -155,14 +162,14 @@ if [ -n "$DEBUG" ]; then
   # dsymutil then collects into a .dSYM. Compiling and linking in one command
   # would delete the object before dsymutil could read it, which is why
   # `clang -g one.c -o one` gives an executable a debugger cannot read either.
-  "$CLANG" -Wno-override-module "$OPT" -g -c "$WORK/$BASE.bc" -o "$WORK/$BASE.o"
-  "$CLANG" "$OPT" -g -pthread "$WORK/$BASE.o" -o "$OUT" -lm
+  "$CLANG" -Wno-override-module "$OPT" $SAN -g -c "$WORK/$BASE.bc" -o "$WORK/$BASE.o"
+  "$CLANG" "$OPT" $SAN -g -pthread "$WORK/$BASE.o" -o "$OUT" -lm
   if [ "$(uname)" = "Darwin" ] && command -v dsymutil >/dev/null 2>&1; then
     dsymutil "$OUT" >/dev/null 2>&1 || \
       echo "catmintc: warning: dsymutil could not collect debug information" >&2
   fi
 else
-  "$CLANG" -Wno-override-module "$OPT" -pthread "$WORK/$BASE.bc" -o "$OUT" -lm
+  "$CLANG" -Wno-override-module "$OPT" $SAN -pthread "$WORK/$BASE.bc" -o "$OUT" -lm
 fi
 echo "catmintc: wrote $OUT"
 
