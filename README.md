@@ -1,7 +1,6 @@
-<img src="Product.png"
-     alt="The catmint language logo"
-     style="float: left; margin-right: 10px;"
-     width="50%" height="50%"/>
+<img src="assets/catmint-logo.svg"
+     alt="The Catmint language logo"
+     width="70%"/>
 # The Catmint Language
 ![Size](https://img.shields.io/github/languages/code-size/drugescu/catmint?color=green&label=Code%20Size)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-green.svg)](https://www.gnu.org/licenses/gpl-3.0)
