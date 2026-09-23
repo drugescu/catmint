@@ -204,7 +204,13 @@ it at run time rather than being silently too small somewhere.
 
 `__cm_throw` pops the innermost handler before jumping, so a throw from
 inside a `catch` reaches the next handler out instead of looping back into
-itself. The runtime's own checks go through `__cm_runtimeError`, which throws
+itself. **It also retains what is being thrown, unwinds, and then hands it to
+the handler's pool.** Without that the thrown object was freed on its way
+out: `throw "a" + b` builds its String in the pool of the very frame the jump
+abandons, and so does `__cm_runtimeError` building its message, so the
+handler read memory that had gone. It survived by luck when throw and catch
+were in one method and corrupted the heap when they were not -- which `lli`
+reported as a crash inside malloc, the same way `Object.free` once did. The runtime's own checks go through `__cm_runtimeError`, which throws
 a String when a handler is installed and prints and exits when none is, so a
 null dispatch or an index out of bounds is catchable.
 
@@ -345,8 +351,11 @@ identically; the dispatch rule splits it apart again. In symbols `::` becomes
 `$`, which cannot appear in a catmint identifier, so nothing can collide.
 
 `catmint-gen -g` emits debug information: a `DISubprogram` per generated
-function and a `DILocation` per expression, which is line numbers and nothing
-else -- no types, no variables. Each class carries the file it was parsed
+function, a `DILocation` per expression, and a store of the current line to
+the runtime's `__cm_line`, which is what lets a failed bounds check or a call
+on null say *where* and not only what. None of it is emitted without `-g`, so
+an ordinary build pays nothing; `52_error_lines.check` asserts both halves of
+that. It is line numbers and nothing else -- no types, no variables. Each class carries the file it was parsed
 from, so a method spliced in from a module points at that module rather than
 at the concatenated text. `catmintc -g` passes it through and then, on macOS,
 runs `dsymutil`, because macOS leaves DWARF in the object file and records

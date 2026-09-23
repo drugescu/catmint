@@ -325,6 +325,7 @@ struct TString *__cm_concatAll(void **parts, int count);
  * treat a bounds check as a predictable branch and inline the accessor
  * around it. Without it, every array element access stayed a function call. */
 void __cm_runtimeError(const char *message) CATMINT_NORETURN;
+extern int __cm_line;
 void __cm_throw(void *object) CATMINT_NORETURN;
 void __cm_retain(void *object);
 void __cm_release(void *object);
@@ -1783,9 +1784,23 @@ CATMINT_NORETURN void __cm_throw(void *object) {
 
   buffer = handler->buffer;
   gHandlers = handler->previous;
+
+  /* Keep the thrown object alive across the unwind. Its only reference is
+   * often the pool of the very work being abandoned -- `throw "a" + b`
+   * builds a String there, and so does __cm_runtimeError building its
+   * message -- so closing those pools frees it and the handler reads memory
+   * that has gone. Retain first, unwind, then hand it to the pool the
+   * handler is running in, which balances the retain and releases it when
+   * that statement is done.
+   *
+   * It survived by luck natively and showed up under lli as a crash inside
+   * malloc, which is the same way `Object.free` announced itself. */
+  __cm_retain(object);
+
   /* The jump skips every poolPop between here and the handler, so close
    * those pools now; their contents are temporaries of the abandoned work. */
   __cm_poolUnwind(handler->poolDepth);
+  __cm_poolAdd(object);
   free(handler);
   longjmp(*buffer, 1);
 }
@@ -1793,7 +1808,20 @@ CATMINT_NORETURN void __cm_throw(void *object) {
 /* What the runtime's own checks call. With a handler installed the message
  * becomes an ordinary thrown String, so a program can catch a null dispatch
  * or an index out of bounds; with none it prints and stops, as before. */
+/* The line the program is on, kept up to date only under -g. Zero means the
+ * program was built without it, and then a runtime error says what happened
+ * without saying where -- which is what every build did before, and what a
+ * build that did not ask for debug information still costs nothing for. */
+int __cm_line = 0;
+
 CATMINT_NORETURN void __cm_runtimeError(const char *message) {
+  char located[512];
+
+  if (__cm_line > 0) {
+    snprintf(located, sizeof(located), "line %d : %s", __cm_line, message);
+    message = located;
+  }
+
   if (gHandlers) {
     __cm_throw(make_string(message));
   }

@@ -212,10 +212,12 @@ catch e:
 end
 ```
 
-`throw <anything>` leaves through the nearest handler. The runtime's own
+`throw <anything>` leaves through the nearest handler, and what is thrown
+stays alive across the jump even when the frame it was made in is abandoned. The runtime's own
 failures — a call on null, an index out of bounds — arrive the same way and
-can be caught. Uncaught, a throw prints and exits 1.
-→ `36_errors.cm`
+can be caught. Uncaught, a throw prints and exits 1. Built with `-g`, a runtime error says
+which line it happened on.
+→ `36_errors.cm`, `52_error_lines.cm`
 
 ## defer
 

@@ -317,9 +317,19 @@ is only worth it if Windows becomes a first-class target.
 - **A `Map` keyed by anything, not just String** (~130 lines of `.cmm`).
   Needs only an `Object.hash` interface, which `interface` made expressible.
   Pure library; writable whenever someone needs it.
-- **Line numbers in runtime error messages under `-g`** (~50 lines). The
-  debug information exists; a current-line global updated at statement
-  boundaries, and only under `-g`, so no program pays for it.
+- ~~**Line numbers in runtime error messages under `-g`**~~ **done.**
+  `setDebugLine` also stores to the runtime's `__cm_line`, and
+  `__cm_runtimeError` puts it in the message. Nothing is emitted without
+  `-g`, which `52_error_lines.check` asserts by grepping the IR both ways.
+
+  Writing the test found something much worse than a missing line number: a
+  **use-after-free on every throw whose value was computed**. What is thrown
+  is usually built in the pool of the frame being abandoned -- `throw "a" +
+  b`, or `__cm_runtimeError` building its message -- and the jump closed
+  exactly those pools before the handler ran. It survived by luck when throw
+  and catch were in one method, and corrupted the heap when they were not.
+  `__cm_throw` now retains, unwinds, and hands the object to the handler's
+  pool. `36_errors.cm` covers it.
 - **64-bit literal typing by context** (~80 lines). Last, and flagged: this
   is the one item that changes what an existing program *computes*, since
   `a * b` assigned to an `Int64` wraps at 32 bits today and would stop.

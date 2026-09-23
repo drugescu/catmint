@@ -104,6 +104,53 @@ class Main from IO
       out("object " + caught.balance + "\n")
     end
 
+    # What is thrown has to survive the jump. A computed String's only
+    # reference is the pool of the work being abandoned, and the throw closes
+    # exactly those pools on its way out -- so this used to hand the handler
+    # memory that had already gone. It survived by luck when the throw and
+    # the catch were in one method, and corrupted the heap when they were
+    # not.
+    try:
+      raiseComputed(7)
+    catch e:
+      String message = e
+      out("computed " + message + "\n")
+    end
+
+    # The same for the runtime's own errors, whose message is built the same
+    # way, in the frame that is about to be left.
+    try:
+      indexPastTheEnd()
+    catch e:
+      String message = e
+      out("runtime error caught across a frame\n")
+    end
+
+    # And the thrown value is still usable after the handler has run, because
+    # the handler's own pool owns it now.
+    Int total = 0
+    Int i = 0
+    while i < 200:
+      try:
+        raiseComputed(i)
+      catch e:
+        String message = e
+        total = total + message.len()
+      end
+      i = i + 1
+    end
+    out("repeated " + total + "\n")
+
     out("done\n")
+  end
+
+  def Void raiseComputed(Int n):
+    throw "computed " + n
+  end
+
+  def Void indexPastTheEnd:
+    Bytes small = new Bytes(2)
+    Int value = small.get(5)
+    out("unreachable " + value + "\n")
   end
 end

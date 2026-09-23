@@ -10,4 +10,7 @@ early -1
 after returns still working
 progress 2 note started
 object 70
+computed computed 7
+runtime error caught across a frame
+repeated 2290
 done

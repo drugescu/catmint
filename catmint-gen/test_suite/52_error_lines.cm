@@ -1,0 +1,37 @@
+# Where a runtime error happened, not just what it was.
+#
+# "Substring indices out of bounds." with no line is a poor thing to hand
+# someone, and the debug information needed to fix it has existed since -g
+# did. Under -g the generator now keeps the current line in a global that
+# __cm_runtimeError reads; without -g nothing is stored and no program pays
+# for it.
+#
+# The message is the same either way apart from the location, so this file
+# runs the same with and without. 52_error_lines.check compiles it both ways
+# and checks what each says.
+
+class Main from IO
+  def Void outOfBounds:
+    Bytes b = new Bytes(4)
+    Int value = b.get(9)
+    out("unreachable ${value}\n")
+  end
+
+  def main:
+    try:
+      outOfBounds()
+    catch e:
+      out("caught a bounds error\n")
+    end
+
+    try:
+      String s = "abc"
+      String piece = s.substr(2, 9)
+      out("unreachable ${piece}\n")
+    catch e:
+      out("caught a substring error\n")
+    end
+
+    out("done\n")
+  end
+end

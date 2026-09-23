@@ -202,6 +202,17 @@ void IRGenerator::setDebugLine(int Line) {
   const unsigned At = Line > 0 ? static_cast<unsigned>(Line) : 1u;
   Builder.SetCurrentDebugLocation(
       llvm::DILocation::get(Context, At, 0, CurrentSubprogram));
+
+  // Under -g only, keep the runtime told where the program is, so that a
+  // failed bounds check or a call on null can say where rather than only
+  // what. A store to one global per statement, and nothing at all in a build
+  // that did not ask for debug information -- which is why it lives here,
+  // beside the only other thing -g costs.
+  if (Line > 0 && Builder.GetInsertBlock()) {
+    auto *I32 = llvm::Type::getInt32Ty(Context);
+    auto *LineGlobal = Module.getOrInsertGlobal("__cm_line", I32);
+    Builder.CreateStore(Builder.getInt32(Line), LineGlobal);
+  }
 }
 
 /// A built-in is external in the same sense an imported class is: its code

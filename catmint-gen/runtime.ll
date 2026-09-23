@@ -76,33 +76,35 @@ source_filename = "runtime.c"
 @gThrown = internal unnamed_addr global ptr null, align 8
 @.str.31 = private unnamed_addr constant [14 x i8] c"Uncaught: %s\0A\00", align 1
 @.str.32 = private unnamed_addr constant [32 x i8] c"Uncaught: an object of type %s\0A\00", align 1
-@.str.34 = private unnamed_addr constant [20 x i8] c"Runtime error : %s\0A\00", align 1
+@__cm_line = local_unnamed_addr global i32 0, align 4
+@.str.34 = private unnamed_addr constant [13 x i8] c"line %d : %s\00", align 1
+@.str.35 = private unnamed_addr constant [20 x i8] c"Runtime error : %s\0A\00", align 1
 @gPoolDepth = internal unnamed_addr global i32 0, align 4
 @gPoolMarkCapacity = internal unnamed_addr global i32 0, align 4
 @gPoolMarks = internal unnamed_addr global ptr null, align 8
 @gPoolCount = internal unnamed_addr global i32 0, align 4
 @gPoolCapacity = internal unnamed_addr global i32 0, align 4
 @gPoolItems = internal unnamed_addr global ptr null, align 8
-@.str.37 = private unnamed_addr constant [8 x i8] c"/bin/sh\00", align 1
-@.str.38 = private unnamed_addr constant [3 x i8] c"sh\00", align 1
-@.str.39 = private unnamed_addr constant [3 x i8] c"-c\00", align 1
+@.str.38 = private unnamed_addr constant [8 x i8] c"/bin/sh\00", align 1
+@.str.39 = private unnamed_addr constant [3 x i8] c"sh\00", align 1
+@.str.40 = private unnamed_addr constant [3 x i8] c"-c\00", align 1
 @gWorkerCount = internal unnamed_addr global i32 0, align 4
-@.str.40 = private unnamed_addr constant [54 x i8] c"too many workers; wait for some before starting more.\00", align 1
+@.str.41 = private unnamed_addr constant [54 x i8] c"too many workers; wait for some before starting more.\00", align 1
 @gWorkers = internal global [256 x %struct.__cm_worker] zeroinitializer, align 8
-@.str.41 = private unnamed_addr constant [51 x i8] c"no such worker; wait for each handle exactly once.\00", align 1
-@.str.42 = private unnamed_addr constant [41 x i8] c"that worker has already been waited for.\00", align 1
+@.str.42 = private unnamed_addr constant [51 x i8] c"no such worker; wait for each handle exactly once.\00", align 1
+@.str.43 = private unnamed_addr constant [41 x i8] c"that worker has already been waited for.\00", align 1
 @gWorkersCollected = internal unnamed_addr global i32 0, align 4
-@.str.43 = private unnamed_addr constant [35 x i8] c"Bytes slice indices out of bounds.\00", align 1
-@.str.45 = private unnamed_addr constant [26 x i8] c"List index out of bounds.\00", align 1
+@.str.44 = private unnamed_addr constant [35 x i8] c"Bytes slice indices out of bounds.\00", align 1
+@.str.46 = private unnamed_addr constant [26 x i8] c"List index out of bounds.\00", align 1
 @_DefaultRuneLocale = external local_unnamed_addr global %struct._RuneLocale, align 8
-@.str.46 = private unnamed_addr constant [28 x i8] c"%s cannot have %d elements.\00", align 1
-@.str.47 = private unnamed_addr constant [31 x i8] c"Out of memory making an array.\00", align 1
-@.str.48 = private unnamed_addr constant [32 x i8] c"%s index %d is outside 0 to %d.\00", align 1
+@.str.47 = private unnamed_addr constant [28 x i8] c"%s cannot have %d elements.\00", align 1
+@.str.48 = private unnamed_addr constant [31 x i8] c"Out of memory making an array.\00", align 1
+@.str.49 = private unnamed_addr constant [32 x i8] c"%s index %d is outside 0 to %d.\00", align 1
 @str = private unnamed_addr constant [53 x i8] c"Runtime error : out of memory recording a temporary.\00", align 1
-@str.49 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory making a String.\00", align 1
-@str.50 = private unnamed_addr constant [46 x i8] c"Runtime error : out of memory entering a try.\00", align 1
-@str.51 = private unnamed_addr constant [15 x i8] c"Uncaught: null\00", align 1
-@str.52 = private unnamed_addr constant [46 x i8] c"Runtime error : out of memory opening a pool.\00", align 1
+@str.50 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory making a String.\00", align 1
+@str.51 = private unnamed_addr constant [46 x i8] c"Runtime error : out of memory entering a try.\00", align 1
+@str.52 = private unnamed_addr constant [15 x i8] c"Uncaught: null\00", align 1
+@str.53 = private unnamed_addr constant [46 x i8] c"Runtime error : out of memory opening a pool.\00", align 1
 
 ; Function Attrs: cold nofree noreturn nounwind ssp uwtable(sync)
 define void @M6_Object_abort(ptr readnone captures(none) %0) #0 {
@@ -1303,7 +1305,7 @@ define noundef ptr @M6_String_toBytes(ptr noundef readonly captures(none) %0) #2
 
 9:                                                ; preds = %1
   call void @llvm.lifetime.start.p0(ptr nonnull %2) #40
-  %10 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %2, i64 128, ptr nonnull @.str.46, ptr nonnull @.str.9, i32 %5)
+  %10 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %2, i64 128, ptr nonnull @.str.47, ptr nonnull @.str.9, i32 %5)
   call void @__cm_runtimeError(ptr noundef nonnull %2) #43
   unreachable
 
@@ -1318,7 +1320,7 @@ define noundef ptr @M6_String_toBytes(ptr noundef readonly captures(none) %0) #2
   br i1 %16, label %17, label %18
 
 17:                                               ; preds = %13
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.47) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.48) #43
   unreachable
 
 18:                                               ; preds = %11, %13
@@ -1938,7 +1940,7 @@ define range(i32 0, 256) i32 @M5_Bytes_get(ptr noundef readonly captures(none) %
 9:                                                ; preds = %2
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
   %10 = add nsw i32 %5, -1
-  %11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.48, ptr nonnull @.str.9, i32 %1, i32 %10)
+  %11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.49, ptr nonnull @.str.9, i32 %1, i32 %10)
   call void @__cm_runtimeError(ptr noundef nonnull %3) #43
   unreachable
 
@@ -1965,7 +1967,7 @@ define noundef i32 @M5_Bytes_set(ptr noundef readonly captures(none) %0, i32 nou
 10:                                               ; preds = %3
   call void @llvm.lifetime.start.p0(ptr nonnull %4) #40
   %11 = add nsw i32 %6, -1
-  %12 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %4, i64 128, ptr nonnull @.str.48, ptr nonnull @.str.9, i32 %1, i32 %11)
+  %12 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %4, i64 128, ptr nonnull @.str.49, ptr nonnull @.str.9, i32 %1, i32 %11)
   call void @__cm_runtimeError(ptr noundef nonnull %4) #43
   unreachable
 
@@ -2038,7 +2040,7 @@ define noundef ptr @M5_Bytes_slice(ptr noundef readonly captures(none) %0, i32 n
   br i1 %10, label %11, label %12
 
 11:                                               ; preds = %7, %3
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.43) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.44) #43
   unreachable
 
 12:                                               ; preds = %7
@@ -2057,7 +2059,7 @@ define noundef ptr @M5_Bytes_slice(ptr noundef readonly captures(none) %0, i32 n
   br i1 %21, label %22, label %23
 
 22:                                               ; preds = %18
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.47) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.48) #43
   unreachable
 
 23:                                               ; preds = %12, %18
@@ -2101,7 +2103,7 @@ define i64 @M4_Ints_get(ptr noundef readonly captures(none) %0, i32 noundef %1) 
 9:                                                ; preds = %2
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
   %10 = add nsw i32 %5, -1
-  %11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.48, ptr nonnull @.str.10, i32 %1, i32 %10)
+  %11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.49, ptr nonnull @.str.10, i32 %1, i32 %10)
   call void @__cm_runtimeError(ptr noundef nonnull %3) #43
   unreachable
 
@@ -2127,7 +2129,7 @@ define noundef i64 @M4_Ints_set(ptr noundef readonly captures(none) %0, i32 noun
 10:                                               ; preds = %3
   call void @llvm.lifetime.start.p0(ptr nonnull %4) #40
   %11 = add nsw i32 %6, -1
-  %12 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %4, i64 128, ptr nonnull @.str.48, ptr nonnull @.str.10, i32 %1, i32 %11)
+  %12 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %4, i64 128, ptr nonnull @.str.49, ptr nonnull @.str.10, i32 %1, i32 %11)
   call void @__cm_runtimeError(ptr noundef nonnull %4) #43
   unreachable
 
@@ -2214,7 +2216,7 @@ define double @M6_Floats_get(ptr noundef readonly captures(none) %0, i32 noundef
 9:                                                ; preds = %2
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
   %10 = add nsw i32 %5, -1
-  %11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.48, ptr nonnull @.str.11, i32 %1, i32 %10)
+  %11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.49, ptr nonnull @.str.11, i32 %1, i32 %10)
   call void @__cm_runtimeError(ptr noundef nonnull %3) #43
   unreachable
 
@@ -2240,7 +2242,7 @@ define noundef double @M6_Floats_set(ptr noundef readonly captures(none) %0, i32
 10:                                               ; preds = %3
   call void @llvm.lifetime.start.p0(ptr nonnull %4) #40
   %11 = add nsw i32 %6, -1
-  %12 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %4, i64 128, ptr nonnull @.str.48, ptr nonnull @.str.11, i32 %1, i32 %11)
+  %12 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %4, i64 128, ptr nonnull @.str.49, ptr nonnull @.str.11, i32 %1, i32 %11)
   call void @__cm_runtimeError(ptr noundef nonnull %4) #43
   unreachable
 
@@ -2475,7 +2477,7 @@ define ptr @M4_List_get(ptr noundef readonly captures(none) %0, i32 noundef %1) 
   br i1 %7, label %9, label %8
 
 8:                                                ; preds = %4, %2
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.45) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.46) #43
   unreachable
 
 9:                                                ; preds = %4
@@ -2499,7 +2501,7 @@ define noundef ptr @M4_List_set(ptr noundef readonly captures(none) %0, i32 noun
   br i1 %8, label %10, label %9
 
 9:                                                ; preds = %5, %3
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.45) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.46) #43
   unreachable
 
 10:                                               ; preds = %5
@@ -3182,18 +3184,30 @@ declare i64 @strtol(ptr noundef readonly, ptr noundef captures(none), i32 nounde
 
 ; Function Attrs: noreturn nounwind ssp uwtable(sync)
 define void @__cm_runtimeError(ptr noundef %0) local_unnamed_addr #20 {
-  %2 = load ptr, ptr @gHandlers, align 8, !tbaa !87
-  %3 = icmp eq ptr %2, null
-  br i1 %3, label %6, label %4
+  %2 = alloca [512 x i8], align 1
+  call void @llvm.lifetime.start.p0(ptr nonnull %2) #40
+  %3 = load i32, ptr @__cm_line, align 4, !tbaa !6
+  %4 = icmp sgt i32 %3, 0
+  br i1 %4, label %5, label %7
 
-4:                                                ; preds = %1
-  %5 = tail call fastcc ptr @make_string(ptr noundef %0)
-  tail call void @__cm_throw(ptr noundef nonnull %5) #43
+5:                                                ; preds = %1
+  %6 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %2, i64 512, ptr nonnull @.str.34, i32 %3, ptr %0)
+  br label %7
+
+7:                                                ; preds = %5, %1
+  %8 = phi ptr [ %2, %5 ], [ %0, %1 ]
+  %9 = load ptr, ptr @gHandlers, align 8, !tbaa !87
+  %10 = icmp eq ptr %9, null
+  br i1 %10, label %13, label %11
+
+11:                                               ; preds = %7
+  %12 = call fastcc ptr @make_string(ptr noundef %8)
+  tail call void @__cm_throw(ptr noundef nonnull %12) #43
   unreachable
 
-6:                                                ; preds = %1
-  %7 = tail call i32 (ptr, ...) @printf(ptr noundef nonnull dereferenceable(1) @.str.34, ptr noundef %0)
-  tail call void @exit(i32 noundef 1) #39
+13:                                               ; preds = %7
+  %14 = call i32 (ptr, ...) @printf(ptr noundef nonnull dereferenceable(1) @.str.35, ptr noundef %8)
+  call void @exit(i32 noundef 1) #39
   unreachable
 }
 
@@ -3206,7 +3220,7 @@ define internal fastcc nonnull ptr @new_string(i32 noundef %0) unnamed_addr #2 {
   br i1 %5, label %6, label %8
 
 6:                                                ; preds = %1
-  %7 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.49)
+  %7 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.50)
   tail call void @exit(i32 noundef 1) #39
   unreachable
 
@@ -4365,7 +4379,7 @@ define void @__cm_pushHandler(ptr noundef %0) local_unnamed_addr #8 {
   br i1 %3, label %4, label %6
 
 4:                                                ; preds = %1
-  %5 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.50)
+  %5 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.51)
   tail call void @exit(i32 noundef 1) #39
   unreachable
 
@@ -4443,7 +4457,7 @@ define void @__cm_throw(ptr noundef %0) local_unnamed_addr #20 {
   br label %20
 
 18:                                               ; preds = %4
-  %19 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.51)
+  %19 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.52)
   br label %20
 
 20:                                               ; preds = %13, %18, %9
@@ -4455,9 +4469,11 @@ define void @__cm_throw(ptr noundef %0) local_unnamed_addr #20 {
   %23 = getelementptr inbounds nuw i8, ptr %2, i64 16
   %24 = load ptr, ptr %23, align 8, !tbaa !113
   store ptr %24, ptr @gHandlers, align 8, !tbaa !87
+  tail call void @__cm_retain(ptr noundef %0)
   %25 = getelementptr inbounds nuw i8, ptr %2, i64 8
   %26 = load i32, ptr %25, align 8, !tbaa !112
   tail call void @__cm_poolUnwind(i32 noundef %26)
+  tail call void @__cm_poolAdd(ptr noundef %0)
   tail call void @free(ptr noundef nonnull %2)
   tail call void @longjmp(ptr noundef %22, i32 noundef 1) #45
   unreachable
@@ -4560,7 +4576,7 @@ define void @__cm_poolPush() local_unnamed_addr #2 {
   br i1 %12, label %13, label %15
 
 13:                                               ; preds = %5
-  %14 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.52)
+  %14 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.53)
   tail call void @exit(i32 noundef 1) #39
   unreachable
 
@@ -4685,7 +4701,7 @@ define range(i32 0, -2147483648) i32 @M7_Process_start(ptr noundef readonly capt
 6:                                                ; preds = %4
   %7 = getelementptr inbounds nuw i8, ptr %0, i64 16
   %8 = load ptr, ptr %7, align 8, !tbaa !17
-  %9 = tail call i32 (ptr, ptr, ...) @execl(ptr noundef nonnull @.str.37, ptr noundef nonnull @.str.38, ptr noundef nonnull @.str.39, ptr noundef %8, ptr noundef null) #40
+  %9 = tail call i32 (ptr, ptr, ...) @execl(ptr noundef nonnull @.str.38, ptr noundef nonnull @.str.39, ptr noundef nonnull @.str.40, ptr noundef %8, ptr noundef null) #40
   tail call void @_exit(i32 noundef 127) #45
   unreachable
 
@@ -4761,7 +4777,7 @@ define range(i32 -2147483647, -2147483648) i32 @__cm_workerStart(ptr noundef %0,
   br i1 %4, label %5, label %6
 
 5:                                                ; preds = %2
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.40) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.41) #43
   unreachable
 
 6:                                                ; preds = %2
@@ -4821,7 +4837,7 @@ define i64 @M6_Worker_wait(i32 noundef %0) local_unnamed_addr #2 {
   br i1 %7, label %8, label %9
 
 8:                                                ; preds = %3
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.41) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.42) #43
   unreachable
 
 9:                                                ; preds = %3
@@ -4833,7 +4849,7 @@ define i64 @M6_Worker_wait(i32 noundef %0) local_unnamed_addr #2 {
   br i1 %14, label %15, label %16
 
 15:                                               ; preds = %9
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.42) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.43) #43
   unreachable
 
 16:                                               ; preds = %9
@@ -4884,7 +4900,7 @@ define void @M5_Bytes_init(ptr noundef captures(none) %0, i32 noundef %1) local_
 
 7:                                                ; preds = %2
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
-  %8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.46, ptr nonnull @.str.9, i32 %1)
+  %8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.47, ptr nonnull @.str.9, i32 %1)
   call void @__cm_runtimeError(ptr noundef nonnull %3) #43
   unreachable
 
@@ -4899,7 +4915,7 @@ define void @M5_Bytes_init(ptr noundef captures(none) %0, i32 noundef %1) local_
   br i1 %14, label %15, label %16
 
 15:                                               ; preds = %11
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.47) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.48) #43
   unreachable
 
 16:                                               ; preds = %9, %11
@@ -4921,7 +4937,7 @@ define void @M4_Ints_init(ptr noundef captures(none) %0, i32 noundef %1) local_u
 
 7:                                                ; preds = %2
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
-  %8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.46, ptr nonnull @.str.10, i32 %1)
+  %8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.47, ptr nonnull @.str.10, i32 %1)
   call void @__cm_runtimeError(ptr noundef nonnull %3) #43
   unreachable
 
@@ -4936,7 +4952,7 @@ define void @M4_Ints_init(ptr noundef captures(none) %0, i32 noundef %1) local_u
   br i1 %14, label %15, label %16
 
 15:                                               ; preds = %11
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.47) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.48) #43
   unreachable
 
 16:                                               ; preds = %9, %11
@@ -4958,7 +4974,7 @@ define void @M6_Floats_init(ptr noundef captures(none) %0, i32 noundef %1) local
 
 7:                                                ; preds = %2
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
-  %8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.46, ptr nonnull @.str.11, i32 %1)
+  %8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.47, ptr nonnull @.str.11, i32 %1)
   call void @__cm_runtimeError(ptr noundef nonnull %3) #43
   unreachable
 
@@ -4973,7 +4989,7 @@ define void @M6_Floats_init(ptr noundef captures(none) %0, i32 noundef %1) local
   br i1 %14, label %15, label %16
 
 15:                                               ; preds = %11
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.47) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.48) #43
   unreachable
 
 16:                                               ; preds = %9, %11
