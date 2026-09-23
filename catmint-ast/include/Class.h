@@ -69,6 +69,12 @@ public:
   bool isBuiltin() const { return builtinDeclaration; }
   void setBuiltin(bool value) { builtinDeclaration = value; }
 
+  /// True for `extern class`: a list of C functions, with no bodies, no
+  /// fields and no instances. Its methods keep their names unmangled,
+  /// because the symbol already exists in some library.
+  bool isExtern() const { return externDeclaration; }
+  void setExtern(bool value) { externDeclaration = value; }
+
   /// \brief Add a feature and take ownership of it
   void addFeature(std::unique_ptr<Feature> F) {
     features.push_back(std::move(F));
@@ -106,6 +112,7 @@ private:
   std::vector<std::string> interfaces;
   bool interfaceDeclaration = false;
   bool builtinDeclaration = false;
+  bool externDeclaration = false;
   FeaturesType features;
   Symbol self;
 };

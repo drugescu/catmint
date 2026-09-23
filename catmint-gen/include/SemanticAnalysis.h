@@ -56,6 +56,11 @@ private:
   bool visit(SpawnStatement *s) override;
   bool visit(LoopControl *lc) override;
 
+  /// Whether \p name in \p c is a C function reached through `extern class`.
+  Method *externMethod(Class *c, const std::string &name);
+  /// The types allowed to cross the boundary, and why the others are not.
+  void checkExternSignature(Class *c, Method *m);
+
   /// Whether \p m may run on a worker: it must do arithmetic and nothing
   /// else, so that it cannot touch a reference count, the temporary pool or
   /// the handler stack from another thread. \p why says what stopped it.
@@ -109,6 +114,11 @@ private:
   /// have no target to emit -- so it is rejected here, where the message can
   /// name a line.
   unsigned loopDepth = 0;
+  /// How many `unsafe` regions enclose the node being visited -- blocks, and
+  /// the body of an `unsafe def`. Calling an extern function anywhere else is
+  /// an error, which is the whole of what the marking buys: every place the
+  /// program can reach outside itself is spelled.
+  unsigned unsafeDepth = 0;
   /// A `for` binds its loop variable, which has no definition node of its own
   /// in the tree. The synthesised definitions are owned here so that they
   /// outlive the symbol table entries pointing at them.

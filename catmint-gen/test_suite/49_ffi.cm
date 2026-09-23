@@ -1,0 +1,94 @@
+# Calling C, with the door marked.
+#
+# `extern class` declares C functions: signatures only, no bodies, no
+# mangling, called on the class. Declaring is safe -- it is only a signature.
+# *Calling* needs `unsafe`, as in Rust, because the declaration asserts a
+# match with a function the compiler cannot see.
+#
+# What `unsafe` enables is exactly two things: calling an extern function,
+# and going through a Ptr. Everything else stays checked inside it --
+# objects are still null-checked, arrays still bounds-checked, references
+# still counted. That is what makes `grep -rn unsafe` an audit.
+
+extern class Libc
+  def Int strlen(String s)
+  def Int abs(Int n)
+  def Float sqrt(Float x)
+  def Int atoi(String s)
+  def Ptr malloc(Int size)
+  def Void free(Ptr block)
+  def Ptr memset(Ptr dest, Int value, Int count)
+  def Int memcmp(Bytes a, Bytes b, Int count)
+end
+
+# The wrapper idiom: an unsafe core inside a safe class, so that nothing
+# downstream writes `unsafe` at all.
+class Block
+  Ptr handle
+  Int size
+
+  constructor(Int bytes):
+    size = bytes
+    unsafe:
+      handle = Libc.malloc(bytes)
+    end
+    if handle == null:
+      throw "out of memory"
+    end
+  end
+
+  def Int ok:
+    if handle == null:
+      return 0
+    end
+    return 1
+  end
+
+  def Void clear(Int value):
+    unsafe:
+      Libc.memset(handle, value, size)
+    end
+  end
+
+  def Void done:
+    unsafe:
+      Libc.free(handle)
+    end
+    handle = null
+  end
+end
+
+class Main from IO
+  def main:
+    unsafe:
+      out("strlen ${Libc.strlen("hello")}\n")
+      out("abs ${Libc.abs(0 - 42)}\n")
+      out("sqrt ${Libc.sqrt(6.25)}\n")
+      out("atoi ${Libc.atoi("123")}\n")
+    end
+
+    Block b = new Block(64)
+    out("ok ${b.ok()}\n")
+    b.clear(0)
+    b.done()
+    out("after ${b.ok()}\n")
+
+    # A buffer's bytes reach C directly: what crosses is the data pointer,
+    # not the object in front of it.
+    Bytes x = "abcd".toBytes()
+    Bytes y = "abcd".toBytes()
+    Bytes z = "abce".toBytes()
+    unsafe:
+      out("memcmp same ${Libc.memcmp(x, y, 4)}\n")
+      out("memcmp diff ${Libc.memcmp(x, z, 4) < 0}\n")
+    end
+
+    # An unsafe method needs no block inside it: the whole body is one.
+    out("wrapped ${length("counting")}\n")
+    out("done\n")
+  end
+
+  unsafe def Int length(String s):
+    return Libc.strlen(s)
+  end
+end

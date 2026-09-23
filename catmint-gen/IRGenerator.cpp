@@ -323,6 +323,7 @@ bool IRGenerator::collectClasses() {
     ClassInfo CI;
     CI.AST = C;
     CI.IsInterface = C->isInterface();
+    CI.IsExtern = C->isExtern();
     // The class says whether it is one the compiler supplies; this used to
     // be a second list of names here, which is one more place to forget.
     CI.Builtin = C->isBuiltin();
@@ -541,6 +542,11 @@ llvm::FunctionType *IRGenerator::methodType(ClassInfo *CI, Method *M) {
 
 void IRGenerator::declareMethods(ClassInfo *CI) {
   if (CI->Builtin)
+    return;
+  // An extern class names functions that already exist somewhere else. Their
+  // declarations are created on demand at the call site, under the C name
+  // rather than a mangled one.
+  if (CI->IsExtern)
     return;
   // For an imported class the declaration is exactly what we want, and it is
   // created on demand by emitCall and by the vtable, so nothing to do here.
@@ -972,14 +978,14 @@ llvm::Module *IRGenerator::runGenerator() {
     if (CI->IsInterface && !CI->Builtin)
       emitClassMetadata(CI);
   for (auto *CI : ClassOrder)
-    if (!CI->IsInterface && !CI->Builtin)
+    if (!CI->IsInterface && !CI->Builtin && !CI->IsExtern)
       emitClassMetadata(CI);
   for (auto *CI : ClassOrder)
-    if (!emitInitFunction(CI))
+    if (!CI->IsExtern && !emitInitFunction(CI))
       return nullptr;
 
   for (auto *CI : ClassOrder) {
-    if (isExternal(CI))
+    if (isExternal(CI) || CI->IsExtern)
       continue;
     for (auto *Feat : *CI->AST) {
       auto *M = dynamic_cast<Method *>(Feat);
@@ -1053,6 +1059,11 @@ llvm::Value *IRGenerator::attributeAddress(const std::string &Name,
 bool IRGenerator::isReferenceTypeName(const std::string &TypeName) {
   if (TypeName.empty() || TypeName == "auto" || TypeName == strings::Void ||
       TypeName == strings::Float || TypeTable::integerWidth(TypeName))
+    return false;
+  // A Ptr is a machine pointer and nothing else -- no run-time type
+  // information in front of it, so no count to touch and nothing to release.
+  // This is the line that keeps the memory machinery away from it.
+  if (TypeName == strings::Ptr)
     return false;
   // Null is a reference, but a null needs no counting and no release.
   return TypeName != strings::Null;
@@ -2381,6 +2392,28 @@ bool IRGenerator::canCallDirectly(ClassInfo *RecvClass,
   return true;
 }
 
+/// A String and the three arrays are objects: run-time type information, a
+/// reference count, a length, and then the contents. A C function wants the
+/// contents. All four put that pointer at the same offset, so one shape
+/// serves for all of them.
+///
+/// The null check stays. `unsafe` enables calling out and going through a
+/// Ptr; it does not turn the rest of the compiler off, and handing C a null
+/// where it expects a buffer is a fault with no message.
+llvm::Value *IRGenerator::marshalToC(llvm::Value *V,
+                                     const std::string &TypeName, int Line) {
+  if (TypeName != strings::String && TypeName != strings::Bytes &&
+      TypeName != strings::Ints && TypeName != strings::Floats)
+    return V;
+
+  auto PtrTy = llvm::PointerType::getUnqual(Context);
+  auto *I32 = llvm::Type::getInt32Ty(Context);
+  Builder.CreateCall(Runtime.checkNull(), {V});
+  auto *Shape = llvm::StructType::get(Context, {PtrTy, I32, I32, PtrTy});
+  auto *Field = Builder.CreateStructGEP(Shape, V, 3, "c.contents");
+  return Builder.CreateLoad(PtrTy, Field, "c.raw");
+}
+
 llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,
                                          const std::vector<Expression *> &Args,
                                          int Line) {
@@ -2395,6 +2428,8 @@ llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,
       fail(Line, "argument to '" + M->getName() + "' produced no value");
     if (ParamIt != M->end()) {
       V = coerce(V, FromTy, (*ParamIt)->getType(), Line);
+      if (Owner->IsExtern)
+        V = marshalToC(V, (*ParamIt)->getType(), Line);
       ++ParamIt;
     }
     CallArgs.push_back(V);
@@ -2405,8 +2440,10 @@ llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,
   if (isReferenceTypeName(M->getReturnType()))
     noteAllocation();
 
-  auto Callee =
-      Module.getOrInsertFunction(runtimeSymbol(Owner, M->getName()), FT);
+  // An extern function keeps its own name: the symbol already exists in a
+  // library, and mangling it would name something that does not.
+  auto Callee = Module.getOrInsertFunction(
+      Owner->IsExtern ? M->getName() : runtimeSymbol(Owner, M->getName()), FT);
   auto *Call = Builder.CreateCall(Callee, CallArgs);
   return (M->getReturnType() == strings::Void || M->getReturnType() == "auto")
              ? nullptr

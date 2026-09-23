@@ -67,7 +67,7 @@
 		       name == "IO" || name == "List" || name == "Integer" ||
 		       name == "File" || name == "Math" || name == "Process" ||
 		       name == "Worker" || name == "Bytes" ||
-		       name == "Ints" || name == "Floats" ||
+		       name == "Ints" || name == "Floats" || name == "Ptr" ||
 		       name == "auto" || name.rfind("_uuid_generic_", 0) == 0;
 	}
 
@@ -168,7 +168,7 @@
 %token OP_ATTRIB OP_DIV OP_PLUS OP_MINUS OP_MUL
 %token OP_OPAREN OP_CPAREN OP_COLON OP_STATIC_ACCESS
 
-%token KW_CONSTEXPR KW_DEF KW_STATIC KW_ABSTRACT
+%token KW_CONSTEXPR KW_DEF KW_STATIC KW_ABSTRACT KW_EXTERN KW_UNSAFE
 
 %token <stringValue> IDENTIFIER
 %token <stringValue> STRING_CONSTANT
@@ -202,6 +202,7 @@ expression
                   if_expression
                   elif_chain
                   loop_control
+                  unsafe_expression
     conditional_expression
     dispatch_expression
 	void_expression
@@ -293,6 +294,21 @@ catmint_class
 			$$->setInterface(true);
 
 			delete $2; delete $3;
+		}
+	// `extern class` is a list of C functions: signatures only, the same
+	// body-less form an interface uses. Every one is static -- a C function
+	// has no receiver -- so the parser marks them rather than making each
+	// line say so.
+	| KW_EXTERN KW_CLASS IDENTIFIER interface_features KW_END {
+			$$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$3), "", *$4));
+			$$->setExtern(true);
+			for (auto feature : *$4) {
+				if (auto m = dynamic_cast<catmint::Method*>(feature)) {
+					m->setStatic(true);
+				}
+			}
+
+			delete $3; delete $4;
 		}
 	;
 
@@ -504,6 +520,14 @@ method
   | KW_ABSTRACT interface_method {
 		if (auto m = dynamic_cast<catmint::Method*>($2)) {
 			m->setAbstract(true);
+		}
+		$$ = $2;
+	}
+  // `unsafe def` makes the whole body an unsafe block, so a thin wrapper
+  // around one C call needs no block inside it.
+  | KW_UNSAFE method {
+		if (auto m = dynamic_cast<catmint::Method*>($2)) {
+			m->setUnsafe(true);
 		}
 		$$ = $2;
 	}
@@ -1151,7 +1175,19 @@ void_expression
   | throw_expression
   | defer_expression
   | loop_control
+  | unsafe_expression
   ;
+
+// `unsafe: ... end`. The block itself carries the flag rather than a node of
+// its own: the block is all there is to it, and a new node would mean the
+// same registrations across the AST library for nothing.
+unsafe_expression
+    : KW_UNSAFE OP_COLON block KW_END {
+		auto body = ($3 != nullptr) ? $3 : new catmint::Block(@1.first_line);
+		body->setUnsafe(true);
+		$$ = body;
+	}
+    ;
 
 // `break` leaves the innermost enclosing loop and `continue` starts its next
 // iteration. Neither takes a label: one level is what the cases that come up

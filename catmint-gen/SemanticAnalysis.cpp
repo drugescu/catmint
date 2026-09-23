@@ -346,8 +346,18 @@ bool SemanticAnalysis::visit(Method *m) {
 
   auto returnType = typeTable.getType(m->getReturnType(), m);
   auto body = m->getBody();
+  if (currentClass && currentClass->isExtern()) {
+    checkExternSignature(currentClass, m);
+  }
   if (body) {
-    if (!visit(body)) {
+    if (m->isUnsafe()) {
+      ++unsafeDepth;
+    }
+    const bool bodyOk = visit(body);
+    if (m->isUnsafe()) {
+      --unsafeDepth;
+    }
+    if (!bodyOk) {
       return false;
     }
 
@@ -397,9 +407,11 @@ bool SemanticAnalysis::visit(Method *m) {
         !typeTable.isEqualOrImplicitlyConvertibleTo(bodyType, returnType)) {
       throw WrongTypeException(bodyType, returnType, m);
     }
-  } else if (!m->isAbstract()) {
+  } else if (!m->isAbstract() &&
+             !(currentClass && currentClass->isExtern())) {
     // A method with no body returns nothing -- except an abstract one, whose
-    // whole purpose is to declare what a subclass will return.
+    // whole purpose is to declare what a subclass will return, and an extern
+    // one, whose body is in a library.
     if (returnType != typeTable.getVoidType()) {
       throw WrongTypeException(returnType, typeTable.getVoidType(), m);
     }
@@ -443,8 +455,16 @@ bool SemanticAnalysis::visit(Block *b) {
   // Since blocks don't have names/aliases, our named scope will be annonymous as well
   SymbolTable::Scope blockScope(symbolTable, "anonymous_block");
 
-  // visit all expressions first
-  if (!ASTVisitor::visit(b)) {
+  // An `unsafe:` statement is an ordinary block carrying a flag, so this is
+  // where the region opens and closes.
+  if (b->isUnsafe()) {
+    ++unsafeDepth;
+  }
+  const bool contentsOk = ASTVisitor::visit(b);
+  if (b->isUnsafe()) {
+    --unsafeDepth;
+  }
+  if (!contentsOk) {
     return false;
   }
 
@@ -623,6 +643,18 @@ bool SemanticAnalysis::visit(Dispatch *d) {
     if (!method || !method->isStatic()) {
       throw MethodNotFoundException(d->getName(), staticClass, d);
     }
+    // The one gate. Declaring an extern function is safe -- it is a
+    // signature. Calling one is not: the declaration asserts a match with a
+    // function this compiler cannot see, and everything past it is somebody
+    // else's memory. Requiring the word here is what makes `grep -rn unsafe`
+    // find every place the program leaves the language.
+    if (staticClass->isExtern() && unsafeDepth == 0) {
+      throw SemanticException(
+          "'" + staticClass->getName() + "." + d->getName() +
+              "' is an extern function, so calling it needs 'unsafe:' around "
+              "the call or 'unsafe def' on the method doing it",
+          d);
+    }
     if (!checkDispatchArgs(d, method)) {
       return false;
     }
@@ -787,6 +819,54 @@ Type *SemanticAnalysis::commonReturnType(Type *a, Type *b) {
   }
 
   return nullptr;
+}
+
+/// The method \p name names in \p c, when \p c is an `extern class`. This is
+/// the one call the language cannot check for itself -- the body is in a
+/// library -- so it is the one that has to be marked.
+Method *SemanticAnalysis::externMethod(Class *c, const std::string &name) {
+  if (!c || !c->isExtern()) {
+    return nullptr;
+  }
+  return typeTable.getMethod(c, name);
+}
+
+/// Only what has an unambiguous machine representation may cross: the
+/// integers and Float by value, Ptr as itself, String and the three arrays as
+/// the address of their contents. An Object, a List or a user class would
+/// have to pass the catmint object -- run-time type information, reference
+/// count and all -- which no C function is expecting, so that is a compile
+/// error rather than a crash.
+void SemanticAnalysis::checkExternSignature(Class *c, Method *m) {
+  auto allowed = [&](const std::string &type) {
+    return TypeTable::integerWidth(type) || type == strings::Float ||
+           type == strings::Ptr || type == strings::Void ||
+           type == strings::String || type == strings::Bytes ||
+           type == strings::Ints || type == strings::Floats;
+  };
+
+  if (m->getBody()) {
+    throw SemanticException("'" + c->getName() + "." + m->getName() +
+                                "' is extern, so it may not have a body",
+                            m);
+  }
+  if (!allowed(m->getReturnType())) {
+    throw SemanticException("'" + c->getName() + "." + m->getName() +
+                                "' returns '" + m->getReturnType() +
+                                "', which cannot cross to C; use a number, a "
+                                "Ptr, a String or an array",
+                            m);
+  }
+  for (auto param : *m) {
+    if (!allowed(param->getType())) {
+      throw SemanticException(
+          "'" + c->getName() + "." + m->getName() + "' takes '" +
+              param->getType() + " " + param->getName() +
+              "', which cannot cross to C; use a number, a Ptr, a String or "
+              "an array",
+          m);
+    }
+  }
 }
 
 /// Walk the class and its ancestors for `abstract def`s, and ask what the

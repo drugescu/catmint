@@ -50,6 +50,10 @@ const auto Math = "Math";
 const auto Process = "Process";
 const auto Worker = "Worker";
 const auto Bytes = "Bytes";
+/// An opaque machine pointer: what a C function hands back and takes again.
+/// A value, not an object -- no run-time type information, no reference
+/// count, nothing for the memory machinery to see.
+const auto Ptr = "Ptr";
 const auto Ints = "Ints";
 const auto Floats = "Floats";
 const auto Fill = "fill";

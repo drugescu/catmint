@@ -113,6 +113,10 @@ struct ClassInfo {
   /// body. Such a class is a type to hold a subclass in, not something to
   /// make -- the same as an interface, and treated the same way.
   bool IsAbstract = false;
+  /// True for `extern class`: its methods are C functions living in some
+  /// library, so nothing is emitted for it at all -- no metadata, no
+  /// initialiser, no bodies -- and its calls use the unmangled name.
+  bool IsExtern = false;
   /// Every interface this class promises, its own and its ancestors'.
   std::vector<std::string> AllInterfaces;
   /// For each of those, where its run of slots begins in this class's
@@ -330,6 +334,10 @@ private:
   llvm::Value *emitDefer(DeferStatement *D);
   llvm::Value *emitSpawn(SpawnStatement *S);
   llvm::Value *emitLoopControl(LoopControl *LC);
+  /// The address a C function is given for a String or an array: the
+  /// contents, not the catmint object in front of them.
+  llvm::Value *marshalToC(llvm::Value *V, const std::string &TypeName,
+                          int Line);
   /// Emit the deferred expressions of the innermost \p Count scopes, newest
   /// scope first and, within a scope, last registered first. Run before the
   /// scope's locals are released, because a deferred call almost always uses

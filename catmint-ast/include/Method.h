@@ -65,6 +65,11 @@ public:
   bool isAbstract() const { return abstractMethod; }
   void setAbstract(bool value) { abstractMethod = value; }
 
+  /// True for `unsafe def`: the whole body counts as an unsafe block, so a
+  /// thin wrapper around a C call needs no block inside it.
+  bool isUnsafe() const { return unsafeMethod; }
+  void setUnsafe(bool value) { unsafeMethod = value; }
+
   /// @{
   /// \brief Iterate through the parameters
   iterator begin() const { return iterator(parameters.begin()); }
@@ -88,6 +93,7 @@ private:
   FormalParamsType parameters;
   bool staticMethod = false;
   bool abstractMethod = false;
+  bool unsafeMethod = false;
   
 public:
   std::unique_ptr<Expression> body;

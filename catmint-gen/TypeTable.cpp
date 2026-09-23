@@ -48,6 +48,10 @@ void TypeTable::addBuiltinTypes(Program *p) {
   typeTable[strings::Null] = new Type(strings::Null);
   typeTable[strings::Void] = new Type(strings::Void);
   typeTable[strings::Float] = new Type(strings::Float);
+  // An opaque machine pointer. Registered with no Class behind it, which is
+  // what makes isReferenceType answer no: nothing counts it, nothing frees
+  // it, and it never reaches the temporary pool. A value, like an Int.
+  typeTable[strings::Ptr] = new Type(strings::Ptr);
 
   // `def name:` with no declared return type parses as the type "auto". Until
   // real return-type inference exists, such a method returns nothing, so the
@@ -430,6 +434,15 @@ std::string TypeTable::getCommonTypeStr(std::string T, std::string U) const {
   if (widthU && widthU != 32) U = strings::Int;
   if (T == U)
     return T;
+
+  // A Ptr meets null and nothing else. That is the whole of its arithmetic:
+  // it can be compared with null, assigned null, and passed back to C. It
+  // does not convert to an Int in either direction, because a pointer that
+  // can be arrived at by arithmetic is a pointer nobody can reason about.
+  if ((T == strings::Ptr && U == strings::Null) ||
+      (T == strings::Null && U == strings::Ptr)) {
+    return strings::Ptr;
+  }
 
   // Implicit potential conversions
   if (T == strings::Int) {

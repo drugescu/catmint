@@ -1,0 +1,10 @@
+strlen 5
+abs 42
+sqrt 2.5
+atoi 123
+ok 1
+after 0
+memcmp same 0
+memcmp diff 1
+wrapped 8
+done

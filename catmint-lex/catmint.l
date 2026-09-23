@@ -75,6 +75,8 @@ static int gColumnNumber = 1;
 "def"         { countColumns(); return KW_DEF; }
 "static"      { countColumns(); return KW_STATIC; }
 "abstract"    { countColumns(); return KW_ABSTRACT; }
+"extern"      { countColumns(); return KW_EXTERN; }
+"unsafe"      { countColumns(); return KW_UNSAFE; }
 "var"		      { countColumns(); return KW_VAR; }
 "if"		      { countColumns(); return KW_IF; }
 "for"		      { countColumns(); return KW_FOR; }

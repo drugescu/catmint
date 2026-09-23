@@ -1,0 +1,65 @@
+#!/bin/sh
+# The three things the FFI has to refuse. Run by ctest.sh from catmint-gen
+# with the source file as $1.
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+fail() { echo "49_ffi.check: $1"; exit 1; }
+
+# rejected <description> <expected words in the message> <source>
+rejected() {
+  printf '%s' "$3" > "$work/t.cm"
+  if ../catmintc "$work/t.cm" -o "$work/t.bin" >"$work/log" 2>&1; then
+    fail "$1 was accepted"
+  fi
+  grep -q "$2" "$work/log" || fail "$1 was rejected, but for the wrong reason:
+$(cat "$work/log")"
+}
+
+rejected "calling an extern function outside unsafe" "unsafe" 'extern class Libc
+  def Int strlen(String s)
+end
+class Main from IO
+  def main:
+    out("${Libc.strlen("hi")}\n")
+  end
+end
+'
+
+rejected "an extern signature taking an object" "cannot cross to C" 'extern class Libc
+  def Int take(List items)
+end
+class Main from IO
+  def main:
+    out("x\n")
+  end
+end
+'
+
+rejected "an extern signature returning an object" "cannot cross to C" 'extern class Libc
+  def Object make(Int n)
+end
+class Main from IO
+  def main:
+    out("x\n")
+  end
+end
+'
+
+# A Ptr does not quietly become a number: a pointer you can arrive at by
+# arithmetic is one nobody can reason about. Checked where it matters, which
+# is the boundary -- an argument. (A local *declaration* does not check its
+# initialiser at all in this language, which is older and wider than the FFI;
+# ASSESSMENT.md records it.)
+rejected "passing a Ptr where an Int is wanted" "Wrong type" 'extern class Libc
+  def Ptr malloc(Int size)
+  def Int abs(Int n)
+end
+class Main from IO
+  unsafe def main:
+    Ptr p = Libc.malloc(8)
+    out("${Libc.abs(p)}\n")
+  end
+end
+'
+exit 0

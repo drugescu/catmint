@@ -26,6 +26,8 @@ const auto Initializer = "Initializer";
 const auto ReturnType = "ReturnType";
 const auto Static = "Static";
 const auto Abstract = "Abstract";
+const auto Unsafe = "Unsafe";
+const auto Extern = "Extern";
 const auto Body = "Body";
 const auto FormalParams = "FormalParams";
 const auto Value = "Value";
@@ -186,6 +188,11 @@ bool ASTSerializer::visit(Class *C) {
     writer->Key(keys::IsInterface);
     writer->Bool(true);
   }
+
+  if (C->isExtern()) {
+    writer->Key(keys::Extern);
+    writer->Bool(true);
+  }
   if (!C->getInterfaces().empty()) {
     writer->Key(keys::Implements);
     CreateJSONArray implemented(*this);
@@ -245,6 +252,11 @@ bool ASTSerializer::visit(Method *M) {
 
   if (M->isAbstract()) {
     writer->Key(keys::Abstract);
+    writer->Bool(true);
+  }
+
+  if (M->isUnsafe()) {
+    writer->Key(keys::Unsafe);
     writer->Bool(true);
   }
 
@@ -337,6 +349,11 @@ bool ASTSerializer::visit(Block *B) {
 
   CreateJSONObject object(*this, keys::BlockNodeType, B);
   writePair(keys::LineNumber, B->getLineNumber());
+
+  if (B->isUnsafe()) {
+    writer->Key(keys::Unsafe);
+    writer->Bool(true);
+  }
 
   if (B->begin() == B->end()) {
     return true;
@@ -990,6 +1007,11 @@ std::unique_ptr<Class> ASTDeserializer::parseClass(rapidjson::Value &tree) {
     assert(tree[keys::IsInterface].IsBool() && "Invalid interface flag");
     classNode->setInterface(tree[keys::IsInterface].GetBool());
   }
+
+  if (tree.HasMember(keys::Extern)) {
+    assert(tree[keys::Extern].IsBool() && "Invalid extern flag");
+    classNode->setExtern(tree[keys::Extern].GetBool());
+  }
   if (tree.HasMember(keys::Implements)) {
     assert(tree[keys::Implements].IsArray() && "Implements must be an array");
     std::vector<std::string> implemented;
@@ -1088,6 +1110,11 @@ std::unique_ptr<Method> ASTDeserializer::parseMethod(rapidjson::Value &tree) {
   if (tree.HasMember(keys::Abstract)) {
     assert(tree[keys::Abstract].IsBool() && "Invalid abstract flag");
     method->setAbstract(tree[keys::Abstract].GetBool());
+  }
+
+  if (tree.HasMember(keys::Unsafe)) {
+    assert(tree[keys::Unsafe].IsBool() && "Invalid unsafe flag");
+    method->setUnsafe(tree[keys::Unsafe].GetBool());
   }
 
   //if (tree.HasMember(keys::AttributeNodeType)) {
@@ -1288,6 +1315,11 @@ std::unique_ptr<Block> ASTDeserializer::parseBlock(rapidjson::Value &tree) {
          "Expected block object");
 
   auto block = createNode<Block>(tree, parseLineNumber(tree));
+
+  if (tree.HasMember(keys::Unsafe)) {
+    assert(tree[keys::Unsafe].IsBool() && "Invalid unsafe flag");
+    block->setUnsafe(tree[keys::Unsafe].GetBool());
+  }
 
   if (tree.HasMember(keys::Expressions)) {
     assert(tree[keys::Expressions].IsArray() && "Expressions not in array");

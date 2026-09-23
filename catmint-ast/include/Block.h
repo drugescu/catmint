@@ -34,6 +34,12 @@ public:
     }
   }
 
+  /// True for the block of an `unsafe:` statement. A flag rather than a node
+  /// of its own: the block is the only thing it carries, and a new node would
+  /// mean the same six registrations for nothing.
+  bool isUnsafe() const { return unsafeBlock; }
+  void setUnsafe(bool value) { unsafeBlock = value; }
+
   /// \brief Add expression and take ownership of it
   void addExpression(std::unique_ptr<Expression> E) {
     if (E != nullptr)
@@ -56,6 +62,7 @@ public:
   Expression *back() const { return expressions.back().get(); }
 
 private:
+  bool unsafeBlock = false;
   ExpressionsType expressions;
 };
 }
