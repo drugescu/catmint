@@ -299,7 +299,7 @@ is only worth it if Windows becomes a first-class target.
   `runtime.ll` said `"target-cpu"="apple-m1"` on all thirty of its functions
   until commit `8e7ff21`. CI is how that claim stops being a guess.
 
-## Phase 4 — leftovers
+## Phase 4 — leftovers — **done**
 
 - ~~**Follow reference fields when freeing**~~ **done.** The run-time type
   information carries a list of reference-field byte offsets, ending in -1,
@@ -332,9 +332,24 @@ is only worth it if Windows becomes a first-class target.
   and catch were in one method, and corrupted the heap when they were not.
   `__cm_throw` now retains, unwinds, and hands the object to the handler's
   pool. `36_errors.cm` covers it.
-- **64-bit literal typing by context** (~80 lines). Last, and flagged: this
-  is the one item that changes what an existing program *computes*, since
-  `a * b` assigned to an `Int64` wraps at 32 bits today and would stop.
+- ~~**64-bit literal typing by context**~~ **considered and refused; a
+  warning instead.** The flag on it was right, and the argument against
+  turned out to be stronger than compatibility. Catmint's integer rules are
+  documented as C's, and **C does exactly what catmint does now** -- `long x
+  = a * b` with two `int`s is a 32-bit multiply. Widening would make the
+  language differ from the reference its own differential tester compares it
+  against, so the tester would have to be taught that catmint is no longer
+  like C, which is a bad trade for closing one footgun.
+
+  The footgun is closed by saying something instead: `Int64 x = a * b` with
+  two `Int`s now warns, with the line, and the arithmetic is untouched. Only
+  the operators that can carry past their width -- `+ - * ** <<` -- and only
+  where the result is actually widened, so nothing in `lib/` or `examples/`
+  warns, which `54_width_warning.check` asserts.
+
+  Writing it found that **`catmintc` never showed warnings at all**: the
+  compiler's standard error was kept in a log and printed only when the build
+  failed, so a diagnostic from a successful compile was invisible.
 
 ## What to cut if this is too much
 

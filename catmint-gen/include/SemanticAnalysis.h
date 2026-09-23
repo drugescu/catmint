@@ -61,6 +61,14 @@ private:
   /// The types allowed to cross the boundary, and why the others are not.
   void checkExternSignature(Class *c, Method *m);
 
+  /// Say something when arithmetic is done at one width and then widened.
+  /// `Int64 x = a * b` with two Ints multiplies in 32 bits and widens the
+  /// result, so a product that does not fit is already wrong. The arithmetic
+  /// is left alone -- it is what C does, and this language's integer rules
+  /// are C's -- and the compiler points at it instead.
+  void warnNarrowWidening(const std::string &declaredType, Expression *init,
+                          int line);
+
   /// Whether \p m may run on a worker: it must do arithmetic and nothing
   /// else, so that it cannot touch a reference count, the temporary pool or
   /// the handler stack from another thread. \p why says what stopped it.

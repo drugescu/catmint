@@ -147,6 +147,16 @@ generate_one() {
   ( cd "$WORK" && "$GEN" "$@" "$name.ast" "$name.sem" >"gen.$name.log" 2>"gen.$name.err" ) || {
     echo "catmintc: compilation failed for $name" >&2
     cat "$WORK/gen.$name.err" >&2; exit 1; }
+  # Anything the compiler said while succeeding is a warning, and a warning
+  # nobody sees is not one. This used to be kept in the log and shown only
+  # when the build failed, which meant the width warning was invisible in
+  # exactly the case it exists for.
+  # An `if`, not `[ -s ... ] && cat`: that form is the last command in this
+  # function, so its status becomes the function's, and an empty warning file
+  # then failed every build that had nothing to warn about.
+  if [ -s "$WORK/gen.$name.err" ]; then
+    cat "$WORK/gen.$name.err" >&2
+  fi
 }
 
 # Which libraries the sources ask for. collect_modules only records names, so

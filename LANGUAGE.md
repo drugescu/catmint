@@ -38,8 +38,11 @@ String s = "text"
 ```
 
 Mixing widths promotes to the wider; assigning across them sign-extends or
-truncates, as in C. A literal too large for an `Int` is an `Int64`.
-→ `02_arith.cm`, `26_sized_ints.cm`, `14_io_float.cm`
+truncates, as in C. Which means `Int64 x = a * b` with two `Int`s multiplies
+in 32 bits and widens afterwards, exactly as C's `long x = a * b` does. The
+compiler warns rather than changing the arithmetic; start from a 64-bit
+operand. A literal too large for an `Int` is an `Int64`.
+→ `02_arith.cm`, `26_sized_ints.cm`, `14_io_float.cm`, `54_width_warning.cm`
 
 ## Statements
 

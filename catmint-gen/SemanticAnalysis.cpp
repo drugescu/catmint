@@ -869,6 +869,44 @@ void SemanticAnalysis::checkExternSignature(Class *c, Method *m) {
   }
 }
 
+void SemanticAnalysis::warnNarrowWidening(const std::string &declaredType,
+                                          Expression *init, int line) {
+  const int wide = TypeTable::integerWidth(declaredType);
+  if (!init || wide <= 32) {
+    return;
+  }
+
+  // Only the operators that can carry past their width. Division, the
+  // comparisons and the bitwise pair cannot produce something too large for
+  // the operands' own type, so widening them afterwards loses nothing.
+  auto *binary = dynamic_cast<BinaryOperator *>(init);
+  if (!binary) {
+    return;
+  }
+  switch (binary->getOperatorKind()) {
+  case BinaryOperator::Add:
+  case BinaryOperator::Sub:
+  case BinaryOperator::Mul:
+  case BinaryOperator::Pow:
+  case BinaryOperator::LShift:
+    break;
+  default:
+    return;
+  }
+
+  auto *type = typeTable.getType(init);
+  const int narrow = type ? TypeTable::integerWidth(type->getName()) : 0;
+  if (narrow == 0 || narrow >= wide) {
+    return;
+  }
+
+  std::cerr << "[ WARNING ] : Line " << line << " : this arithmetic is done in "
+            << narrow << " bits and widened to " << wide
+            << " afterwards, so a result too large for " << narrow
+            << " bits is already wrong. Start from an operand of type "
+            << declaredType << "." << std::endl;
+}
+
 /// Walk the class and its ancestors for `abstract def`s, and ask what the
 /// class actually resolves each name to. If that is still the abstract
 /// declaration, nobody has supplied a body for it.
@@ -1401,6 +1439,8 @@ bool SemanticAnalysis::visit(LocalDefinition *local) {
                                  : typeTable.getVoidType());
   } else {
     typeTable.setType(local, typeTable.getType(local->getType(), local));
+    warnNarrowWidening(local->getType(), local->getInit(),
+                       local->getLineNumber());
   }
 
   return true;

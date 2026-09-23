@@ -1,0 +1,32 @@
+# Arithmetic that is about to be widened, and said so.
+#
+# `Int64 x = a * b` with two Ints multiplies in 32 bits and then widens the
+# result, so a product that does not fit is already wrong before it is
+# stored. That is what C does -- `long x = a * b` with two ints is the same
+# trap -- and catmint's integer rules are documented as C's, so changing it
+# would make the language differ from the thing its own differential tester
+# compares it against.
+#
+# So the arithmetic is unchanged and the compiler says something instead. The
+# fix in a program is to start from a 64-bit operand, which this file shows.
+
+class Main from IO
+  def main:
+    Int a = 100000
+    Int b = 100000
+
+    # Correct: one operand is already 64-bit, so the multiply is.
+    Int64 wide = a
+    Int64 right = wide * b
+    out("right ${right}\n")
+
+    # Also fine: no arithmetic to get wrong.
+    Int64 plain = a
+    out("plain ${plain}\n")
+
+    Int64 zero = 0
+    out("zero ${zero}\n")
+
+    out("done\n")
+  end
+end
