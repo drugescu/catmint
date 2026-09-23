@@ -240,7 +240,47 @@ driver. The `Bytes` bridge is on the existing list and FFI needs it: filling
 a buffer from a file currently means reading a `String` and converting a
 character at a time.
 
-## Phase 3 — harden Linux
+## Phase 3 — harden Linux — **done**
+
+Not assumed: the whole suite was built and run on Linux, in a container, on a
+different libc, object format and LLVM version (18 rather than 22). All 50
+codegen tests and 11 parser tests pass there, at every `-O` level and
+separately compiled, with the 50 differential seeds and 300 mutants alongside
+them.
+
+**Four things were wrong, and only Linux could show them.**
+
+1. **`catmint-ast` ignored `LLVM_CONFIG`.** Its `GNUmakefile` hardcoded a
+   Homebrew path and fell back to a bare `llvm-config`, which distributions
+   do not ship -- Ubuntu names it `llvm-config-18`. The documented
+   `make LLVM_CONFIG=...` therefore could not build the first of the three
+   components, and the failure was a CMake error about `LLVMExports.cmake`
+   that pointed nowhere near the cause.
+2. **`LLVMSupport` as Debian builds it names `ZLIB::ZLIB`**, and CMake
+   refuses to generate unless that imported target exists. One
+   `find_package(ZLIB QUIET)` in `catmint-ast/CMakeLists.txt`.
+3. **The checked-in `runtime.ll` could not be read by LLVM 18.** The file
+   whose entire purpose is to make a C compiler optional used
+   `captures(none)`, which is LLVM 21 syntax, and older LLVM rejects it with
+   "expected ')' at end of argument list" and no hint why. The IR text format
+   is not stable across major versions, so the file now carries a stamp
+   saying which LLVM wrote it, `build-runtime.sh` checks it can be read
+   before falling back to it and says what to do when it cannot, and
+   `portability.sh` reports the coupling instead of failing four times over.
+4. **Every program leaked one object at exit.** `emitProgramMain` allocated
+   the `Main` object without calling `noteAllocation`, so the pool around it
+   erased itself as unused and never released it. Invisible on macOS, where
+   LeakSanitizer does not run; obvious on Linux, where it does. Fixed, and it
+   took the tests reporting leaks from 11 to 5.
+
+`./portability.sh` is new and answers what can be answered without another
+machine: that object layouts agree on every target (asserted at compile time,
+so nothing runs), that the checked-in runtime is not pinned to one machine,
+and that both it and a generated program compile for x86-64 and arm64, Linux
+and macOS. `.github/workflows/ci.yml` replaces the CircleCI placeholder that
+echoed "Hello, world" and built nothing.
+
+## Phase 3 — harden Linux, as planned
 
 Windows was considered and dropped: without FFI it buys a console
 application, and with FFI the interesting part is the library binding, not
@@ -257,6 +297,14 @@ is only worth it if Windows becomes a first-class target.
 
 ## Phase 4 — leftovers
 
+- **Follow reference fields when freeing** (~80 lines). Promoted to the top
+  of this list by Phase 3, which measured what it costs: 5 of the 50 tests
+  leak at exit, every byte of it a reference held in a user class's field,
+  because the run-time type information does not say which fields are
+  references. The generator already knows; it would emit a list of offsets
+  and `object_free` would walk it. Another change to the RTTI layout, which
+  has been done twice now without incident. It is also what would let
+  LeakSanitizer become a gate on Linux rather than a report.
 - **A `Map` keyed by anything, not just String** (~130 lines of `.cmm`).
   Needs only an `Object.hash` interface, which `interface` made expressible.
   Pure library; writable whenever someone needs it.

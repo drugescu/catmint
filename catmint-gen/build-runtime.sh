@@ -67,6 +67,14 @@ if [ -x "$CLANG" ] && [ -f "$SOURCE" ]; then
   strip_target "$TMP" "$OUT"
   rm -f "$TMP"
 
+  # Stamp which LLVM wrote it. The textual IR format is not stable across
+  # major versions -- `captures(none)` replaced `nocapture` in LLVM 21, and a
+  # file using it is a parse error on LLVM 18 -- so the copy has to say what
+  # can read it.
+  STAMP=$("$CLANG" --version 2>/dev/null | head -1)
+  printf '; written by %s\n%s' "$STAMP" "$(cat "$OUT")" > "$OUT.stamped"
+  mv "$OUT.stamped" "$OUT"
+
   # Keep the checked-in copy current, so the next person without a compiler
   # gets a runtime that matches this runtime.c rather than an older one.
   if [ ! -f "$CHECKED_IN" ] || [ "$SOURCE" -nt "$CHECKED_IN" ]; then
@@ -79,6 +87,25 @@ fi
 if [ -f "$CHECKED_IN" ]; then
   [ -f "$SOURCE" ] && [ "$SOURCE" -nt "$CHECKED_IN" ] && \
     echo "build-runtime: warning: runtime.c is newer than runtime.ll and no C compiler was found; using the checked-in IR" >&2
+
+  # Can this LLVM actually read it? The textual IR format changes between
+  # major versions, so the checked-in copy is only as portable as the
+  # spellings in it -- one written by LLVM 22 says `captures(none)`, which
+  # LLVM 18 rejects with "expected ')' at end of argument list" and no hint
+  # about why. Say what is actually wrong, and what to do about it.
+  if [ -x "$LLVM_BIN/llvm-as" ]; then
+    if ! "$LLVM_BIN/llvm-as" "$CHECKED_IN" -o /dev/null 2>/dev/null; then
+      WROTE=$(sed -n 's/^; written by //p' "$CHECKED_IN" | head -1)
+      echo "build-runtime: this LLVM cannot read $CHECKED_IN" >&2
+      [ -n "$WROTE" ] && echo "  it was written by: $WROTE" >&2
+      echo "  and read by:        $("$LLVM_BIN/llvm-as" --version 2>/dev/null | grep -im1 version)" >&2
+      echo "  The textual IR format changes between LLVM major versions." >&2
+      echo "  Install a C compiler so runtime.c can be rebuilt, or use an" >&2
+      echo "  LLVM close to the one that wrote the file." >&2
+      exit 1
+    fi
+  fi
+
   cp "$CHECKED_IN" "$OUT"
   exit 0
 fi

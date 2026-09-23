@@ -1,3 +1,4 @@
+; written by Homebrew clang version 22.1.8
 ; ModuleID = 'runtime.c'
 source_filename = "runtime.c"
 

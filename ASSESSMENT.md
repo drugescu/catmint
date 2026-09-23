@@ -229,6 +229,19 @@ which of them are references. A structure held in fields is taken apart by
 assigning over them. Reference cycles are never collected, which is the
 standing cost of counting rather than tracing.
 
+Now measured rather than asserted. LeakSanitizer runs by default on Linux and
+not on macOS, so this was invisible until the suite was run in a Linux
+container: **5 of the 50 tests leak at exit**, between 16 and 96 bytes each,
+and every byte of it is a reference held in a user class's field. Closing it
+would need a list of reference-field offsets in the run-time type
+information, which the generator already knows, and a walk of that list in
+`object_free` -- perhaps eighty lines, and another change to the RTTI layout.
+
+The same run found a leak that *was* a bug and is now fixed: the generated
+`main` allocated the `Main` object without calling `noteAllocation`, so the
+speculative pool around it erased itself as unused and **every program ever
+compiled leaked one object at exit**. That took the count from 11 tests to 5.
+
 **6. A throw leaks what the abandoned work had stored.** The jump closes the
 pools it skipped, so temporaries go back, but the scope-exit releases never
 run. Correct, and bounded by how much a failing operation had allocated.

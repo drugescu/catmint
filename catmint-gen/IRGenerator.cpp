@@ -952,6 +952,11 @@ void IRGenerator::emitProgramMain() {
   beginPool();
 
   auto *Obj = Builder.CreateCall(Runtime.catmintNew(), {MainCI->RTTI}, "main.obj");
+  // This counts. Without it the pool opened above sees no allocation, erases
+  // itself as unused, and the Main object is never released -- so every
+  // program leaked one object at exit. Invisible on macOS, where
+  // LeakSanitizer does not run; found by the Linux container, where it does.
+  noteAllocation();
   if (MainCI->Init)
     Builder.CreateCall(MainCI->Init, {Obj});
 
