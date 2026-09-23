@@ -7,9 +7,26 @@ claim is a measurement, the measurement is given.
 
 An earlier version of this document listed five things that blocked any real
 program: no field access, no file I/O, no command-line arguments, no error
-handling, and memory that was never freed. **All five are now done**, along
-with static methods, debug line numbers and optimisation levels. This is the
-state after that work.
+handling, and memory that was never freed. **All five are done**, along with
+static methods, debug line numbers, optimisation levels, interfaces, string
+interpolation, `defer`, `using namespace`, and processes. This is the state
+after that work.
+
+## How big it is
+
+| part | lines |
+|---|---|
+| parser (flex + bison) | 1,923 |
+| AST library and node headers | 3,974 |
+| semantic analysis and types | 2,989 |
+| code generation | 3,458 |
+| runtime (C) | 1,768 |
+| standard library (in catmint) | 420 |
+| driver, build and test scripts | 548 |
+| **total** | **15,080** |
+
+Plus about 1,900 lines of catmint in the tests and examples. The vendored
+rapidjson is not counted; nothing else is vendored.
 
 ## The short version
 
@@ -33,16 +50,18 @@ stops a program being written.
 Verified by the two test suites: 11 parser tests and 33 end-to-end tests that
 compile a program, run it and diff its output.
 
-**Language.** Classes with single inheritance and method overriding. Virtual
-dispatch through the runtime's vtable. `self`, attributes, methods with any
-number of parameters, and `static def` methods called on the class.
+**Language.** Classes with single inheritance and method overriding, and
+`interface`/`does` for the polymorphism single inheritance cannot express.
+Virtual dispatch through the runtime's vtable. `self`, attributes, methods
+with any number of parameters, and `static def` methods called on the class.
+`defer` for cleanup, and `"${...}"` for putting an expression in a string.
 Constructors that take arguments, declared with `constructor(...)`, and
 `new T(a, b)`. Field access on any object, `a.b` to read and `a.b = v` to
 write. Recursion, verified to 10,000 frames deep. `if`/`else`, `while`, `for`
 over an integer count, a string's characters or a list. `return`.
 `try`/`catch`/`throw`. Arithmetic, comparison, bitwise and shift operators,
 `**`, string concatenation and comparison, short-circuit `and` and `or`.
-String escapes. The `is` type test.
+String escapes. The `is` type test, which knows about interfaces.
 
 **Types.** `Int8`, `Int16`, `Int32`, `Int64` (`Int` is `Int32`), `Float`
 (double), `String`, `Object`, `List`, `Integer`, `File`, `Math`. Mixing
@@ -93,7 +112,13 @@ failed exactly that way when it was still there.
 statement, and on macOS collects it into a `.dSYM`. `-O0` through `-O3`
 choose how hard the backend works.
 
-**Modules.** `using math as m`, referenced as `m::Vector`. Inclusion is
+**Concurrency, such as it is.** `Process` runs another program:
+`Process.run` waits for one, `Process.spawn` and `Process.wait` start several
+and collect them, and an instance wraps a pipe. There are no threads, and
+that is a decision rather than an omission -- see the last section.
+
+**Modules.** `using math as m`, referenced as `m::Vector`, or `using
+namespace m` to drop the prefix. Inclusion is
 recursive, each module once, cycles terminate, diagnostics name the file you
 wrote. `catmintc --separate` compiles each module to its own object and links
 them, with vtable slot numbering agreeing by construction.
@@ -136,14 +161,16 @@ Ranked by how much each one blocks a real program.
 ### Severe, but you can work around them
 
 **1. No generics.** Containers hold `Object`. Automatic boxing and the
-checked downcast hide this well, but the check is at run time.
+checked downcast hide this well, but the check is at run time. Interfaces
+have taken most of the pressure off this: a method can now say what it needs
+a value to *do*.
 
 **2. No return-type inference.** `def f:` means "returns nothing". A method
 that returns a value must say so.
 
-**3. Single inheritance, no interfaces, no abstract methods.** Interfaces
-would help more than generics: they are what a program reaches for when two
-unrelated classes need the same treatment.
+**3. No abstract methods on classes.** An interface covers the case that
+matters; a class that wants to leave a method to its subclasses cannot say
+so, and has to provide one that does nothing.
 
 **4. Integer literals are 32 bits.** `Int64 x = 9000000000` works, because a
 literal too large for an Int is typed Int64, but `a * b` where both are Int
@@ -227,49 +254,49 @@ In this order, and all of it is small.
 
 ## What else is worth having, and what is not
 
-Asked which modern language features would be worth taking, and which would
-cost more than they are worth, here is the answer this codebase suggests.
+**Taken since this was last asked.** `defer`, string interpolation and
+interfaces were the three recommendations; all three are in, and they cost
+about 700 lines between them. `defer` needed no runtime support at all:
+the expression is emitted where the block ends, on each path out.
+Interpolation needed none either -- it is a rewrite of the source line before
+the lexer sees it, so what is in the braces is ordinary catmint. Only
+interfaces reached the runtime, and only for one field in the type
+information and one short lookup.
 
-**Worth taking, cheap.**
+**Still worth taking, still cheap.**
 
-- **`defer`, from Go.** One statement that runs when the scope ends. The
-  generator already emits scope-exit code for releases, so this is a list of
-  pending calls emitted in the same place. It is the missing half of resource
-  handling: memory looks after itself now, but a file still has to be closed
-  on every path out, including the one a throw takes.
-- **String interpolation.** `"count: ${n}"` lowered to the concatenations a
-  program writes by hand today. Pure front end, no runtime, and it removes
-  the single most common piece of noise in every example in this repository.
+- **Abstract methods on classes.** The one gap interfaces left: a base class
+  that wants a subclass to supply a method has to supply a useless one.
+- **A `Map` in the standard library that is not String-keyed.** `Dict` hashes
+  strings; hashing any object would need only an `Object.hash` interface,
+  which is now expressible.
 
-**Worth taking, larger.**
+**Still not worth taking.**
 
-- **Interfaces**, as above. Not generics: the automatic boxing and checked
-  downcast already make containers usable, and generics would mean a type
-  system several times the size of this one.
-
-**Not worth taking.**
-
-- **Threads and shared-memory concurrency.** This is the one to refuse. Every
-  reference count would have to become atomic, which taxes every store in
-  every program, including the single-threaded ones; the temporary pool and
-  the handler stack would each need to be per-thread; and a language with no
-  ownership model gives a programmer nothing to reason about a data race
-  with. Goroutines additionally need a scheduler and growable stacks, which
-  is a runtime several times the size of this one. If parallelism is ever
-  wanted, add processes -- `fork`, `exec`, a pipe -- where there is no shared
-  state to get wrong, and leave the object model alone.
-- **Pattern matching and algebraic data types.** Lovely, and a front end and
-  type system far beyond what is here. `is` plus a downcast covers the cases
-  that actually come up.
-- **A garbage collector.** The project's stated goal is no GC, and counting
-  references now works and costs nothing measurable. The one thing tracing
-  would buy is cycles, which a program can break by hand.
+- **Threads and shared-memory concurrency.** This remains the one to refuse,
+  and the reference counting added since makes the case stronger: every count
+  would have to become atomic, taxing every store in every program including
+  the single-threaded ones, and the temporary pool and the handler stack
+  would each need to be per-thread. A language with no ownership model gives
+  a programmer nothing to reason about a data race with. `Process` is the
+  answer instead: separate memory, nothing to get wrong, and the whole
+  feature is a hundred lines of `runtime.c`. If a shared-memory thread is
+  ever genuinely required -- one long computation over one big array -- the
+  cheapest safe version is a `Worker` that runs a *static* method with no
+  reference arguments, so nothing counted crosses the boundary; that is a
+  narrow enough door to hold open without atomics.
+- **Pattern matching and algebraic data types.** A front end and type system
+  far beyond what is here. `is` plus a downcast covers the cases that come up.
+- **A garbage collector.** Counting works and costs nothing measurable. The
+  one thing tracing would buy is cycles, which a program can break by hand.
+- **Generics.** Interfaces took the pressure off, and a type system several
+  times the size of this one is not worth what is left.
 
 ## How to check any of this yourself
 
 ```sh
 cd catmint-lex && ./wtest.sh     # 11 parser tests
-cd catmint-gen && ./ctest.sh     # 36 end-to-end tests
+cd catmint-gen && ./ctest.sh     # 40 end-to-end tests
 ./catmintc --run -I lib examples/tour.cm
 ./catmintc -I lib examples/wordcount.cm -o wordcount && ./wordcount somefile
 ./catmintc -g -O0 app.cm         # line numbers a debugger can use
