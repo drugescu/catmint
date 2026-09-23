@@ -494,6 +494,68 @@ void TypeTable::addBuiltinClasses(Program *p) {
       new Class(0, strings::Math, strings::Object, builtinMethods));
   (void)createNewType(mathClass.get());
   p->addClass(std::move(mathClass));
+
+  builtinMethods.clear();
+  builtinMethodsParams.clear();
+
+  // ---------------------------------------------------------------------------
+  // Add built-in class - 'Process'
+  //
+  // Another program running beside this one: the only concurrency catmint
+  // offers, because processes share nothing and so cost the object model
+  // nothing. The five instance methods take slots, in this order and
+  // matching RProcess in runtime.c; the four static ones take none.
+  // ---------------------------------------------------------------------------
+
+  builtinMethodsParams.push_back(new Attribute(0, "command", strings::String));
+  builtinMethodsParams.push_back(new Attribute(0, "mode", strings::String));
+  builtinMethods.push_back(
+      new Method(0, "start", strings::Int, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(new Method(0, strings::ReadLine, strings::String,
+                                      nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "text", strings::String));
+  builtinMethods.push_back(
+      new Method(0, "write", strings::Process, nullptr, builtinMethodsParams));
+
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(
+      new Method(0, strings::Eof, strings::Int, nullptr, builtinMethodsParams));
+  builtinMethods.push_back(
+      new Method(0, "finish", strings::Int, nullptr, builtinMethodsParams));
+
+  // Static from here: these are about starting and collecting programs, not
+  // about a pipe that is already open.
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "command", strings::String));
+  builtinMethods.push_back(
+      new Method(0, "run", strings::Int, nullptr, builtinMethodsParams));
+  asStatic(builtinMethods);
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "command", strings::String));
+  builtinMethods.push_back(
+      new Method(0, "spawn", strings::Int, nullptr, builtinMethodsParams));
+  asStatic(builtinMethods);
+
+  builtinMethodsParams.clear();
+  builtinMethodsParams.push_back(new Attribute(0, "pid", strings::Int));
+  builtinMethods.push_back(
+      new Method(0, "wait", strings::Int, nullptr, builtinMethodsParams));
+  asStatic(builtinMethods);
+
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(
+      new Method(0, "pid", strings::Int, nullptr, builtinMethodsParams));
+  asStatic(builtinMethods);
+
+  std::unique_ptr<Class> processClass(
+      new Class(0, strings::Process, strings::Object, builtinMethods));
+  (void)createNewType(processClass.get());
+  p->addClass(std::move(processClass));
 }
 
 bool TypeTable::isBuiltinClass(Class *c) const {
@@ -506,7 +568,7 @@ bool TypeTable::isBuiltinClass(Class *c) const {
   return name == strings::Object || name == strings::String ||
          name == strings::Io || name == strings::List ||
          name == strings::Integer || name == strings::File ||
-         name == strings::Math;
+         name == strings::Math || name == strings::Process;
 }
 
 Type *TypeTable::getType(const std::string &name) const {

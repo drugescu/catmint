@@ -319,7 +319,7 @@ bool IRGenerator::collectClasses() {
     CI.Builtin = (Name == strings::Object || Name == strings::Io ||
                   Name == strings::String || Name == strings::List ||
                   Name == strings::Integer || Name == strings::File ||
-                  Name == strings::Math);
+                  Name == strings::Math || Name == strings::Process);
     // Two definitions of one name used to overwrite each other here, so a
     // program importing two modules that both define a Point silently got
     // whichever came last. Until there are namespaces, say so instead.
@@ -406,6 +406,10 @@ bool IRGenerator::layoutClass(ClassInfo *CI) {
       // { rtti, int refs } -- Math has no state of its own.
       CI->Elements = {Ptr, I32};
       CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TMath");
+    } else if (Name == strings::Process) {
+      // { rtti, int refs, FILE *pipe, int pid }
+      CI->Elements = {Ptr, I32, Ptr, I32};
+      CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TProcess");
     } else if (Name == strings::Integer) {
       // { rtti, int refs, long long value }
       CI->Elements = {Ptr, I32, llvm::Type::getInt64Ty(Context)};

@@ -25,6 +25,8 @@
 #include <ctype.h>
 #include <math.h>
 #include <setjmp.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -97,6 +99,18 @@ struct TMath {
   int refs;
 };
 
+/* Another program, running beside this one. The pipe is set when the process
+ * was started to be read from or written to; the pid when it was started to
+ * be waited for. This is the whole of catmint's concurrency: separate
+ * processes with no shared memory, which is the only kind that costs the
+ * object model nothing. */
+struct TProcess {
+  struct __catmint_rtti *rtti;
+  int refs;
+  FILE *pipe;
+  int pid;
+};
+
 /* A flexible array member cannot be initialised, so each class's RTTI gets a
  * named struct with its vtable sized exactly, and is cast where it is used.
  * The layout up to the vtable is identical in all of them, which is what makes
@@ -116,6 +130,7 @@ CATMINT_RTTI_TYPE(catmint_rtti20_io, 20);
 CATMINT_RTTI_TYPE(catmint_rtti11_list, 11);
 CATMINT_RTTI_TYPE(catmint_rtti9_integer, 9);
 CATMINT_RTTI_TYPE(catmint_rtti13_file, 13);
+CATMINT_RTTI_TYPE(catmint_rtti11_process, 11);
 CATMINT_RTTI_TYPE(catmint_rtti19_string, 19);
 
 
@@ -169,6 +184,17 @@ int M4_File_isOpen(struct TFile *self);
 int M4_File_exists(struct TString *path);
 int M4_File_remove(struct TString *path);
 
+int M7_Process_start(struct TProcess *self, struct TString *command,
+                     struct TString *mode);
+struct TString *M7_Process_readLine(struct TProcess *self);
+struct TProcess *M7_Process_write(struct TProcess *self, struct TString *text);
+int M7_Process_eof(struct TProcess *self);
+int M7_Process_finish(struct TProcess *self);
+int M7_Process_run(struct TString *command);
+int M7_Process_spawn(struct TString *command);
+int M7_Process_wait(int pid);
+int M7_Process_pid(void);
+
 double M4_Math_sqrt(double x);
 double M4_Math_pow(double x, double y);
 double M4_Math_exp(double x);
@@ -220,6 +246,7 @@ struct TString NList    = { RTTI(RString), 0, 4, "List" };
 struct TString NInteger = { RTTI(RString), 0, 7, "Integer" };
 struct TString NFile    = { RTTI(RString), 0, 4, "File" };
 struct TString NMath    = { RTTI(RString), 0, 4, "Math" };
+struct TString NProcess = { RTTI(RString), 0, 7, "Process" };
 
 #define CATMINT_OBJECT_SLOTS                                                   \
   (void *)M6_Object_abort, (void *)M6_Object_typeName,                         \
@@ -269,6 +296,14 @@ catmint_rtti13_file RFile = {
 catmint_rtti6_object RMath = {
   &NMath, sizeof(struct TMath), RTTI(RObject),
   { CATMINT_OBJECT_SLOTS }
+};
+
+catmint_rtti11_process RProcess = {
+  &NProcess, sizeof(struct TProcess), RTTI(RObject),
+  { CATMINT_OBJECT_SLOTS,
+    (void *)M7_Process_start, (void *)M7_Process_readLine,
+    (void *)M7_Process_write, (void *)M7_Process_eof,
+    (void *)M7_Process_finish }
 };
 
 catmint_rtti11_list RList = {
@@ -348,6 +383,11 @@ void Math_init(struct TMath *self) {
   (void)self;
 }
 
+void Process_init(struct TProcess *self) {
+  self->pipe = NULL;
+  self->pid = 0;
+}
+
 /* Build a catmint String from a NUL-terminated buffer. */
 static struct TString *make_string(const char *text) {
   struct TString *result = (struct TString *)__catmint_new(RTTI(RString));
@@ -409,6 +449,8 @@ struct TObject *M6_Object_copy(struct TObject *self) {
   } else if (copy->rtti == RTTI(RFile)) {
     /* Two objects must not hold one FILE *: the copy starts closed. */
     ((struct TFile *)copy)->handle = NULL;
+  } else if (copy->rtti == RTTI(RProcess)) {
+    ((struct TProcess *)copy)->pipe = NULL;
   }
   return copy;
 }
@@ -453,6 +495,12 @@ static void release_owned_buffers(struct TObject *self) {
     if (file->handle) {
       fclose(file->handle);
       file->handle = NULL;
+    }
+  } else if (self->rtti == RTTI(RProcess)) {
+    struct TProcess *process = (struct TProcess *)self;
+    if (process->pipe) {
+      pclose(process->pipe);
+      process->pipe = NULL;
     }
   }
 }
@@ -1522,4 +1570,138 @@ void __cm_poolUnwind(int depth) {
   while (gPoolDepth > depth) {
     __cm_poolPop();
   }
+}
+
+/* -------------------------------------------------------------------------
+ * Process
+ *
+ * Catmint's answer to concurrency is another process, not another thread.
+ * Threads would make every reference count atomic, tax every store in every
+ * program including the single-threaded ones, and need the temporary pool and
+ * the handler stack to be per-thread -- all so that a language with no
+ * ownership model could offer shared mutable memory with nothing to reason
+ * about a race with. Processes share nothing, so none of that applies, and
+ * the whole feature is the hundred lines below.
+ *
+ * run() is one command, waited for. spawn() and wait() are the pair that
+ * gives real parallelism: start several, then collect them. start() opens a
+ * pipe, for when the answer has to come back.
+ * ------------------------------------------------------------------------- */
+
+/* A wait status carries more than the exit code; this is the code itself,
+ * or 128 + the signal when the child was killed, as a shell reports it. */
+static int exit_status(int status) {
+  if (WIFEXITED(status)) {
+    return WEXITSTATUS(status);
+  }
+  if (WIFSIGNALED(status)) {
+    return 128 + WTERMSIG(status);
+  }
+  return -1;
+}
+
+/* Run a command and wait for it. The exit status, or -1 when it could not
+ * be started -- never an abort, because a command failing is an ordinary
+ * thing for a program to have an opinion about. */
+int M7_Process_run(struct TString *command) {
+  int status = system(command->string);
+  if (status == -1) {
+    return -1;
+  }
+  return exit_status(status);
+}
+
+/* Start a command without waiting, and give back its process id, or 0 when
+ * it could not be started. Collect it with wait(). */
+int M7_Process_spawn(struct TString *command) {
+  pid_t child = fork();
+
+  if (child < 0) {
+    return 0;
+  }
+  if (child == 0) {
+    execl("/bin/sh", "sh", "-c", command->string, (char *)NULL);
+    _exit(127); /* exec failed: the shell's "command not found" status */
+  }
+  return (int)child;
+}
+
+/* Wait for one started by spawn() and give back its exit status. */
+int M7_Process_wait(int pid) {
+  int status = 0;
+
+  if (pid <= 0) {
+    return -1;
+  }
+  if (waitpid((pid_t)pid, &status, 0) < 0) {
+    return -1;
+  }
+  return exit_status(status);
+}
+
+int M7_Process_pid(void) {
+  return (int)getpid();
+}
+
+/* Open a command as a pipe: mode "r" to read what it prints, "w" to write to
+ * what it reads. 1 when it started, 0 when it did not. */
+int M7_Process_start(struct TProcess *self, struct TString *command,
+                     struct TString *mode) {
+  if (self->pipe) {
+    pclose(self->pipe);
+    self->pipe = NULL;
+  }
+  self->pipe = popen(command->string, mode->string);
+  return self->pipe != NULL;
+}
+
+struct TString *M7_Process_readLine(struct TProcess *self) {
+  char buffer[4096];
+  size_t length;
+
+  if (!self->pipe || !fgets(buffer, (int)sizeof(buffer), self->pipe)) {
+    return make_string("");
+  }
+
+  length = strlen(buffer);
+  if (length > 0 && buffer[length - 1] == '\n') {
+    buffer[length - 1] = '\0';
+  }
+  return make_string(buffer);
+}
+
+struct TProcess *M7_Process_write(struct TProcess *self, struct TString *text) {
+  if (self->pipe) {
+    fwrite(text->string, 1, (size_t)text->length, self->pipe);
+  }
+  return self;
+}
+
+int M7_Process_eof(struct TProcess *self) {
+  int c;
+
+  if (!self->pipe) {
+    return 1;
+  }
+  c = fgetc(self->pipe);
+  if (c == EOF) {
+    return 1;
+  }
+  ungetc(c, self->pipe);
+  return 0;
+}
+
+/* Close the pipe and wait, giving back the command's exit status. */
+int M7_Process_finish(struct TProcess *self) {
+  int status;
+
+  if (!self->pipe) {
+    return -1;
+  }
+  status = pclose(self->pipe);
+  self->pipe = NULL;
+  if (status == -1) {
+    return -1;
+  }
+  return exit_status(status);
 }

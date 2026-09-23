@@ -144,6 +144,13 @@ Things worth knowing, because they are not obvious:
   declared return type. There is no limit on the number of parameters. The
   paren-less form the README shows, `def show Int a, Int b:`, is not
   implemented; use parentheses.
+- **`Process` runs another program, which is how catmint does concurrency.**
+  `Process.run("make")` waits for one and gives its exit status;
+  `Process.spawn` starts one without waiting and `Process.wait` collects it,
+  so several can run at once; an instance opens a pipe with
+  `start(command, "r")` or `"w"` and then `readLine`, `write`, `eof` and
+  `finish`. There are no threads, on purpose: separate processes share no
+  memory, so nothing in the language has to change to make them safe.
 - **`defer <expression>` moves cleanup to the end of the block.** Write
   `defer file.close()` next to the open, and it runs however the block is
   left, including through a `return`. Several of them run in reverse order,

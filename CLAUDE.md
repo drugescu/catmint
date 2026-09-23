@@ -384,6 +384,17 @@ declaration order in `TypeTable::addBuiltinClasses` is that slot order. A new
 built-in method must be appended, never inserted, or every already-compiled
 caller silently calls the wrong slot.
 
+`Process` is the whole of catmint's concurrency, and it is deliberately
+another program rather than another thread: `Process.run(command)` waits for
+one, `Process.spawn` and `Process.wait` start several and collect them, and
+an instance wraps a pipe with `start`, `readLine`, `write`, `eof` and
+`finish`. Threads were considered and refused -- they would make every
+reference count atomic, taxing every store in every program including the
+single-threaded ones, and would need the temporary pool and the handler stack
+to be per-thread, all to offer shared mutable memory to a language with no
+ownership model. Processes share nothing, so none of that applies and the
+feature is a hundred lines of `runtime.c`.
+
 `File` and `Math` are built-in classes like `IO`, so they need no `using`.
 `File` holds one `FILE *`; `open` answers 1 or 0 rather than aborting, and
 `exists` and `remove` ignore the receiver because they are about a path.
