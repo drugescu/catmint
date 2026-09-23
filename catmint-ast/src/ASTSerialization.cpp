@@ -18,6 +18,8 @@ const auto Name = "Name";
 const auto NameList = "NameList";
 const auto ClassParent = "Parent";
 const auto SourceFile = "SourceFile";
+const auto Implements = "Implements";
+const auto IsInterface = "IsInterface";
 const auto Features = "Features";
 const auto Type = "Type";
 const auto Initializer = "Initializer";
@@ -174,6 +176,18 @@ bool ASTSerializer::visit(Class *C) {
   auto file = C->getFile();
   if (!file.empty()) {
     writePair(keys::SourceFile, file);
+  }
+
+  if (C->isInterface()) {
+    writer->Key(keys::IsInterface);
+    writer->Bool(true);
+  }
+  if (!C->getInterfaces().empty()) {
+    writer->Key(keys::Implements);
+    CreateJSONArray implemented(*this);
+    for (const auto &name : C->getInterfaces()) {
+      writer->String(name.c_str());
+    }
   }
 
   if (C->begin() == C->end()) {
@@ -937,6 +951,21 @@ std::unique_ptr<Class> ASTDeserializer::parseClass(rapidjson::Value &tree) {
   if (tree.HasMember(keys::SourceFile)) {
     assert(tree[keys::SourceFile].IsString() && "Invalid source file");
     classNode->setFile(tree[keys::SourceFile].GetString());
+  }
+
+  if (tree.HasMember(keys::IsInterface)) {
+    assert(tree[keys::IsInterface].IsBool() && "Invalid interface flag");
+    classNode->setInterface(tree[keys::IsInterface].GetBool());
+  }
+  if (tree.HasMember(keys::Implements)) {
+    assert(tree[keys::Implements].IsArray() && "Implements must be an array");
+    std::vector<std::string> implemented;
+    auto &names = tree[keys::Implements];
+    for (auto b = names.Begin(), e = names.End(); b != e; ++b) {
+      assert(b->IsString() && "Invalid implemented interface");
+      implemented.push_back(b->GetString());
+    }
+    classNode->setInterfaces(implemented);
   }
 
   if (tree.HasMember(keys::Features)) {

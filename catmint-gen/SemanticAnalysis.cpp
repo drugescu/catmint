@@ -94,6 +94,21 @@ bool SemanticAnalysis::visit(Program *p) {
 
 // Visit class by visiting attributes and adding symbols/types to tables
 bool SemanticAnalysis::visit(Class *c) {
+  // An interface is a list of signatures. Its methods have no bodies, so
+  // there is nothing to walk, and nothing may be declared in it but methods.
+  if (c->isInterface()) {
+    for (auto f : *c) {
+      if (!f->isMethod()) {
+        throw SemanticException("an interface may declare only methods, and '" +
+                                c->getName() + "' declares '" + f->getName() +
+                                "'");
+      }
+    }
+    return true;
+  }
+
+  checkImplementedInterfaces(c);
+
   if (typeTable.isBuiltinClass(c)) {// visiting builtin classes is a lot simpler than user classes, because we
     // don't need to check anything, we just need to add method parameters to
     // the type table
@@ -147,6 +162,55 @@ bool SemanticAnalysis::visit(Class *c) {
   checkFeatures(c);
 
   return ASTVisitor::visit(c);
+}
+
+/// Every method an interface names has to exist on the class that promised
+/// it, with the same signature. Checked here rather than at the call site,
+/// so a class that does not keep its promise is reported where the promise
+/// is made.
+void SemanticAnalysis::checkImplementedInterfaces(Class *c) {
+  for (const auto &name : c->getInterfaces()) {
+    auto interfaceType = typeTable.getType(name);
+    auto interfaceClass = interfaceType->getClass();
+    if (!interfaceClass || !interfaceClass->isInterface()) {
+      throw SemanticException("'" + c->getName() + "' says it does '" + name +
+                              "', which is not an interface");
+    }
+
+    for (auto f : *interfaceClass) {
+      auto required = static_cast<Method *>(f);
+      auto provided = typeTable.getMethod(c, required->getName());
+      if (!provided) {
+        throw SemanticException("'" + c->getName() + "' says it does '" + name +
+                                "' but has no method '" + required->getName() +
+                                "'");
+      }
+      if (provided->getReturnType() != required->getReturnType()) {
+        throw SemanticException("'" + c->getName() + "." +
+                                required->getName() + "' returns '" +
+                                provided->getReturnType() + "' where '" + name +
+                                "' asks for '" + required->getReturnType() +
+                                "'");
+      }
+
+      auto givenIt = provided->begin(), givenEnd = provided->end();
+      auto wantIt = required->begin(), wantEnd = required->end();
+      for (; givenIt != givenEnd && wantIt != wantEnd; ++givenIt, ++wantIt) {
+        if ((*givenIt)->getType() != (*wantIt)->getType()) {
+          throw SemanticException("'" + c->getName() + "." +
+                                  required->getName() +
+                                  "' does not take the arguments '" + name +
+                                  "' asks for");
+        }
+      }
+      if (givenIt != givenEnd || wantIt != wantEnd) {
+        throw SemanticException("'" + c->getName() + "." +
+                                required->getName() +
+                                "' does not take the arguments '" + name +
+                                "' asks for");
+      }
+    }
+  }
 }
 
 void SemanticAnalysis::checkFeatures(Class *c) {

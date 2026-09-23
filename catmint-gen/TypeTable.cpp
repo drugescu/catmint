@@ -748,10 +748,26 @@ bool TypeTable::isDerivedFrom(const std::string &derived,
     if (c->getName() == base) {
       return true;
     }
+    // An interface is not in the parent chain, so a class reaches one by
+    // having said `does`. Checking at every step means a subclass inherits
+    // what its parent promised.
+    for (const auto &implemented : c->getInterfaces()) {
+      if (implemented == base) {
+        return true;
+      }
+    }
     auto parent = parentTable.find(c);
     c = parent == parentTable.end() ? nullptr : parent->second;
   }
   return false;
+}
+
+bool TypeTable::isInterface(const std::string &name) const {
+  auto it = typeTable.find(name);
+  if (it == typeTable.end() || !it->second->getClass()) {
+    return false;
+  }
+  return it->second->getClass()->isInterface();
 }
 
 bool TypeTable::isReferenceType(const std::string &name) const {

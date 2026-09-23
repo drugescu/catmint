@@ -91,6 +91,7 @@ private:
   void checkInheritanceGraph();
 
   void checkFeatures(Class *c);
+  void checkImplementedInterfaces(Class *c);
 
   template <typename DispatchT> bool checkDispatchArgs(DispatchT *d, Method *m);
 

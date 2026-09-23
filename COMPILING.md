@@ -144,6 +144,12 @@ Things worth knowing, because they are not obvious:
   declared return type. There is no limit on the number of parameters. The
   paren-less form the README shows, `def show Int a, Int b:`, is not
   implemented; use parentheses.
+- **`interface` says what a value can do.** Declare one with `interface
+  Shape ... end`, listing `def Float area` style signatures with a return
+  type and no body; a class promises them with `class Circle does Shape`. A
+  method taking a `Shape` then accepts any class that does one, related or
+  not. `is` knows about interfaces, and assigning something that does not do
+  the interface is caught when it happens rather than silently.
 - **`Process` runs another program, which is how catmint does concurrency.**
   `Process.run("make")` waits for one and gives its exit status;
   `Process.spawn` starts one without waiting and `Process.wait` collects it,

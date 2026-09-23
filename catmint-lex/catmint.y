@@ -151,6 +151,7 @@
 
 %token KW_WHILE KW_FOR KW_RETURN
 %token KW_CLASS KW_SELF KW_FROM KW_END KW_VAR KW_NULL KW_DO KW_IN
+%token KW_INTERFACE KW_DOES
 %token KW_USING KW_IS
 %token KW_CONSTRUCTOR KW_NEW
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
@@ -207,12 +208,13 @@ expression
 %type <expressions> dispatch_arguments vector_arguments
 %type <block> block
 
-%type <features> features attributes attribute_definitions
+%type <features> features attributes attribute_definitions interface_features
 %type <features> method_arguments
-%type <feature> attribute method
+%type <feature> attribute method interface_method
 %type <catmintClass> catmint_class
 %type <catmintClasses> catmint_classes
 %type <stringValue> 		inherits_class type_name
+%type <vecstr> implements_class type_name_list
 
 // Precedence increases downward
 //%right '[' ']'
@@ -262,30 +264,78 @@ catmint_classes : catmint_class {
 	}
 	;
 
-// Class definition
-catmint_class : KW_CLASS IDENTIFIER features KW_END {
-			// A class declared inside a namespaced module carries that namespace.
+// Class definition. `from` names the parent and `does` names the interfaces
+// it promises to implement; both are optional, and so is the body.
+catmint_class
+	: KW_CLASS IDENTIFIER inherits_class implements_class features KW_END {
+			$$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$2), *$3, *$5));
+			$$->setInterfaces(*$4);
+
+			delete $2; delete $3; delete $4; delete $5;
+		}
+	// An interface is a list of method signatures: no bodies, no attributes,
+	// no instances, and no parent of its own.
+	| KW_INTERFACE IDENTIFIER interface_features KW_END {
 			$$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$2), "", *$3));
-		}
-		// Inherits from other classes
-		| KW_CLASS IDENTIFIER inherits_class features KW_END {
-		  $$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$2), *$3, *$4));
+			$$->setInterface(true);
 
-		  delete $2; delete $3; delete $4;
+			delete $2; delete $3;
 		}
-		// Inherits from other classes but is empty
-		| KW_CLASS IDENTIFIER inherits_class KW_END {
-		  $$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$2), *$3, std::vector<catmint::Feature*>()));
+	;
 
-		  delete $2; delete $3;
-		}
-		// Empty class
-		| KW_CLASS IDENTIFIER KW_END {
-			$$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$2), "", std::vector<catmint::Feature*>()));
+implements_class
+	: %empty {
+		$$ = new std::vector<std::string>();
+	}
+	| KW_DOES type_name_list {
+		$$ = $2;
+	}
+	;
 
-			delete $2;
-		}
-		;
+type_name_list
+	: type_name {
+		$$ = new std::vector<std::string>();
+		$$->push_back(*$1);
+		delete $1;
+	}
+	| type_name_list ',' type_name {
+		$$ = $1;
+		$$->push_back(*$3);
+		delete $3;
+	}
+	;
+
+interface_features
+	: %empty {
+		$$ = new std::vector<catmint::Feature*>();
+	}
+	| interface_features interface_method {
+		$$ = $1;
+		$$->push_back($2);
+	}
+	;
+
+// A signature with no body. The return type is required here, unlike in a
+// `def` with a body: without it `def f` and `def Int f` could not be told
+// apart until the token after, and an interface is the one place where
+// saying what comes back is the whole point anyway.
+interface_method
+	: KW_DEF type_name IDENTIFIER {
+		auto params = new std::vector<catmint::Attribute*>();
+		$$ = new catmint::Method(@1.first_line, *$3, *$2, nullptr, *params);
+		delete $2; delete $3; delete params;
+	}
+	| KW_DEF type_name IDENTIFIER OP_OPAREN OP_CPAREN {
+		auto params = new std::vector<catmint::Attribute*>();
+		$$ = new catmint::Method(@1.first_line, *$3, *$2, nullptr, *params);
+		delete $2; delete $3; delete params;
+	}
+	| KW_DEF type_name IDENTIFIER OP_OPAREN method_arguments OP_CPAREN {
+		$$ = new catmint::Method(@1.first_line, *$3, *$2, nullptr,
+		                         *reinterpret_cast<std::vector<catmint::Attribute*>*>($5));
+		delete $2; delete $3;
+	}
+	;
 
 inherits_class
 	: %empty {

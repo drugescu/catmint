@@ -51,6 +51,18 @@ public:
   std::string getFile() const { return fileName; }
   void setFile(const std::string &file) { fileName = file; }
 
+  /// The interfaces this class declares it implements, with `does`. An
+  /// interface itself implements none.
+  const std::vector<std::string> &getInterfaces() const { return interfaces; }
+  void setInterfaces(const std::vector<std::string> &names) {
+    interfaces = names;
+  }
+
+  /// True for a class declared with `interface`: a set of method signatures
+  /// with no bodies, no attributes and no instances.
+  bool isInterface() const { return interfaceDeclaration; }
+  void setInterface(bool value) { interfaceDeclaration = value; }
+
   /// \brief Add a feature and take ownership of it
   void addFeature(std::unique_ptr<Feature> F) {
     features.push_back(std::move(F));
@@ -85,6 +97,8 @@ private:
   std::string name;
   std::string parentClassName;
   std::string fileName;
+  std::vector<std::string> interfaces;
+  bool interfaceDeclaration = false;
   FeaturesType features;
   Symbol self;
 };

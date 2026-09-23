@@ -334,6 +334,34 @@ only a debug map in the executable; compiling and linking in one command
 would delete the object first, which is why `clang -g one.c -o one` also
 produces an executable a debugger cannot read.
 
+`interface Name ... end` declares a set of method signatures with no bodies,
+and `class C from P does I, J` promises them. An interface has no instances,
+no attributes and no parent of its own, and its methods must declare a return
+type -- without one, `def f` and `def Int f` cannot be told apart until the
+token after, and an interface is the one place where saying what comes back
+is the point anyway.
+
+How it dispatches: the RTTI gained a fourth field, `interfaces`, pointing at
+a null-terminated array of `{ interface rtti, base slot }`. A class appends,
+at the end of its own virtual table, one run of slots per interface it
+implements, holding its implementations in the interface's declaration order.
+A call through an interface asks `__cm_ifaceBase` for where that run starts
+and adds the method's position within the interface; Object's own methods sit
+at the same index in every class, so those still go straight to the slot. A
+subclass repeats its parent's runs rather than sharing them, so a method it
+overrides is the one the interface reaches -- that is what test 40's `Cube`
+checks.
+
+Because the RTTI grew a field, **the virtual table is now at index 4, not 3**,
+in both `runtime.c` and the GEP in `emitCall`. Metadata is emitted in three
+passes -- built-ins, then interfaces, then classes -- because a class's
+interface table points at the interfaces' metadata and an interface's points
+at Object's, while `ClassOrder` only promises parents before children.
+
+Assigning an object to an interface it does not visibly promise is allowed
+and checked at run time by `__cm_cast`, which now also consults the interface
+tables, as `__cm_isType` does; so does `expr is SomeInterface`.
+
 `defer <expression>` runs the expression where the enclosing **block** ends,
 on every path out of it, last registered first. It is emitted at those points
 rather than recorded, so it costs nothing at run time and the runtime knows

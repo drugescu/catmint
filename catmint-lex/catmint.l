@@ -63,6 +63,8 @@ static int gColumnNumber = 1;
 
 "using"       { countColumns(); return KW_USING; }
 "class" 	    { countColumns(); return KW_CLASS; }
+"interface"   { countColumns(); return KW_INTERFACE; }
+"does"        { countColumns(); return KW_DOES; }
 "from" 		    { countColumns(); return KW_FROM; }
 "return"      { countColumns(); return KW_RETURN; }
 "self"        { countColumns(); return KW_SELF;	}

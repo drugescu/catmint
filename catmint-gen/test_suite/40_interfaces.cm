@@ -1,0 +1,109 @@
+# Interfaces: what a value can do, without saying what it is.
+
+interface Shape
+  def Float area
+  def String describe
+end
+
+interface Named
+  def String label
+end
+
+class Circle does Shape, Named
+  Float radius
+
+  constructor(Float r):
+    radius = r
+  end
+
+  def Float area:
+    return Math.pi() * radius * radius
+  end
+
+  def String describe:
+    return "circle of radius ${radius}"
+  end
+
+  def String label:
+    return "circle"
+  end
+end
+
+class Square does Shape
+  Float side
+
+  constructor(Float s):
+    side = s
+  end
+
+  def Float area:
+    return side * side
+  end
+
+  def String describe:
+    return "square of side ${side}"
+  end
+end
+
+# A subclass inherits the promise, and an override is what the interface
+# reaches: this is the case a table of slots copied from the parent would
+# get wrong.
+class Cube from Square
+  def String describe:
+    return "cube of side ${side}"
+  end
+end
+
+class Main from IO
+  # One method, two unrelated classes. This is the thing that could not be
+  # written before: Circle and Square share no parent but Object.
+  def report(Shape s):
+    out("${s.describe()} has area ${s.area()}\n")
+  end
+
+  def main:
+    Circle c = new Circle(1.0)
+    Square q = new Square(3.0)
+    Cube k = new Cube(2.0)
+
+    report(c)
+    report(q)
+    report(k)
+
+    # A list of things that are only alike in what they do.
+    List shapes
+    shapes.append(c)
+    shapes.append(q)
+    shapes.append(k)
+
+    Float total = 0.0
+    for item in shapes:
+      Shape s = item
+      total = total + s.area()
+    end
+    out("total area ${total}\n")
+
+    # A class may do more than one interface.
+    Named n = c
+    out("named ${n.label()}\n")
+
+    # 'is' knows about interfaces, so a handler can ask.
+    out("circle is a Shape ${c is Shape}\n")
+    out("square is Named ${q is Named}\n")
+
+    # Object's own methods still work through an interface.
+    Shape s = c
+    out("type through interface ${s.type()}\n")
+
+    # Asking for something the object does not do is a catchable error, not
+    # a crash.
+    try:
+      Named wrong = q
+      out("unreachable ${wrong.label()}\n")
+    catch e:
+      out("caught ${e}\n")
+    end
+
+    out("done\n")
+  end
+end

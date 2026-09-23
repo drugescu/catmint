@@ -4,12 +4,13 @@ source_filename = "runtime.c"
 %struct.TString = type { ptr, i32, i32, ptr }
 %struct.timespec = type { i64, i64 }
 %struct.TObject = type { ptr, i32 }
-%struct.__catmint_rtti = type { ptr, i32, ptr, [0 x ptr] }
+%struct.__catmint_rtti = type { ptr, i32, ptr, ptr, [0 x ptr] }
 %struct.TList = type { ptr, i32, i32, i32, ptr }
 %struct.TFile = type { ptr, i32, ptr }
 %struct.TProcess = type { ptr, i32, ptr, i32 }
 %struct.tm = type { i32, i32, i32, i32, i32, i32, i32, i32, i32, i64, ptr }
 %struct.TInteger = type { ptr, i32, i64 }
+%struct.__cm_iface = type { ptr, i32 }
 %struct.__cm_handler = type { ptr, i32, ptr }
 
 @.str = private unnamed_addr constant [7 x i8] c"Object\00", align 1
@@ -28,14 +29,14 @@ source_filename = "runtime.c"
 @NMath = global %struct.TString { ptr @RString, i32 0, i32 4, ptr @.str.6 }, align 8
 @.str.7 = private unnamed_addr constant [8 x i8] c"Process\00", align 1
 @NProcess = global %struct.TString { ptr @RString, i32 0, i32 7, ptr @.str.7 }, align 8
-@RObject = global { ptr, i32, [4 x i8], ptr, [6 x ptr] } { ptr @NObject, i32 16, [4 x i8] zeroinitializer, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
-@RString = global { ptr, i32, [4 x i8], ptr, [19 x ptr] } { ptr @NString, i32 24, [4 x i8] zeroinitializer, ptr @RObject, [19 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M6_String_length, ptr @M6_String_toInt, ptr @M6_String_substring, ptr @M6_String_concat, ptr @M6_String_equal, ptr @M6_String_at, ptr @M6_String_indexOf, ptr @M6_String_trim, ptr @M6_String_upper, ptr @M6_String_lower, ptr @M6_String_split, ptr @M6_String_replace, ptr @M6_String_toFloat] }, align 8
-@RIO = global { ptr, i32, [4 x i8], ptr, [20 x ptr] } { ptr @NIO, i32 16, [4 x i8] zeroinitializer, ptr @RObject, [20 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M2_IO_in, ptr @M2_IO_out, ptr @M2_IO_readLine, ptr @M2_IO_eof, ptr @M2_IO_entropy, ptr @M2_IO_ticks, ptr @M2_IO_epoch, ptr @M2_IO_localOffset, ptr @M2_IO_sleep, ptr @M2_IO_args, ptr @M2_IO_arg, ptr @M2_IO_err, ptr @M2_IO_exit, ptr @M2_IO_allocated] }, align 8
-@RFile = global { ptr, i32, [4 x i8], ptr, [13 x ptr] } { ptr @NFile, i32 24, [4 x i8] zeroinitializer, ptr @RObject, [13 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_File_open, ptr @M4_File_readLine, ptr @M4_File_readAll, ptr @M4_File_write, ptr @M4_File_eof, ptr @M4_File_close, ptr @M4_File_isOpen] }, align 8
-@RMath = global { ptr, i32, [4 x i8], ptr, [6 x ptr] } { ptr @NMath, i32 16, [4 x i8] zeroinitializer, ptr @RObject, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
-@RProcess = global { ptr, i32, [4 x i8], ptr, [11 x ptr] } { ptr @NProcess, i32 32, [4 x i8] zeroinitializer, ptr @RObject, [11 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Process_start, ptr @M7_Process_readLine, ptr @M7_Process_write, ptr @M7_Process_eof, ptr @M7_Process_finish] }, align 8
-@RList = global { ptr, i32, [4 x i8], ptr, [11 x ptr] } { ptr @NList, i32 32, [4 x i8] zeroinitializer, ptr @RObject, [11 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_List_len, ptr @M4_List_get, ptr @M4_List_set, ptr @M4_List_append, ptr @M4_List_slice] }, align 8
-@RInteger = global { ptr, i32, [4 x i8], ptr, [9 x ptr] } { ptr @NInteger, i32 24, [4 x i8] zeroinitializer, ptr @RObject, [9 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Integer_get, ptr @M7_Integer_set, ptr @M7_Integer_getLong] }, align 8
+@RObject = global { ptr, i32, [4 x i8], ptr, ptr, [6 x ptr] } { ptr @NObject, i32 16, [4 x i8] zeroinitializer, ptr null, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
+@RString = global { ptr, i32, [4 x i8], ptr, ptr, [19 x ptr] } { ptr @NString, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [19 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M6_String_length, ptr @M6_String_toInt, ptr @M6_String_substring, ptr @M6_String_concat, ptr @M6_String_equal, ptr @M6_String_at, ptr @M6_String_indexOf, ptr @M6_String_trim, ptr @M6_String_upper, ptr @M6_String_lower, ptr @M6_String_split, ptr @M6_String_replace, ptr @M6_String_toFloat] }, align 8
+@RIO = global { ptr, i32, [4 x i8], ptr, ptr, [20 x ptr] } { ptr @NIO, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [20 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M2_IO_in, ptr @M2_IO_out, ptr @M2_IO_readLine, ptr @M2_IO_eof, ptr @M2_IO_entropy, ptr @M2_IO_ticks, ptr @M2_IO_epoch, ptr @M2_IO_localOffset, ptr @M2_IO_sleep, ptr @M2_IO_args, ptr @M2_IO_arg, ptr @M2_IO_err, ptr @M2_IO_exit, ptr @M2_IO_allocated] }, align 8
+@RFile = global { ptr, i32, [4 x i8], ptr, ptr, [13 x ptr] } { ptr @NFile, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [13 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_File_open, ptr @M4_File_readLine, ptr @M4_File_readAll, ptr @M4_File_write, ptr @M4_File_eof, ptr @M4_File_close, ptr @M4_File_isOpen] }, align 8
+@RMath = global { ptr, i32, [4 x i8], ptr, ptr, [6 x ptr] } { ptr @NMath, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
+@RProcess = global { ptr, i32, [4 x i8], ptr, ptr, [11 x ptr] } { ptr @NProcess, i32 32, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [11 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Process_start, ptr @M7_Process_readLine, ptr @M7_Process_write, ptr @M7_Process_eof, ptr @M7_Process_finish] }, align 8
+@RList = global { ptr, i32, [4 x i8], ptr, ptr, [11 x ptr] } { ptr @NList, i32 32, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [11 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_List_len, ptr @M4_List_get, ptr @M4_List_set, ptr @M4_List_append, ptr @M4_List_slice] }, align 8
+@RInteger = global { ptr, i32, [4 x i8], ptr, ptr, [9 x ptr] } { ptr @NInteger, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [9 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Integer_get, ptr @M7_Integer_set, ptr @M7_Integer_getLong] }, align 8
 @gLiveObjects = internal global i32 0, align 4
 @gEmptyChars = internal global [1 x i8] zeroinitializer, align 1
 @.str.9 = private unnamed_addr constant [33 x i8] c"Substring indices out of bounds.\00", align 1
@@ -51,34 +52,35 @@ source_filename = "runtime.c"
 @.str.16 = private unnamed_addr constant [30 x i8] c"Out of memory growing a List.\00", align 1
 @.str.17 = private unnamed_addr constant [34 x i8] c"List slice indices out of bounds.\00", align 1
 @.str.18 = private unnamed_addr constant [35 x i8] c"Calling a method of a void object.\00", align 1
-@.str.19 = private unnamed_addr constant [30 x i8] c"Unable to convert %s into %s.\00", align 1
-@.str.20 = private unnamed_addr constant [31 x i8] c"Expected an Integer, found %s.\00", align 1
-@.str.21 = private unnamed_addr constant [3 x i8] c"%g\00", align 1
-@.str.22 = private unnamed_addr constant [3 x i8] c"%d\00", align 1
-@.str.23 = private unnamed_addr constant [5 x i8] c"%lld\00", align 1
+@.str.19 = private unnamed_addr constant [19 x i8] c"%s does not do %s.\00", align 1
+@.str.20 = private unnamed_addr constant [30 x i8] c"Unable to convert %s into %s.\00", align 1
+@.str.21 = private unnamed_addr constant [31 x i8] c"Expected an Integer, found %s.\00", align 1
+@.str.22 = private unnamed_addr constant [3 x i8] c"%g\00", align 1
+@.str.23 = private unnamed_addr constant [3 x i8] c"%d\00", align 1
+@.str.24 = private unnamed_addr constant [5 x i8] c"%lld\00", align 1
 @gArgCount = internal global i32 0, align 4
 @gArgValues = internal global ptr null, align 8
 @__stderrp = external global ptr, align 8
-@.str.24 = private unnamed_addr constant [30 x i8] c"Out of memory reading a file.\00", align 1
-@.str.25 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory entering a try.\0A\00", align 1
+@.str.25 = private unnamed_addr constant [30 x i8] c"Out of memory reading a file.\00", align 1
+@.str.26 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory entering a try.\0A\00", align 1
 @gHandlers = internal global ptr null, align 8
 @gThrown = internal global ptr null, align 8
-@.str.26 = private unnamed_addr constant [14 x i8] c"Uncaught: %s\0A\00", align 1
-@.str.27 = private unnamed_addr constant [32 x i8] c"Uncaught: an object of type %s\0A\00", align 1
-@.str.28 = private unnamed_addr constant [16 x i8] c"Uncaught: null\0A\00", align 1
-@.str.29 = private unnamed_addr constant [20 x i8] c"Runtime error : %s\0A\00", align 1
+@.str.27 = private unnamed_addr constant [14 x i8] c"Uncaught: %s\0A\00", align 1
+@.str.28 = private unnamed_addr constant [32 x i8] c"Uncaught: an object of type %s\0A\00", align 1
+@.str.29 = private unnamed_addr constant [16 x i8] c"Uncaught: null\0A\00", align 1
+@.str.30 = private unnamed_addr constant [20 x i8] c"Runtime error : %s\0A\00", align 1
 @gPoolDepth = internal global i32 0, align 4
 @gPoolMarkCapacity = internal global i32 0, align 4
 @gPoolMarks = internal global ptr null, align 8
-@.str.30 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory opening a pool.\0A\00", align 1
+@.str.31 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory opening a pool.\0A\00", align 1
 @gPoolCount = internal global i32 0, align 4
 @gPoolCapacity = internal global i32 0, align 4
 @gPoolItems = internal global ptr null, align 8
-@.str.31 = private unnamed_addr constant [54 x i8] c"Runtime error : out of memory recording a temporary.\0A\00", align 1
-@.str.32 = private unnamed_addr constant [8 x i8] c"/bin/sh\00", align 1
-@.str.33 = private unnamed_addr constant [3 x i8] c"sh\00", align 1
-@.str.34 = private unnamed_addr constant [3 x i8] c"-c\00", align 1
-@.str.35 = private unnamed_addr constant [26 x i8] c"List index out of bounds.\00", align 1
+@.str.32 = private unnamed_addr constant [54 x i8] c"Runtime error : out of memory recording a temporary.\0A\00", align 1
+@.str.33 = private unnamed_addr constant [8 x i8] c"/bin/sh\00", align 1
+@.str.34 = private unnamed_addr constant [3 x i8] c"sh\00", align 1
+@.str.35 = private unnamed_addr constant [3 x i8] c"-c\00", align 1
+@.str.36 = private unnamed_addr constant [26 x i8] c"List index out of bounds.\00", align 1
 
 ; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
 define void @M6_Object_abort(ptr noundef %0) #0 {
@@ -1838,7 +1840,7 @@ define ptr @M4_File_readAll(ptr noundef %0) #0 {
   br i1 %35, label %37, label %36
 
 36:                                               ; preds = %29
-  call void @__cm_runtimeError(ptr noundef @.str.24)
+  call void @__cm_runtimeError(ptr noundef @.str.25)
   br label %37
 
 37:                                               ; preds = %36, %29
@@ -2592,7 +2594,7 @@ define void @__cm_poolAdd(ptr noundef %0) #0 {
   br i1 %30, label %33, label %31
 
 31:                                               ; preds = %22
-  %32 = call i32 (ptr, ...) @printf(ptr noundef @.str.31)
+  %32 = call i32 (ptr, ...) @printf(ptr noundef @.str.32)
   call void @exit(i32 noundef 1) #12
   unreachable
 
@@ -2806,7 +2808,7 @@ define void @__cm_runtimeError(ptr noundef %0) #0 {
 
 8:                                                ; preds = %5, %1
   %9 = load ptr, ptr %2, align 8
-  %10 = call i32 (ptr, ...) @printf(ptr noundef @.str.29, ptr noundef %9)
+  %10 = call i32 (ptr, ...) @printf(ptr noundef @.str.30, ptr noundef %9)
   call void @exit(i32 noundef 1) #12
   unreachable
 }
@@ -2910,7 +2912,7 @@ define internal void @list_bounds(ptr noundef %0, i32 noundef %1) #0 {
   br i1 %12, label %13, label %14
 
 13:                                               ; preds = %7, %2
-  call void @__cm_runtimeError(ptr noundef @.str.35)
+  call void @__cm_runtimeError(ptr noundef @.str.36)
   br label %14
 
 14:                                               ; preds = %13, %7
@@ -2937,6 +2939,112 @@ define void @__cm_checkNull(ptr noundef %0) #0 {
 }
 
 ; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define i32 @__cm_ifaceBase(ptr noundef %0, ptr noundef %1) #0 {
+  %3 = alloca i32, align 4
+  %4 = alloca ptr, align 8
+  %5 = alloca ptr, align 8
+  %6 = alloca ptr, align 8
+  %7 = alloca ptr, align 8
+  %8 = alloca [256 x i8], align 1
+  store ptr %0, ptr %4, align 8
+  store ptr %1, ptr %5, align 8
+  %9 = load ptr, ptr %4, align 8
+  call void @__cm_checkNull(ptr noundef %9)
+  %10 = load ptr, ptr %4, align 8
+  %11 = getelementptr inbounds nuw %struct.TObject, ptr %10, i32 0, i32 0
+  %12 = load ptr, ptr %11, align 8
+  store ptr %12, ptr %6, align 8
+  br label %13
+
+13:                                               ; preds = %44, %2
+  %14 = load ptr, ptr %6, align 8
+  %15 = icmp ne ptr %14, null
+  br i1 %15, label %16, label %48
+
+16:                                               ; preds = %13
+  %17 = load ptr, ptr %6, align 8
+  %18 = getelementptr inbounds nuw %struct.__catmint_rtti, ptr %17, i32 0, i32 3
+  %19 = load ptr, ptr %18, align 8
+  store ptr %19, ptr %7, align 8
+  %20 = load ptr, ptr %7, align 8
+  %21 = icmp ne ptr %20, null
+  br i1 %21, label %23, label %22
+
+22:                                               ; preds = %16
+  br label %44
+
+23:                                               ; preds = %16
+  br label %24
+
+24:                                               ; preds = %40, %23
+  %25 = load ptr, ptr %7, align 8
+  %26 = getelementptr inbounds nuw %struct.__cm_iface, ptr %25, i32 0, i32 0
+  %27 = load ptr, ptr %26, align 8
+  %28 = icmp ne ptr %27, null
+  br i1 %28, label %29, label %43
+
+29:                                               ; preds = %24
+  %30 = load ptr, ptr %7, align 8
+  %31 = getelementptr inbounds nuw %struct.__cm_iface, ptr %30, i32 0, i32 0
+  %32 = load ptr, ptr %31, align 8
+  %33 = load ptr, ptr %5, align 8
+  %34 = icmp eq ptr %32, %33
+  br i1 %34, label %35, label %39
+
+35:                                               ; preds = %29
+  %36 = load ptr, ptr %7, align 8
+  %37 = getelementptr inbounds nuw %struct.__cm_iface, ptr %36, i32 0, i32 1
+  %38 = load i32, ptr %37, align 8
+  store i32 %38, ptr %3, align 4
+  br label %64
+
+39:                                               ; preds = %29
+  br label %40
+
+40:                                               ; preds = %39
+  %41 = load ptr, ptr %7, align 8
+  %42 = getelementptr inbounds nuw %struct.__cm_iface, ptr %41, i32 1
+  store ptr %42, ptr %7, align 8
+  br label %24, !llvm.loop !15
+
+43:                                               ; preds = %24
+  br label %44
+
+44:                                               ; preds = %43, %22
+  %45 = load ptr, ptr %6, align 8
+  %46 = getelementptr inbounds nuw %struct.__catmint_rtti, ptr %45, i32 0, i32 2
+  %47 = load ptr, ptr %46, align 8
+  store ptr %47, ptr %6, align 8
+  br label %13, !llvm.loop !16
+
+48:                                               ; preds = %13
+  %49 = getelementptr inbounds [256 x i8], ptr %8, i64 0, i64 0
+  %50 = load ptr, ptr %4, align 8
+  %51 = getelementptr inbounds nuw %struct.TObject, ptr %50, i32 0, i32 0
+  %52 = load ptr, ptr %51, align 8
+  %53 = getelementptr inbounds nuw %struct.__catmint_rtti, ptr %52, i32 0, i32 0
+  %54 = load ptr, ptr %53, align 8
+  %55 = getelementptr inbounds nuw %struct.TString, ptr %54, i32 0, i32 3
+  %56 = load ptr, ptr %55, align 8
+  %57 = load ptr, ptr %5, align 8
+  %58 = getelementptr inbounds nuw %struct.__catmint_rtti, ptr %57, i32 0, i32 0
+  %59 = load ptr, ptr %58, align 8
+  %60 = getelementptr inbounds nuw %struct.TString, ptr %59, i32 0, i32 3
+  %61 = load ptr, ptr %60, align 8
+  %62 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %49, i64 noundef 256, i32 noundef 0, i64 noundef 256, ptr noundef @.str.19, ptr noundef %56, ptr noundef %61)
+  %63 = getelementptr inbounds [256 x i8], ptr %8, i64 0, i64 0
+  call void @__cm_runtimeError(ptr noundef %63)
+  store i32 0, ptr %3, align 4
+  br label %64
+
+64:                                               ; preds = %48, %35
+  %65 = load i32, ptr %3, align 4
+  ret i32 %65
+}
+
+declare i32 @__snprintf_chk(ptr noundef, i64 noundef, i32 noundef, i64 noundef, ptr noundef, ...) #6
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
 define i32 @__cm_isType(ptr noundef %0, ptr noundef %1) #0 {
   %3 = alloca i32, align 4
   %4 = alloca ptr, align 8
@@ -2950,7 +3058,7 @@ define i32 @__cm_isType(ptr noundef %0, ptr noundef %1) #0 {
 
 9:                                                ; preds = %2
   store i32 0, ptr %3, align 4
-  br label %28
+  br label %33
 
 10:                                               ; preds = %2
   %11 = load ptr, ptr %4, align 8
@@ -2972,7 +3080,7 @@ define i32 @__cm_isType(ptr noundef %0, ptr noundef %1) #0 {
 
 21:                                               ; preds = %17
   store i32 1, ptr %3, align 4
-  br label %28
+  br label %33
 
 22:                                               ; preds = %17
   br label %23
@@ -2982,15 +3090,97 @@ define i32 @__cm_isType(ptr noundef %0, ptr noundef %1) #0 {
   %25 = getelementptr inbounds nuw %struct.__catmint_rtti, ptr %24, i32 0, i32 2
   %26 = load ptr, ptr %25, align 8
   store ptr %26, ptr %6, align 8
-  br label %14, !llvm.loop !15
+  br label %14, !llvm.loop !17
 
 27:                                               ; preds = %14
-  store i32 0, ptr %3, align 4
-  br label %28
+  %28 = load ptr, ptr %4, align 8
+  %29 = getelementptr inbounds nuw %struct.TObject, ptr %28, i32 0, i32 0
+  %30 = load ptr, ptr %29, align 8
+  %31 = load ptr, ptr %5, align 8
+  %32 = call i32 @implements(ptr noundef %30, ptr noundef %31)
+  store i32 %32, ptr %3, align 4
+  br label %33
 
-28:                                               ; preds = %27, %21, %9
-  %29 = load i32, ptr %3, align 4
-  ret i32 %29
+33:                                               ; preds = %27, %21, %9
+  %34 = load i32, ptr %3, align 4
+  ret i32 %34
+}
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define internal i32 @implements(ptr noundef %0, ptr noundef %1) #0 {
+  %3 = alloca i32, align 4
+  %4 = alloca ptr, align 8
+  %5 = alloca ptr, align 8
+  %6 = alloca ptr, align 8
+  store ptr %0, ptr %4, align 8
+  store ptr %1, ptr %5, align 8
+  br label %7
+
+7:                                                ; preds = %35, %2
+  %8 = load ptr, ptr %4, align 8
+  %9 = icmp ne ptr %8, null
+  br i1 %9, label %10, label %39
+
+10:                                               ; preds = %7
+  %11 = load ptr, ptr %4, align 8
+  %12 = getelementptr inbounds nuw %struct.__catmint_rtti, ptr %11, i32 0, i32 3
+  %13 = load ptr, ptr %12, align 8
+  store ptr %13, ptr %6, align 8
+  %14 = load ptr, ptr %6, align 8
+  %15 = icmp ne ptr %14, null
+  br i1 %15, label %17, label %16
+
+16:                                               ; preds = %10
+  br label %35
+
+17:                                               ; preds = %10
+  br label %18
+
+18:                                               ; preds = %31, %17
+  %19 = load ptr, ptr %6, align 8
+  %20 = getelementptr inbounds nuw %struct.__cm_iface, ptr %19, i32 0, i32 0
+  %21 = load ptr, ptr %20, align 8
+  %22 = icmp ne ptr %21, null
+  br i1 %22, label %23, label %34
+
+23:                                               ; preds = %18
+  %24 = load ptr, ptr %6, align 8
+  %25 = getelementptr inbounds nuw %struct.__cm_iface, ptr %24, i32 0, i32 0
+  %26 = load ptr, ptr %25, align 8
+  %27 = load ptr, ptr %5, align 8
+  %28 = icmp eq ptr %26, %27
+  br i1 %28, label %29, label %30
+
+29:                                               ; preds = %23
+  store i32 1, ptr %3, align 4
+  br label %40
+
+30:                                               ; preds = %23
+  br label %31
+
+31:                                               ; preds = %30
+  %32 = load ptr, ptr %6, align 8
+  %33 = getelementptr inbounds nuw %struct.__cm_iface, ptr %32, i32 1
+  store ptr %33, ptr %6, align 8
+  br label %18, !llvm.loop !18
+
+34:                                               ; preds = %18
+  br label %35
+
+35:                                               ; preds = %34, %16
+  %36 = load ptr, ptr %4, align 8
+  %37 = getelementptr inbounds nuw %struct.__catmint_rtti, ptr %36, i32 0, i32 2
+  %38 = load ptr, ptr %37, align 8
+  store ptr %38, ptr %4, align 8
+  br label %7, !llvm.loop !19
+
+39:                                               ; preds = %7
+  store i32 0, ptr %3, align 4
+  br label %40
+
+40:                                               ; preds = %39, %29
+  %41 = load i32, ptr %3, align 4
+  ret i32 %41
 }
 
 ; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
@@ -3009,7 +3199,7 @@ define ptr @__cm_cast(ptr noundef %0, ptr noundef %1) #0 {
 
 11:                                               ; preds = %2
   store ptr null, ptr %3, align 8
-  br label %45
+  br label %52
 
 12:                                               ; preds = %2
   %13 = load ptr, ptr %4, align 8
@@ -3034,7 +3224,7 @@ define ptr @__cm_cast(ptr noundef %0, ptr noundef %1) #0 {
 24:                                               ; preds = %20
   %25 = load ptr, ptr %4, align 8
   store ptr %25, ptr %3, align 8
-  br label %45
+  br label %52
 
 26:                                               ; preds = %20
   br label %27
@@ -3044,32 +3234,42 @@ define ptr @__cm_cast(ptr noundef %0, ptr noundef %1) #0 {
   %29 = getelementptr inbounds nuw %struct.__catmint_rtti, ptr %28, i32 0, i32 2
   %30 = load ptr, ptr %29, align 8
   store ptr %30, ptr %7, align 8
-  br label %17, !llvm.loop !16
+  br label %17, !llvm.loop !20
 
 31:                                               ; preds = %17
-  %32 = getelementptr inbounds [256 x i8], ptr %8, i64 0, i64 0
-  %33 = load ptr, ptr %6, align 8
-  %34 = getelementptr inbounds nuw %struct.__catmint_rtti, ptr %33, i32 0, i32 0
-  %35 = load ptr, ptr %34, align 8
-  %36 = getelementptr inbounds nuw %struct.TString, ptr %35, i32 0, i32 3
-  %37 = load ptr, ptr %36, align 8
-  %38 = load ptr, ptr %5, align 8
-  %39 = getelementptr inbounds nuw %struct.__catmint_rtti, ptr %38, i32 0, i32 0
-  %40 = load ptr, ptr %39, align 8
-  %41 = getelementptr inbounds nuw %struct.TString, ptr %40, i32 0, i32 3
+  %32 = load ptr, ptr %6, align 8
+  %33 = load ptr, ptr %5, align 8
+  %34 = call i32 @implements(ptr noundef %32, ptr noundef %33)
+  %35 = icmp ne i32 %34, 0
+  br i1 %35, label %36, label %38
+
+36:                                               ; preds = %31
+  %37 = load ptr, ptr %4, align 8
+  store ptr %37, ptr %3, align 8
+  br label %52
+
+38:                                               ; preds = %31
+  %39 = getelementptr inbounds [256 x i8], ptr %8, i64 0, i64 0
+  %40 = load ptr, ptr %6, align 8
+  %41 = getelementptr inbounds nuw %struct.__catmint_rtti, ptr %40, i32 0, i32 0
   %42 = load ptr, ptr %41, align 8
-  %43 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %32, i64 noundef 256, i32 noundef 0, i64 noundef 256, ptr noundef @.str.19, ptr noundef %37, ptr noundef %42)
-  %44 = getelementptr inbounds [256 x i8], ptr %8, i64 0, i64 0
-  call void @__cm_runtimeError(ptr noundef %44)
+  %43 = getelementptr inbounds nuw %struct.TString, ptr %42, i32 0, i32 3
+  %44 = load ptr, ptr %43, align 8
+  %45 = load ptr, ptr %5, align 8
+  %46 = getelementptr inbounds nuw %struct.__catmint_rtti, ptr %45, i32 0, i32 0
+  %47 = load ptr, ptr %46, align 8
+  %48 = getelementptr inbounds nuw %struct.TString, ptr %47, i32 0, i32 3
+  %49 = load ptr, ptr %48, align 8
+  %50 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %39, i64 noundef 256, i32 noundef 0, i64 noundef 256, ptr noundef @.str.20, ptr noundef %44, ptr noundef %49)
+  %51 = getelementptr inbounds [256 x i8], ptr %8, i64 0, i64 0
+  call void @__cm_runtimeError(ptr noundef %51)
   store ptr null, ptr %3, align 8
-  br label %45
+  br label %52
 
-45:                                               ; preds = %31, %24, %11
-  %46 = load ptr, ptr %3, align 8
-  ret ptr %46
+52:                                               ; preds = %38, %36, %24, %11
+  %53 = load ptr, ptr %3, align 8
+  ret ptr %53
 }
-
-declare i32 @__snprintf_chk(ptr noundef, i64 noundef, i32 noundef, i64 noundef, ptr noundef, ...) #6
 
 ; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
 define ptr @__cm_boxLong(i64 noundef %0) #0 {
@@ -3110,7 +3310,7 @@ define i64 @__cm_unboxLong(ptr noundef %0) #0 {
   %15 = load ptr, ptr %14, align 8
   %16 = getelementptr inbounds nuw %struct.TString, ptr %15, i32 0, i32 3
   %17 = load ptr, ptr %16, align 8
-  %18 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %10, i64 noundef 256, i32 noundef 0, i64 noundef 256, ptr noundef @.str.20, ptr noundef %17)
+  %18 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %10, i64 noundef 256, i32 noundef 0, i64 noundef 256, ptr noundef @.str.21, ptr noundef %17)
   %19 = getelementptr inbounds [256 x i8], ptr %3, i64 0, i64 0
   call void @__cm_runtimeError(ptr noundef %19)
   br label %20
@@ -3219,7 +3419,7 @@ define ptr @__cm_floatToString(double noundef %0) #0 {
   call void @llvm.memset.p0.i64(ptr align 1 %4, i8 0, i64 64, i1 false)
   %5 = getelementptr inbounds [64 x i8], ptr %3, i64 0, i64 0
   %6 = load double, ptr %2, align 8
-  %7 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %5, i64 noundef 64, i32 noundef 0, i64 noundef 64, ptr noundef @.str.21, double noundef %6)
+  %7 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %5, i64 noundef 64, i32 noundef 0, i64 noundef 64, ptr noundef @.str.22, double noundef %6)
   %8 = getelementptr inbounds [64 x i8], ptr %3, i64 0, i64 0
   %9 = call ptr @make_string(ptr noundef %8)
   ret ptr %9
@@ -3237,7 +3437,7 @@ define ptr @__cm_intToString(i32 noundef %0) #0 {
   call void @llvm.memset.p0.i64(ptr align 1 %4, i8 0, i64 32, i1 false)
   %5 = getelementptr inbounds [32 x i8], ptr %3, i64 0, i64 0
   %6 = load i32, ptr %2, align 4
-  %7 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %5, i64 noundef 32, i32 noundef 0, i64 noundef 32, ptr noundef @.str.22, i32 noundef %6)
+  %7 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %5, i64 noundef 32, i32 noundef 0, i64 noundef 32, ptr noundef @.str.23, i32 noundef %6)
   %8 = getelementptr inbounds [32 x i8], ptr %3, i64 0, i64 0
   %9 = call ptr @make_string(ptr noundef %8)
   ret ptr %9
@@ -3252,7 +3452,7 @@ define ptr @__cm_longToString(i64 noundef %0) #0 {
   call void @llvm.memset.p0.i64(ptr align 1 %4, i8 0, i64 32, i1 false)
   %5 = getelementptr inbounds [32 x i8], ptr %3, i64 0, i64 0
   %6 = load i64, ptr %2, align 8
-  %7 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %5, i64 noundef 32, i32 noundef 0, i64 noundef 32, ptr noundef @.str.23, i64 noundef %6)
+  %7 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %5, i64 noundef 32, i32 noundef 0, i64 noundef 32, ptr noundef @.str.24, i64 noundef %6)
   %8 = getelementptr inbounds [32 x i8], ptr %3, i64 0, i64 0
   %9 = call ptr @make_string(ptr noundef %8)
   ret ptr %9
@@ -3330,7 +3530,7 @@ define internal ptr @string_mapped(ptr noundef %0, i32 noundef %1) #0 {
   %47 = load i32, ptr %6, align 4
   %48 = add nsw i32 %47, 1
   store i32 %48, ptr %6, align 4
-  br label %13, !llvm.loop !17
+  br label %13, !llvm.loop !21
 
 49:                                               ; preds = %13
   %50 = load ptr, ptr %5, align 8
@@ -3672,7 +3872,7 @@ define void @__cm_pushHandler(ptr noundef %0) #0 {
   br i1 %6, label %9, label %7
 
 7:                                                ; preds = %1
-  %8 = call i32 (ptr, ...) @printf(ptr noundef @.str.25)
+  %8 = call i32 (ptr, ...) @printf(ptr noundef @.str.26)
   call void @exit(i32 noundef 1) #12
   unreachable
 
@@ -3763,7 +3963,7 @@ define void @__cm_throw(ptr noundef %0) #0 {
   %18 = load ptr, ptr %2, align 8
   %19 = getelementptr inbounds nuw %struct.TString, ptr %18, i32 0, i32 3
   %20 = load ptr, ptr %19, align 8
-  %21 = call i32 (ptr, ...) @printf(ptr noundef @.str.26, ptr noundef %20)
+  %21 = call i32 (ptr, ...) @printf(ptr noundef @.str.27, ptr noundef %20)
   br label %37
 
 22:                                               ; preds = %12, %9
@@ -3779,11 +3979,11 @@ define void @__cm_throw(ptr noundef %0) #0 {
   %30 = load ptr, ptr %29, align 8
   %31 = getelementptr inbounds nuw %struct.TString, ptr %30, i32 0, i32 3
   %32 = load ptr, ptr %31, align 8
-  %33 = call i32 (ptr, ...) @printf(ptr noundef @.str.27, ptr noundef %32)
+  %33 = call i32 (ptr, ...) @printf(ptr noundef @.str.28, ptr noundef %32)
   br label %36
 
 34:                                               ; preds = %22
-  %35 = call i32 (ptr, ...) @printf(ptr noundef @.str.28)
+  %35 = call i32 (ptr, ...) @printf(ptr noundef @.str.29)
   br label %36
 
 36:                                               ; preds = %34, %25
@@ -3828,7 +4028,7 @@ define void @__cm_poolUnwind(i32 noundef %0) #0 {
 
 7:                                                ; preds = %3
   call void @__cm_poolPop()
-  br label %3, !llvm.loop !18
+  br label %3, !llvm.loop !22
 
 8:                                                ; preds = %3
   ret void
@@ -3873,7 +4073,7 @@ define void @__cm_poolPush() #0 {
   br i1 %21, label %24, label %22
 
 22:                                               ; preds = %13
-  %23 = call i32 (ptr, ...) @printf(ptr noundef @.str.30)
+  %23 = call i32 (ptr, ...) @printf(ptr noundef @.str.31)
   call void @exit(i32 noundef 1) #12
   unreachable
 
@@ -3939,7 +4139,7 @@ define void @__cm_poolPop() #0 {
   store i32 %26, ptr @gPoolCount, align 4
   %27 = load ptr, ptr %2, align 8
   call void @__cm_release(ptr noundef %27)
-  br label %14, !llvm.loop !19
+  br label %14, !llvm.loop !23
 
 28:                                               ; preds = %5, %14
   ret void
@@ -4047,7 +4247,7 @@ define i32 @M7_Process_spawn(ptr noundef %0) #0 {
   %13 = load ptr, ptr %3, align 8
   %14 = getelementptr inbounds nuw %struct.TString, ptr %13, i32 0, i32 3
   %15 = load ptr, ptr %14, align 8
-  %16 = call i32 (ptr, ptr, ...) @execl(ptr noundef @.str.32, ptr noundef @.str.33, ptr noundef @.str.34, ptr noundef %15, ptr noundef null)
+  %16 = call i32 (ptr, ptr, ...) @execl(ptr noundef @.str.33, ptr noundef @.str.34, ptr noundef @.str.35, ptr noundef %15, ptr noundef null)
   call void @_exit(i32 noundef 127) #12
   unreachable
 
@@ -4201,7 +4401,7 @@ define internal void @release_owned_buffers(ptr noundef %0) #0 {
   %54 = load i32, ptr %5, align 4
   %55 = add nsw i32 %54, 1
   store i32 %55, ptr %5, align 4
-  br label %39, !llvm.loop !20
+  br label %39, !llvm.loop !24
 
 56:                                               ; preds = %39
   %57 = load ptr, ptr %4, align 8
@@ -4342,3 +4542,7 @@ attributes #17 = { allocsize(1) }
 !18 = distinct !{!18, !7}
 !19 = distinct !{!19, !7}
 !20 = distinct !{!20, !7}
+!21 = distinct !{!21, !7}
+!22 = distinct !{!22, !7}
+!23 = distinct !{!23, !7}
+!24 = distinct !{!24, !7}

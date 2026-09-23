@@ -38,7 +38,16 @@ struct __catmint_rtti {
   struct TString *name;         /* the class name, as a catmint String */
   int size;                     /* bytes to allocate for an instance    */
   struct __catmint_rtti *parent;/* null for Object                      */
+  void *interfaces;             /* __cm_iface[], ending in a null entry */
   void *vtable[];               /* parent's slots first, then new ones  */
+};
+
+/* Where in a class's virtual table the run of slots implementing one
+ * interface begins. A class carries one of these per interface it
+ * implements, and the array ends with a null entry. */
+struct __cm_iface {
+  struct __catmint_rtti *iface;
+  int base;
 };
 
 /* Every object starts this way. `refs` is 1 when __catmint_new made it and 0
@@ -120,6 +129,7 @@ struct TProcess {
     struct TString *name_;                                                     \
     int size;                                                                  \
     struct __catmint_rtti *parent;                                             \
+    void *interfaces;                                                          \
     void *vtable[slots];                                                       \
   } name
 
@@ -254,12 +264,12 @@ struct TString NProcess = { RTTI(RString), 0, 7, "Process" };
       (void *)M6_Object_release, (void *)M6_Object_refs
 
 catmint_rtti6_object RObject = {
-  &NObject, sizeof(struct TObject), NULL,
+  &NObject, sizeof(struct TObject), NULL, NULL,
   { CATMINT_OBJECT_SLOTS }
 };
 
 catmint_rtti19_string RString = {
-  &NString, sizeof(struct TString), RTTI(RObject),
+  &NString, sizeof(struct TString), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M6_String_length, (void *)M6_String_toInt,
     (void *)M6_String_substring, (void *)M6_String_concat,
@@ -273,7 +283,7 @@ catmint_rtti19_string RString = {
 /* The two new slots go on the end. Inserting anywhere else would renumber
  * `in` and `out` and silently break every already-compiled caller. */
 catmint_rtti20_io RIO = {
-  &NIO, sizeof(struct TIO), RTTI(RObject),
+  &NIO, sizeof(struct TIO), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M2_IO_in, (void *)M2_IO_out,
     (void *)M2_IO_readLine, (void *)M2_IO_eof, (void *)M2_IO_entropy,
@@ -284,7 +294,7 @@ catmint_rtti20_io RIO = {
 };
 
 catmint_rtti13_file RFile = {
-  &NFile, sizeof(struct TFile), RTTI(RObject),
+  &NFile, sizeof(struct TFile), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M4_File_open, (void *)M4_File_readLine, (void *)M4_File_readAll,
     (void *)M4_File_write, (void *)M4_File_eof, (void *)M4_File_close,
@@ -294,12 +304,12 @@ catmint_rtti13_file RFile = {
 /* Every Math method is static, so the class contributes no slots of its own
  * and its table is Object's. The class exists only to name the functions. */
 catmint_rtti6_object RMath = {
-  &NMath, sizeof(struct TMath), RTTI(RObject),
+  &NMath, sizeof(struct TMath), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS }
 };
 
 catmint_rtti11_process RProcess = {
-  &NProcess, sizeof(struct TProcess), RTTI(RObject),
+  &NProcess, sizeof(struct TProcess), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M7_Process_start, (void *)M7_Process_readLine,
     (void *)M7_Process_write, (void *)M7_Process_eof,
@@ -307,14 +317,14 @@ catmint_rtti11_process RProcess = {
 };
 
 catmint_rtti11_list RList = {
-  &NList, sizeof(struct TList), RTTI(RObject),
+  &NList, sizeof(struct TList), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M4_List_len, (void *)M4_List_get, (void *)M4_List_set,
     (void *)M4_List_append, (void *)M4_List_slice }
 };
 
 catmint_rtti9_integer RInteger = {
-  &NInteger, sizeof(struct TInteger), RTTI(RObject),
+  &NInteger, sizeof(struct TInteger), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M7_Integer_get, (void *)M7_Integer_set,
     (void *)M7_Integer_getLong }
@@ -888,9 +898,57 @@ void __cm_checkNull(void *object) {
   }
 }
 
-/* 'expr is Type': 1 when the object's class is the target or inherits from
- * it, 0 otherwise, including for null. Unlike a cast this never aborts, which
- * is the point of having it. */
+/* Whether this class, or any it inherits from, promised this interface. */
+static int implements(struct __catmint_rtti *rtti,
+                      struct __catmint_rtti *target) {
+  for (; rtti; rtti = rtti->parent) {
+    struct __cm_iface *entry = (struct __cm_iface *)rtti->interfaces;
+    if (!entry) {
+      continue;
+    }
+    for (; entry->iface; ++entry) {
+      if (entry->iface == target) {
+        return 1;
+      }
+    }
+  }
+  return 0;
+}
+
+/* Where an object's implementation of an interface begins in its virtual
+ * table. The generated code adds the method's position within the interface
+ * to this and loads that slot, so an interface call is one short search and
+ * then an ordinary indexed load. The search is over the interfaces a class
+ * promised, which is a handful at most. */
+int __cm_ifaceBase(void *object, struct __catmint_rtti *target) {
+  struct __catmint_rtti *rtti;
+
+  __cm_checkNull(object);
+  for (rtti = ((struct TObject *)object)->rtti; rtti; rtti = rtti->parent) {
+    struct __cm_iface *entry = (struct __cm_iface *)rtti->interfaces;
+    if (!entry) {
+      continue;
+    }
+    for (; entry->iface; ++entry) {
+      if (entry->iface == target) {
+        return entry->base;
+      }
+    }
+  }
+
+  {
+    char message[256];
+    snprintf(message, sizeof(message), "%s does not do %s.",
+             ((struct TObject *)object)->rtti->name->string,
+             target->name->string);
+    __cm_runtimeError(message);
+  }
+  return 0;
+}
+
+/* 'expr is Type': 1 when the object's class is the target, inherits from it,
+ * or promised it as an interface, 0 otherwise, including for null. Unlike a
+ * cast this never aborts, which is the point of having it. */
 int __cm_isType(void *object, struct __catmint_rtti *target) {
   struct __catmint_rtti *current;
 
@@ -903,7 +961,7 @@ int __cm_isType(void *object, struct __catmint_rtti *target) {
       return 1;
     }
   }
-  return 0;
+  return implements(((struct TObject *)object)->rtti, target);
 }
 
 /* A checked downcast: walk the object's ancestry looking for the target. */
@@ -920,6 +978,9 @@ void *__cm_cast(void *object, struct __catmint_rtti *target) {
     if (current == target) {
       return object;
     }
+  }
+  if (implements(actual, target)) {
+    return object;
   }
 
   {

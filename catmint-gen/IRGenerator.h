@@ -107,8 +107,19 @@ struct ClassInfo {
   /// the virtual table, so a subclass can call its parent's by name.
   std::map<std::string, std::pair<ClassInfo *, Method *>> StaticImpl;
 
+  /// Declared with `interface`: signatures only, and never instantiated.
+  bool IsInterface = false;
+  /// Every interface this class promises, its own and its ancestors'.
+  std::vector<std::string> AllInterfaces;
+  /// For each of those, where its run of slots begins in this class's
+  /// virtual table. An interface's methods are appended there in the
+  /// interface's own declaration order, so a call through an interface is
+  /// one lookup for the base and then an ordinary indexed load.
+  std::vector<std::pair<std::string, unsigned>> InterfaceBases;
+
   llvm::GlobalVariable *RTTI = nullptr;
   llvm::GlobalVariable *NameGlobal = nullptr;
+  llvm::GlobalVariable *IfaceTable = nullptr;
   llvm::Function *Init = nullptr;
 };
 

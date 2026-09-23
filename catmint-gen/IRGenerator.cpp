@@ -7,6 +7,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Verifier.h"
 
+#include <algorithm>
 #include <functional>
 #include <iostream>
 #include <sstream>
@@ -30,8 +31,9 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
   ObjectType = llvm::StructType::create(Context, "struct.TObject");
   IOType = llvm::StructType::create(Context, "struct.TIO");
 
-  // { TString *name; int size; __catmint_rtti *parent; void *vtable[]; }
-  RTTIType->setBody({Ptr, I32, Ptr, llvm::ArrayType::get(Ptr, 0)});
+  // { TString *name; int size; __catmint_rtti *parent; void *interfaces;
+  //   void *vtable[]; }
+  RTTIType->setBody({Ptr, I32, Ptr, Ptr, llvm::ArrayType::get(Ptr, 0)});
   // Every object is { rtti, int refs, ... }; refs is 0 for a static object,
   // which is how free() knows not to touch a string literal.
   // { rtti; int refs; int length; char *chars; }
@@ -299,9 +301,15 @@ bool IRGenerator::isSubclassOf(const std::string &Derived,
                                const std::string &Base) {
   if (Derived == Base)
     return true;
-  for (auto *CI = lookupClass(Derived); CI; CI = CI->Parent)
+  for (auto *CI = lookupClass(Derived); CI; CI = CI->Parent) {
     if (CI->AST->getName() == Base)
       return true;
+    // An interface is not in the parent chain; a class reaches one by
+    // having promised it, and a subclass inherits that promise.
+    for (const auto &Promise : CI->AST->getInterfaces())
+      if (Promise == Base)
+        return true;
+  }
   return false;
 }
 
@@ -315,6 +323,7 @@ bool IRGenerator::collectClasses() {
   for (auto *C : *AST) {
     ClassInfo CI;
     CI.AST = C;
+    CI.IsInterface = C->isInterface();
     const std::string Name = C->getName();
     CI.Builtin = (Name == strings::Object || Name == strings::Io ||
                   Name == strings::String || Name == strings::List ||
@@ -421,6 +430,16 @@ bool IRGenerator::layoutClass(ClassInfo *CI) {
     return true;
   }
 
+  // An interface has no instances, so its layout is only what Object needs
+  // for the metadata to be well formed.
+  if (CI->IsInterface) {
+    CI->Elements = {llvm::PointerType::getUnqual(Context),
+                    llvm::Type::getInt32Ty(Context)};
+    CI->Ty = llvm::StructType::create(Context, CI->Elements,
+                                      "struct.I" + symbolName(Name));
+    return true;
+  }
+
   // { rtti, refs, inherited fields..., own fields... }
   if (CI->Parent) {
     CI->Elements = CI->Parent->Elements;
@@ -450,6 +469,12 @@ void IRGenerator::buildVTable(ClassInfo *CI) {
     CI->VTableIndex = CI->Parent->VTableIndex;
     CI->VTableImpl = CI->Parent->VTableImpl;
     CI->StaticImpl = CI->Parent->StaticImpl;
+    CI->AllInterfaces = CI->Parent->AllInterfaces;
+  }
+  for (const auto &Name : CI->AST->getInterfaces()) {
+    if (std::find(CI->AllInterfaces.begin(), CI->AllInterfaces.end(), Name) ==
+        CI->AllInterfaces.end())
+      CI->AllInterfaces.push_back(Name);
   }
 
   for (auto *F : *CI->AST) {
@@ -475,6 +500,22 @@ void IRGenerator::buildVTable(ClassInfo *CI) {
       CI->VTableIndex[MName] = static_cast<unsigned>(CI->VTableOrder.size());
       CI->VTableOrder.push_back(MName);
       CI->VTableImpl[MName] = {CI, M};
+    }
+  }
+
+  // Each interface gets a run of slots at the end, holding this class's
+  // implementations in the interface's own declaration order. A subclass
+  // repeats its parent's runs rather than sharing them, so that a method it
+  // overrides is the one the interface reaches.
+  for (const auto &Name : CI->AllInterfaces) {
+    ClassInfo *Iface = lookupClass(Name);
+    if (!Iface)
+      continue;
+    CI->InterfaceBases.push_back(
+        {Name, static_cast<unsigned>(CI->VTableOrder.size())});
+    for (auto *F : *Iface->AST) {
+      if (auto *M = dynamic_cast<Method *>(F))
+        CI->VTableOrder.push_back(M->getName());
     }
   }
 }
@@ -552,9 +593,18 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
       Module, Runtime.stringType(), /*isConstant=*/false,
       llvm::GlobalValue::ExternalLinkage, NameInit, "N" + symbolName(Name));
 
-  // The virtual table, as function pointers in slot order.
+  // The virtual table, as function pointers in slot order. An interface's
+  // own methods have no implementation anywhere, so its table stops after
+  // the slots it inherits from Object; nothing dispatches through it.
+  size_t SlotCount = CI->VTableOrder.size();
+  if (CI->IsInterface) {
+    ClassInfo *ObjectCI = lookupClass(strings::Object);
+    SlotCount = ObjectCI ? ObjectCI->VTableOrder.size() : 0;
+  }
+
   std::vector<llvm::Constant *> Slots;
-  for (const auto &MName : CI->VTableOrder) {
+  for (size_t N = 0; N < SlotCount; ++N) {
+    const std::string &MName = CI->VTableOrder[N];
     auto It = CI->VTableImpl.find(MName);
     ClassInfo *Owner = It->second.first;
     Method *M = It->second.second;
@@ -562,18 +612,43 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
     auto Callee = Module.getOrInsertFunction(Sym, methodType(Owner, M));
     Slots.push_back(llvm::cast<llvm::Constant>(Callee.getCallee()));
   }
+
+  // The interface table: one { interface rtti, base slot } per promise, with
+  // a null entry to end it. A class that promises nothing has none.
+  llvm::Constant *Interfaces = llvm::ConstantPointerNull::get(Ptr);
+  if (!CI->InterfaceBases.empty()) {
+    auto *EntryTy = llvm::StructType::get(Context, {Ptr, I32});
+    std::vector<llvm::Constant *> Entries;
+    for (const auto &Promise : CI->InterfaceBases) {
+      ClassInfo *Iface = lookupClass(Promise.first);
+      if (!Iface || !Iface->RTTI)
+        fail(CI->AST->getLineNumber(),
+             "interface '" + Promise.first + "' has no metadata yet; "
+             "interfaces must be emitted first");
+      Entries.push_back(llvm::ConstantStruct::get(
+          EntryTy, {Iface->RTTI, llvm::ConstantInt::get(I32, Promise.second)}));
+    }
+    Entries.push_back(llvm::ConstantStruct::get(
+        EntryTy, {llvm::ConstantPointerNull::get(Ptr),
+                  llvm::ConstantInt::get(I32, 0)}));
+    auto *TableTy = llvm::ArrayType::get(EntryTy, Entries.size());
+    CI->IfaceTable = new llvm::GlobalVariable(
+        Module, TableTy, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
+        llvm::ConstantArray::get(TableTy, Entries), "F" + symbolName(Name));
+    Interfaces = CI->IfaceTable;
+  }
   auto *VTableTy = llvm::ArrayType::get(Ptr, Slots.size());
 
   // The RTTI record is a distinct struct per class because the vtable length
   // varies; __catmint_rtti declares it as a flexible [0 x ptr] member.
-  auto *RTTITy = llvm::StructType::get(Context, {Ptr, I32, Ptr, VTableTy});
+  auto *RTTITy = llvm::StructType::get(Context, {Ptr, I32, Ptr, Ptr, VTableTy});
   uint64_t Size = SizingLayout.getTypeAllocSize(CI->Ty);
   llvm::Constant *ParentRTTI =
       CI->Parent ? llvm::cast<llvm::Constant>(CI->Parent->RTTI)
                  : llvm::cast<llvm::Constant>(llvm::ConstantPointerNull::get(Ptr));
   auto *RTTIInit = llvm::ConstantStruct::get(
       RTTITy, {CI->NameGlobal, llvm::ConstantInt::get(I32, Size), ParentRTTI,
-               llvm::ConstantArray::get(VTableTy, Slots)});
+               Interfaces, llvm::ConstantArray::get(VTableTy, Slots)});
   CI->RTTI = new llvm::GlobalVariable(Module, RTTITy, /*isConstant=*/false,
                                       llvm::GlobalValue::ExternalLinkage,
                                       RTTIInit, "R" + symbolName(Name));
@@ -582,7 +657,7 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
 /// <Class>_init runs the parent initialiser and then this class's attribute
 /// initialisers against an already-allocated, zeroed object.
 bool IRGenerator::emitInitFunction(ClassInfo *CI) {
-  if (CI->Builtin)
+  if (CI->Builtin || CI->IsInterface)
     return true;
 
   const std::string Name = CI->AST->getName();
@@ -641,7 +716,8 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
       // ancestor of it: constructing that would recurse forever. Such an
       // attribute starts null, which is what a linked structure wants anyway.
       ClassInfo *FieldClass = lookupClass(A->getType());
-      if (!FieldClass || isSubclassOf(CI->AST->getName(), A->getType()))
+      if (!FieldClass || FieldClass->IsInterface ||
+          isSubclassOf(CI->AST->getName(), A->getType()))
         continue;
 
       auto *Obj = constructObject(FieldClass, {}, A->getLineNumber(),
@@ -847,8 +923,18 @@ llvm::Module *IRGenerator::runGenerator() {
   startDebugInfo();
   for (auto *CI : ClassOrder)
     declareMethods(CI);
+  // Three passes, because a class's interface table points at the
+  // interfaces' metadata and an interface's own points at Object's, while
+  // ClassOrder only promises parents before children.
   for (auto *CI : ClassOrder)
-    emitClassMetadata(CI);
+    if (CI->Builtin)
+      emitClassMetadata(CI);
+  for (auto *CI : ClassOrder)
+    if (CI->IsInterface && !CI->Builtin)
+      emitClassMetadata(CI);
+  for (auto *CI : ClassOrder)
+    if (!CI->IsInterface && !CI->Builtin)
+      emitClassMetadata(CI);
   for (auto *CI : ClassOrder)
     if (!emitInitFunction(CI))
       return nullptr;
@@ -1271,6 +1357,13 @@ llvm::Value *IRGenerator::coerce(llvm::Value *V, const std::string &From,
     if (ToClass && lookupClass(From) && isSubclassOf(To, From) && To != From)
       return Builder.CreateCall(Runtime.dynamicCast(), {V, ToClass->RTTI},
                                 "downcast");
+    // Into an interface the class does not visibly promise: the object may
+    // still do it -- it may be a subclass, or have come out of a container --
+    // so the runtime decides, and says so if it does not.
+    if (ToClass && ToClass->IsInterface && lookupClass(From) &&
+        !isSubclassOf(From, To))
+      return Builder.CreateCall(Runtime.dynamicCast(), {V, ToClass->RTTI},
+                                "as.iface");
   }
   return V;
 }
@@ -1463,6 +1556,10 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
   }
 
   ClassInfo *DeclClass = lookupClass(DeclaredType);
+  // An interface names what a value can do, not what to make, so declaring
+  // one produces a null reference waiting to be given an object.
+  if (DeclClass && DeclClass->IsInterface)
+    DeclClass = nullptr;
   // A self-contained initialiser supplies the whole value, so there is nothing
   // to default-construct first.
   const bool InitIsComplete =
@@ -1508,11 +1605,16 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
   // The last clause is the unboxing one, `Int n = list.get(i)`. Neither can be
   // confused with a folded statement, whose value is always some concrete
   // class such as IO.
+  ClassInfo *DeclaredClass = lookupClass(DeclaredType);
   const bool Assignable =
       InitType == DeclaredType || isSubclassOf(InitType, DeclaredType) ||
       InitType == strings::Int || InitType == strings::Float ||
       InitType == strings::Null || InitType == strings::Object ||
-      (DeclaredType == strings::Int && lookupClass(InitType) != nullptr);
+      (DeclaredType == strings::Int && lookupClass(InitType) != nullptr) ||
+      // An interface-typed variable takes any object; whether it really does
+      // what the interface asks is settled at run time.
+      (DeclaredClass && DeclaredClass->IsInterface &&
+       lookupClass(InitType) != nullptr);
   if (Assignable) {
     llvm::Value *Stored = coerce(V, InitType, DeclaredType, LD->getLineNumber());
     if (Stored->getType() == Lowered) {
@@ -2031,9 +2133,29 @@ llvm::Value *IRGenerator::emitCall(ClassInfo *RecvClass,
   unsigned Slot = RecvClass->VTableIndex[MethodName];
   auto Ptr = llvm::PointerType::getUnqual(Context);
   auto *RTTI = Builder.CreateLoad(Ptr, Receiver, "rtti");
+
+  // Through an interface the slot is not known here: the object's class
+  // decides where its run of interface slots begins, and the method's
+  // position within the interface is added to that. Object's own methods are
+  // at the same index in every class, so those still go straight to it.
+  llvm::Value *SlotIndex = Builder.getInt32(Slot);
+  ClassInfo *ObjectCI = lookupClass(strings::Object);
+  const unsigned ObjectSlots =
+      ObjectCI ? static_cast<unsigned>(ObjectCI->VTableOrder.size()) : 0;
+  if (RecvClass->IsInterface && Slot >= ObjectSlots) {
+    auto Base = Module.getOrInsertFunction(
+        "__cm_ifaceBase",
+        llvm::FunctionType::get(llvm::Type::getInt32Ty(Context), {Ptr, Ptr},
+                                false));
+    auto *Start =
+        Builder.CreateCall(Base, {Receiver, RecvClass->RTTI}, "iface.base");
+    SlotIndex = Builder.CreateAdd(Start, Builder.getInt32(Slot - ObjectSlots),
+                                  "iface.slot");
+  }
+
   auto *SlotAddr = Builder.CreateGEP(
       Runtime.rttiType(), RTTI,
-      {Builder.getInt32(0), Builder.getInt32(3), Builder.getInt32(Slot)},
+      {Builder.getInt32(0), Builder.getInt32(4), SlotIndex},
       MethodName + ".slot");
   auto *Fn = Builder.CreateLoad(Ptr, SlotAddr, MethodName + ".fn");
   auto *Call = Builder.CreateCall(FT, Fn, CallArgs);
@@ -2209,6 +2331,9 @@ llvm::Value *IRGenerator::emitNewObject(NewObject *NO) {
   ClassInfo *CI = lookupClass(NO->getType());
   if (!CI)
     fail(NO->getLineNumber(), "cannot instantiate unknown class '" + NO->getType() + "'");
+  if (CI->IsInterface)
+    fail(NO->getLineNumber(), "'" + NO->getType() +
+                                  "' is an interface and has no instances");
 
   std::vector<Expression *> Args;
   for (auto *A : *NO)

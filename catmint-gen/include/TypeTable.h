@@ -60,8 +60,11 @@ public:
   std::string getCommonTypeStr(std::string T, std::string U) const;
 
   bool isEqualOrImplicitlyConvertibleTo(Type *fromType, Type *toType);
-  /// \brief True when \p derived is \p base or inherits from it.
+  /// \brief True when \p derived is \p base, inherits from it, or declares
+  ///        that it implements it.
   bool isDerivedFrom(const std::string &derived, const std::string &base) const;
+  /// \brief True for a type declared with `interface`.
+  bool isInterface(const std::string &name) const;
   /// \brief True for a type held as an object reference rather than a value.
   bool isReferenceType(const std::string &name) const;
   bool isEqualOrImplicitlyConvertibleToStr(std::string from, std::string to);
