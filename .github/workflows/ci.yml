@@ -27,7 +27,11 @@ jobs:
       - name: Install LLVM, flex and bison
         run: |
           sudo apt-get update
-          sudo apt-get install -y flex bison
+          # zlib1g-dev and libzstd-dev are not optional: LLVMSupport as
+          # Debian builds it names ZLIB::ZLIB and zstd::libzstd_shared in
+          # its link interface, and CMake fails inside LLVMExports.cmake
+          # without them, saying nothing about a package.
+          sudo apt-get install -y flex bison zlib1g-dev libzstd-dev
           wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh "$LLVM_VERSION"

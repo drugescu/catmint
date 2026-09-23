@@ -40,13 +40,15 @@ edit `runtime.c`, commit the regenerated `runtime.ll` alongside it.
 
 Distributions name the binary after the version, so there is often no plain
 `llvm-config` on `PATH`; every part of the build takes `LLVM_CONFIG` to say
-where it is. `zlib1g-dev` is not optional: `LLVMSupport` as Debian and Ubuntu
-build it names `ZLIB::ZLIB` in its link interface, and CMake refuses to
-generate without it, with an error that points at `LLVMExports.cmake` rather
-than at the cause.
+where it is. `zlib1g-dev` and `libzstd-dev` are not optional: `LLVMSupport`
+as Debian and Ubuntu build it names `ZLIB::ZLIB` and `zstd::libzstd_shared`
+in its link interface, and CMake refuses to generate without those targets.
+Missing either gives an error pointing at `LLVMExports.cmake` that never
+mentions a package, so it is worth knowing what it means.
 
 ```sh
-sudo apt-get install flex bison cmake llvm-18-dev clang-18 zlib1g-dev
+sudo apt-get install flex bison cmake llvm-18-dev clang-18 \
+                     zlib1g-dev libzstd-dev
 export PATH=/usr/lib/llvm-18/bin:$PATH
 make -C catmint-ast -f GNUmakefile build LLVM_CONFIG=/usr/bin/llvm-config-18
 make -C catmint-lex  LLVM_CONFIG=/usr/bin/llvm-config-18

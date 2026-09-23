@@ -636,10 +636,15 @@ broken until it was tried, all of them invisible on macOS.
   Its `GNUmakefile` used to hardcode the Homebrew path and fall back to a
   bare `llvm-config`, which distributions do not ship -- Ubuntu names it
   `llvm-config-18`.
-- **`find_package(ZLIB)` is needed in `catmint-ast/CMakeLists.txt`**, because
-  `LLVMSupport` as Debian builds it names `ZLIB::ZLIB` in its link interface
-  and CMake will not generate without the imported target. The error names
-  `LLVMExports.cmake` and sends you looking in the wrong place.
+- **`zlib1g-dev` and `libzstd-dev` are build dependencies on Debian and
+  Ubuntu**, because `LLVMSupport` as they build it names `ZLIB::ZLIB` and
+  `zstd::libzstd_shared` in its link interface. LLVMConfig.cmake defines
+  those targets itself when the packages are there; when they are not, CMake
+  fails inside `LLVMExports.cmake` with a message that never mentions a
+  package. There is nothing to fix in our CMakeLists -- the failure happens
+  inside `find_package(LLVM)` before any of our code runs, which was worth
+  establishing, since the first guess was a missing `find_package(ZLIB)` and
+  that turned out not to be it.
 - **The checked-in `runtime.ll` only reads on an LLVM close to the one that
   wrote it.** The IR text format is not stable across major versions;
   `captures(none)` replaced `nocapture` in LLVM 21. The file carries a stamp

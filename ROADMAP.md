@@ -256,9 +256,13 @@ them.
    `make LLVM_CONFIG=...` therefore could not build the first of the three
    components, and the failure was a CMake error about `LLVMExports.cmake`
    that pointed nowhere near the cause.
-2. **`LLVMSupport` as Debian builds it names `ZLIB::ZLIB`**, and CMake
-   refuses to generate unless that imported target exists. One
-   `find_package(ZLIB QUIET)` in `catmint-ast/CMakeLists.txt`.
+2. **`zlib1g-dev` and `libzstd-dev` are undocumented build dependencies**
+   on Debian and Ubuntu: `LLVMSupport` as they build it names `ZLIB::ZLIB`
+   and `zstd::libzstd_shared` in its link interface, and CMake fails inside
+   `LLVMExports.cmake` with a message that never mentions a package. The
+   first guess was that our CMakeLists needed `find_package(ZLIB)`; testing
+   it in a second container showed the build works without that and fails
+   without the packages, so the fix is documentation, not code.
 3. **The checked-in `runtime.ll` could not be read by LLVM 18.** The file
    whose entire purpose is to make a C compiler optional used
    `captures(none)`, which is LLVM 21 syntax, and older LLVM rejects it with

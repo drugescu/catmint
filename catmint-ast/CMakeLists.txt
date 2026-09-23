@@ -5,13 +5,14 @@ find_package(LLVM REQUIRED CONFIG)
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
-# LLVMSupport as Debian and Ubuntu build it names ZLIB::ZLIB and
-# zstd::libzstd in its link interface, and CMake refuses to generate unless
-# those imported targets exist -- with an error naming LLVMExports.cmake,
-# which sends you looking in the wrong place entirely. Declaring them here is
-# the fix; they are optional because Homebrew's LLVM references neither.
-find_package(ZLIB QUIET)
-find_package(zstd QUIET)
+# Nothing to declare for zlib and zstd here, though it looks like there
+# should be. LLVMSupport as Debian and Ubuntu build it names ZLIB::ZLIB and
+# zstd::libzstd_shared in its link interface, and CMake refuses to generate
+# without those imported targets -- but LLVMConfig.cmake defines them itself,
+# from its own Findzstd.cmake, provided zlib1g-dev and libzstd-dev are
+# installed. When they are not, the error names LLVMExports.cmake and says
+# nothing about a missing package, and it cannot be caught here because the
+# failure happens inside find_package(LLVM) above. COMPILING.md lists them.
 
 # LLVM 16+ headers require C++17, so the whole project is built at C++17.
 set(CMAKE_CXX_STANDARD 17)
