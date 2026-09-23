@@ -44,6 +44,14 @@
 	// the global namespace.
 	std::string gCurrentNamespace;
 
+	// Namespaces opened with `using namespace <alias>`, and every class name
+	// declared so far. Together they let an unqualified name find a class in
+	// an opened namespace: `using namespace m` then `Vector` rather than
+	// `m::Vector`. A module is spliced in at its `using` line, so its classes
+	// are always declared before the code that opens the namespace.
+	std::set<std::string> gOpenNamespaces;
+	std::set<std::string> gDeclaredClasses;
+
 	// Inside a namespace, an unqualified class name means one of that module's
 	// own classes. The built-in and primitive names are the exception: they are
 	// global, and there is a fixed list of them.
@@ -63,11 +71,44 @@
 		if (name == "Int32") {
 			return "Int";
 		}
-		if (gCurrentNamespace.empty() || isGlobalTypeName(name) ||
-		    name.find("::") != std::string::npos) {
+		if (isGlobalTypeName(name) || name.find("::") != std::string::npos) {
 			return name;
 		}
-		return gCurrentNamespace + "::" + name;
+		if (!gCurrentNamespace.empty()) {
+			return gCurrentNamespace + "::" + name;
+		}
+
+		// In the global namespace an unqualified name may belong to a
+		// namespace that has been opened. A class declared globally wins, so
+		// opening a namespace can never change what an existing name means.
+		if (gDeclaredClasses.count(name)) {
+			return name;
+		}
+		std::string found;
+		int matches = 0;
+		for (const auto &space : gOpenNamespaces) {
+			const std::string candidate = space + "::" + name;
+			if (gDeclaredClasses.count(candidate)) {
+				found = candidate;
+				++matches;
+			}
+		}
+		if (matches == 1) {
+			return found;
+		}
+		if (matches > 1) {
+			std::cerr << "[ ERROR ] '" << name
+			          << "' is declared in more than one opened namespace; "
+			             "qualify it" << std::endl;
+		}
+		return name;
+	}
+
+	// Remembered so that `using namespace` can resolve an unqualified name.
+	static catmint::Class *rememberClass(catmint::Class *c) {
+		gDeclaredClasses.insert(c->getName());
+		c->setFile(gCurrentFile);
+		return c;
 	}
 
 	int  yylex ();
@@ -223,27 +264,23 @@ catmint_classes : catmint_class {
 // Class definition
 catmint_class : KW_CLASS IDENTIFIER features KW_END {
 			// A class declared inside a namespaced module carries that namespace.
-			$$ = new catmint::Class(@1.first_line, qualifyTypeName(*$2), "", *$3);
-			$$->setFile(gCurrentFile);
+			$$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$2), "", *$3));
 		}
 		// Inherits from other classes
 		| KW_CLASS IDENTIFIER inherits_class features KW_END {
-		  $$ = new catmint::Class(@1.first_line, qualifyTypeName(*$2), *$3, *$4);
-		  $$->setFile(gCurrentFile);
+		  $$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$2), *$3, *$4));
 
 		  delete $2; delete $3; delete $4;
 		}
 		// Inherits from other classes but is empty
 		| KW_CLASS IDENTIFIER inherits_class KW_END {
-		  $$ = new catmint::Class(@1.first_line, qualifyTypeName(*$2), *$3, std::vector<catmint::Feature*>());
-		  $$->setFile(gCurrentFile);
+		  $$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$2), *$3, std::vector<catmint::Feature*>()));
 
 		  delete $2; delete $3;
 		}
 		// Empty class
 		| KW_CLASS IDENTIFIER KW_END {
-			$$ = new catmint::Class(@1.first_line, qualifyTypeName(*$2), "", std::vector<catmint::Feature*>());
-			$$->setFile(gCurrentFile);
+			$$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$2), "", std::vector<catmint::Feature*>()));
 
 			delete $2;
 		}
@@ -1220,6 +1257,18 @@ struct UsingDirective {
   std::string alias;
 };
 
+/// The alias named by `using namespace <alias>`, or empty when the line is
+/// something else.
+std::string openNamespaceOn(const std::string &line) {
+  static const std::regex openLine(
+      R"(^[ \t]*using[ \t]+namespace[ \t]+([A-Za-z_][A-Za-z_0-9]*)[ \t\r]*$)");
+  std::smatch match;
+  if (!std::regex_match(line, match, openLine)) {
+    return std::string();
+  }
+  return match[1].str();
+}
+
 UsingDirective usingDirectiveOn(const std::string &line) {
   static const std::regex usingLine(
       R"(^[ \t]*using[ \t]+([A-Za-z_][A-Za-z_0-9]*)([ \t]+as[ \t]+([A-Za-z_][A-Za-z_0-9]*))?[ \t\r]*$)");
@@ -1251,6 +1300,133 @@ std::string findModule(const std::string &name, const std::string &fromDir) {
     }
   }
   return std::string();
+}
+
+/// Rewrite `"a ${expr} b"` into `("a " + (expr) + " b")`.
+///
+/// This is a source-level rewrite, done before the lexer sees the line, so
+/// what is inside the braces is ordinary catmint parsed by the ordinary
+/// grammar: any expression may be written there, and the compiler needs no
+/// new node, no new token and no runtime support. A string with no `${` is
+/// left exactly as it was.
+///
+/// Only double-quoted strings interpolate. A single-quoted one is literal,
+/// and `\$` is a dollar sign.
+std::string interpolate(const std::string &line);
+
+/// Given the index of the `$` in a `${`, the index just past the matching
+/// `}`, or npos when the braces do not balance. Braces and quotes inside the
+/// expression are skipped, so a nested string or a brace literal does not
+/// end it early.
+size_t endOfInterpolation(const std::string &text, size_t dollar) {
+	size_t i = dollar + 2;
+	int depth = 1;
+	for (; i < text.size() && depth > 0; ++i) {
+		if (text[i] == '\\' && i + 1 < text.size()) { ++i; continue; }
+		if (text[i] == '"' || text[i] == '\'') {
+			const char quote = text[i];
+			for (++i; i < text.size() && text[i] != quote; ++i) {
+				if (text[i] == '\\' && i + 1 < text.size()) ++i;
+			}
+			continue;
+		}
+		if (text[i] == '{') ++depth;
+		else if (text[i] == '}') --depth;
+	}
+	return depth == 0 ? i : std::string::npos;
+}
+
+/// The index of the `"` that closes the string opened at \p quote, skipping
+/// escapes and whole `${...}` groups, or npos when it is never closed.
+size_t endOfString(const std::string &text, size_t quote) {
+	for (size_t i = quote + 1; i < text.size(); ++i) {
+		if (text[i] == '\\' && i + 1 < text.size()) { ++i; continue; }
+		if (text[i] == '$' && i + 1 < text.size() && text[i + 1] == '{') {
+			size_t after = endOfInterpolation(text, i);
+			if (after == std::string::npos) return std::string::npos;
+			i = after - 1;
+			continue;
+		}
+		if (text[i] == '"') return i;
+	}
+	return std::string::npos;
+}
+
+std::string interpolate(const std::string &line) {
+	std::string out;
+	out.reserve(line.size() + 16);
+
+	for (size_t i = 0; i < line.size(); ++i) {
+		// Outside a string, '#' begins a comment that runs to end of line.
+		if (line[i] == '#') {
+			out.append(line, i, std::string::npos);
+			return out;
+		}
+		if (line[i] == '\'') {
+			// A single-quoted string is literal, escapes and all.
+			size_t j = i + 1;
+			while (j < line.size() && line[j] != '\'') {
+				if (line[j] == '\\' && j + 1 < line.size()) ++j;
+				++j;
+			}
+			out.append(line, i, std::min(j + 1, line.size()) - i);
+			i = j;
+			continue;
+		}
+		if (line[i] != '"') {
+			out.push_back(line[i]);
+			continue;
+		}
+
+		// A line whose quotes do not balance is left alone rather than
+		// half-rewritten; the parser will report it.
+		size_t end = endOfString(line, i);
+		if (end == std::string::npos) {
+			out.append(line, i, std::string::npos);
+			return out;
+		}
+
+		const std::string body = line.substr(i + 1, end - i - 1);
+		if (body.find("${") == std::string::npos) {
+			out.append(line, i, end - i + 1);
+			i = end;
+			continue;
+		}
+
+		// An empty literal piece at each end costs nothing and means the
+		// result is a String even when the whole content is one expression.
+		std::string rewritten = "(\"";
+		for (size_t j = 0; j < body.size(); ++j) {
+			if (body[j] == '\\' && j + 1 < body.size()) {
+				rewritten.push_back(body[j]);
+				rewritten.push_back(body[j + 1]);
+				++j;
+				continue;
+			}
+			if (body[j] != '$' || j + 1 >= body.size() || body[j + 1] != '{') {
+				rewritten.push_back(body[j]);
+				continue;
+			}
+
+			size_t after = endOfInterpolation(body, j);
+			if (after == std::string::npos) {
+				rewritten.append(body, j, std::string::npos);
+				break;
+			}
+
+			// Recurse, so a string inside an interpolation interpolates too.
+			const std::string expression =
+				interpolate(body.substr(j + 2, after - j - 3));
+			rewritten += "\" + (" + expression + ") + \"";
+			j = after - 1;
+		}
+		rewritten += "\")";
+
+		out += rewritten;
+		i = end;
+	}
+
+	return out;
 }
 
 void emitLineDirective(std::ostringstream &out, int line,
@@ -1329,9 +1505,17 @@ bool expandFile(const std::string &path, std::ostringstream &out,
   while (std::getline(in, line)) {
     ++lineNumber;
 
+    const std::string opened = openNamespaceOn(line);
+    if (!opened.empty()) {
+      // A directive rather than a splice: nothing is included, the parser is
+      // simply told that unqualified names may come from here.
+      out << "#open " << opened << "\n";
+      continue;
+    }
+
     UsingDirective directive = usingDirectiveOn(line);
     if (directive.module.empty()) {
-      out << line << "\n";
+      out << interpolate(line) << "\n";
       continue;
     }
 

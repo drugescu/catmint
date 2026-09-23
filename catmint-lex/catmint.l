@@ -5,8 +5,11 @@
 #include <cstdlib>
 #include <string>
 
+#include <set>
+
 extern std::string gCurrentFile;
 extern std::string gCurrentNamespace;
+extern std::set<std::string> gOpenNamespaces;
 
 void countColumns();
 static std::string decodeEscapes(const std::string &text);
@@ -34,6 +37,15 @@ static int gColumnNumber = 1;
 		gCurrentNamespace = (directiveNs[0] == '-' && directiveNs[1] == '\0')
 		                        ? std::string()
 		                        : std::string(directiveNs);
+	}
+	gColumnNumber = 1;
+}
+
+  /* `using namespace m`: unqualified names may now come from m. */
+^[ \t]*"#open"[ \t]+[A-Za-z_][A-Za-z_0-9]*[ \t]*\r?\n {
+	char space[256] = {0};
+	if (sscanf(yytext, " #open %255s", space) == 1) {
+		gOpenNamespaces.insert(std::string(space));
 	}
 	gColumnNumber = 1;
 }
@@ -187,6 +199,9 @@ static std::string decodeEscapes(const std::string &text) {
 		case '\\': out.push_back('\\'); break;
 		case '"':  out.push_back('"');  break;
 		case '\'': out.push_back('\''); break;
+		/* \$ is a dollar sign, so a string can contain one without starting
+		   an interpolation. */
+		case '$':  out.push_back('$');  break;
 		/* An unknown escape keeps both characters, so nothing is silently lost. */
 		default:
 			out.push_back('\\');

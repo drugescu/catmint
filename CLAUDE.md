@@ -334,6 +334,23 @@ only a debug map in the executable; compiling and linking in one command
 would delete the object first, which is why `clang -g one.c -o one` also
 produces an executable a debugger cannot read.
 
+String interpolation is a source rewrite in the preprocessor: `"a ${e} b"`
+becomes `("a " + (e) + " b")` before the lexer sees the line, so what is
+inside the braces is ordinary catmint parsed by the ordinary grammar, and the
+compiler gained no node, no token and no runtime support for it. It recurses,
+so a string inside an interpolation interpolates too; `\$` is a dollar sign;
+single-quoted strings are literal. A string with no `${` passes through
+untouched, which is why no existing test changed.
+
+`using namespace m` opens a namespace so its classes can be named without
+the prefix. The preprocessor turns it into an `#open` directive, the lexer
+records it, and `qualifyTypeName` resolves an unqualified name against the
+classes declared so far -- a module is spliced in at its `using` line, so its
+classes are always declared before the code that opens it. A class declared
+globally always wins, and a name two opened namespaces both declare is an
+error rather than a guess. It does not work under `--separate`, where the
+module is never spliced in and there is nothing to resolve against.
+
 `static def` declares a method with no receiver: it gets no virtual table
 slot and is called on the class, `Geometry.square(7)`. A call whose receiver
 is a bare name is a static call when that name is a class and *not* a

@@ -1,0 +1,56 @@
+# String interpolation: "${expression}" inside a double-quoted string.
+
+class Point
+  Int x
+  Int y
+  constructor(Int a, Int b):
+    x = a
+    y = b
+  end
+  def Int sum:
+    return x + y
+  end
+end
+
+class Main from IO
+  def Int twice(Int n):
+    return n * 2
+  end
+
+  def main:
+    Int n = 7
+    String who = "world"
+
+    out("hello ${who}\n")
+    out("n is ${n}\n")
+
+    # Any expression, because the rewrite happens before the parser and what
+    # is inside the braces is ordinary catmint.
+    out("n doubled is ${twice(n)}\n")
+    out("arithmetic ${n * 3 + 1}\n")
+
+    Point p = new Point(3, 4)
+    out("point ${p.x},${p.y} sums to ${p.sum()}\n")
+
+    # Several in one string, and one at each end.
+    out("${n}-${who}-${n}\n")
+
+    # A string with no interpolation is untouched, and a dollar on its own
+    # is just a dollar.
+    out("plain string\n")
+    out("costs \$5\n")
+    out("brace } and { alone\n")
+
+    # Nested quotes inside the expression.
+    out("len ${"abc".len()}\n")
+
+    # Single quotes do not interpolate.
+    out('literal ${n}')
+    out("\n")
+
+    # Interpolation works anywhere a string does, including as a receiver.
+    out("upper ${who} -> ${"${who}".upper()}\n")
+    Int width = "${who}!".len()
+    out("width ${width}\n")
+  end
+end

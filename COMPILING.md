@@ -144,6 +144,14 @@ Things worth knowing, because they are not obvious:
   declared return type. There is no limit on the number of parameters. The
   paren-less form the README shows, `def show Int a, Int b:`, is not
   implemented; use parentheses.
+- **`"${...}"` puts an expression in a string.** `out("hello ${name}, you
+  are ${age} today\n")`. Anything that can be written as an expression can go
+  in the braces, including a call or another string. `\$` is a literal dollar
+  sign, and a single-quoted string does not interpolate.
+- **`using namespace m` drops the prefix.** After `using math as m` you write
+  `m::Vector`; add `using namespace m` and `Vector` means the same class. A
+  class of your own with that name wins, and a name that two opened
+  namespaces both declare has to stay qualified.
 - **Memory looks after itself, without a garbage collector.** The compiler
   counts references: storing an object keeps it, and letting the variable go
   out of scope releases it. Anything an expression makes and nobody names is
