@@ -39,7 +39,7 @@ void SymbolTable::insert(TreeNode *v, const std::vector<std::string> &name) {
   }
 }
 
-TreeNode *SymbolTable::lookup(const std::string &name) const {
+TreeNode *SymbolTable::lookup(const std::string &name, TreeNode *at) const {
   assert(!symbolTable.empty() && "lookup on an empty symbol table");
 
   // do a bit of parsing in case we have self.x
@@ -55,7 +55,7 @@ TreeNode *SymbolTable::lookup(const std::string &name) const {
     }
   }
 
-  throw UnknownVariableException(name);
+  throw UnknownVariableException(name, at);
 }
 
 bool SymbolTable::contains(const std::string &name) const {

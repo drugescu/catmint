@@ -37,7 +37,8 @@ public:
   ~TypeTable();
 
   /// \brief Get the type corresponding to \p name or throw an exception
-  Type *getType(const std::string &name) const;
+  /// \p at is the node that named the type, so that "not found" can say where.
+  Type *getType(const std::string &name, TreeNode *at = nullptr) const;
 
   Type *getIntType() const;
   /// \brief Width in bits of an integer type, or 0 when \p name is not one.

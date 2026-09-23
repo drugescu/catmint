@@ -170,7 +170,7 @@ bool SemanticAnalysis::visit(Class *c) {
 /// is made.
 void SemanticAnalysis::checkImplementedInterfaces(Class *c) {
   for (const auto &name : c->getInterfaces()) {
-    auto interfaceType = typeTable.getType(name);
+    auto interfaceType = typeTable.getType(name, c);
     auto interfaceClass = interfaceType->getClass();
     if (!interfaceClass || !interfaceClass->isInterface()) {
       throw SemanticException("'" + c->getName() + "' says it does '" + name +
@@ -264,7 +264,7 @@ void SemanticAnalysis::checkFeatures(Class *c) {
 bool SemanticAnalysis::visit(Feature *f) { return ASTVisitor::visit(f); }
 
 bool SemanticAnalysis::visit(Attribute *a) {
-  auto attrType = typeTable.getType(a->getType());
+  auto attrType = typeTable.getType(a->getType(), a);
   // Record the type on the node: a Symbol that resolves to this attribute (or
   // to this method parameter) asks the type table for the definition's type.
   typeTable.setType(a, attrType);
@@ -340,7 +340,7 @@ bool SemanticAnalysis::visit(Method *m) {
     symbolTable.insert(param);
   }
 
-  auto returnType = typeTable.getType(m->getReturnType());
+  auto returnType = typeTable.getType(m->getReturnType(), m);
   auto body = m->getBody();
   if (body) {
     if (!visit(body)) {
@@ -365,7 +365,7 @@ bool SemanticAnalysis::visit(Method *m) {
 
 bool SemanticAnalysis::visit(FormalParam *param) {
   symbolTable.insert(param);
-  typeTable.setType(param, typeTable.getType(param->getType()));
+  typeTable.setType(param, typeTable.getType(param->getType(), param));
   return true;
 }
 
@@ -387,7 +387,7 @@ bool SemanticAnalysis::visit(NullConstant *nc) {
 }
 
 bool SemanticAnalysis::visit(Symbol *s) {
-  auto who = symbolTable.lookup(s->getName());
+  auto who = symbolTable.lookup(s->getName(), s);
   typeTable.setType(s, typeTable.getType(who));
   definitionsMap[s] = who;
 
@@ -424,7 +424,7 @@ bool SemanticAnalysis::visit(Assignment *a) {
     return false;
   }
 
-  auto lhs = symbolTable.lookup(a->getSymbol());
+  auto lhs = symbolTable.lookup(a->getSymbol(), a);
 
   auto lhsType = typeTable.getType(lhs);
   auto rhsType = typeTable.getType(rhs);
@@ -576,7 +576,7 @@ bool SemanticAnalysis::visit(Dispatch *d) {
   if (auto staticClass = staticReceiverClass(d)) {
     auto method = typeTable.getMethod(staticClass, d->getName());
     if (!method || !method->isStatic()) {
-      throw MethodNotFoundException(d->getName(), staticClass);
+      throw MethodNotFoundException(d->getName(), staticClass, d);
     }
     if (!checkDispatchArgs(d, method)) {
       return false;
@@ -619,7 +619,7 @@ bool SemanticAnalysis::visit(Dispatch *d) {
   std::cout << "Getting class of object at " << obj->getLineNumber() << "\n";
   auto objClass = objType->getClass();
   if (!objClass) {
-    throw DispatchOnInvalidObjException(d->getName(), objType);
+    throw DispatchOnInvalidObjException(d->getName(), objType, d);
   }
   std::cout << ">> Class is : " << objClass->getName() << "\n";
 
@@ -634,12 +634,12 @@ bool SemanticAnalysis::visit(Dispatch *d) {
       {}
       else
       {
-        throw MethodNotFoundException(d->getName(), objClass);
+        throw MethodNotFoundException(d->getName(), objClass, d);
       }
       
     }
     else
-      throw MethodNotFoundException(d->getName(), objClass);
+      throw MethodNotFoundException(d->getName(), objClass, d);
   }
 
   std::cout << "  Checking dispatch args... \n";
@@ -679,7 +679,7 @@ bool SemanticAnalysis::visit(StaticDispatch *d) {
   auto castedType = typeTable.getType(d->getType());
   auto castedClass = castedType->getClass();
   if (!castedClass) {
-    throw DispatchOnInvalidObjException(d->getName(), castedType);
+    throw DispatchOnInvalidObjException(d->getName(), castedType, d);
   }
 
   // 'expr is Type' is a type test, not a call: any object may be asked about
@@ -690,12 +690,12 @@ bool SemanticAnalysis::visit(StaticDispatch *d) {
   }
 
   if (!typeTable.isEqualOrImplicitlyConvertibleTo(objType, castedType)) {
-    throw DispatchOnInvalidObjException(d->getName(), objType, castedType);
+    throw DispatchOnInvalidObjException(d->getName(), objType, castedType, d);
   }
 
   auto method = typeTable.getMethod(castedClass, d->getName());
   if (!method) {
-    throw MethodNotFoundException(d->getName(), castedClass);
+    throw MethodNotFoundException(d->getName(), castedClass, d);
   }
 
   if (!checkDispatchArgs(d, method)) {
@@ -766,12 +766,12 @@ bool SemanticAnalysis::visit(FieldAccess *fa) {
   auto objType = typeTable.getType(object);
   auto objClass = objType->getClass();
   if (!objClass) {
-    throw DispatchOnInvalidObjException(fa->getField(), objType);
+    throw DispatchOnInvalidObjException(fa->getField(), objType, fa);
   }
 
   auto attribute = typeTable.getAttribute(objClass, fa->getField());
   if (!attribute) {
-    throw AttributeNotFoundException(fa->getField(), objClass);
+    throw AttributeNotFoundException(fa->getField(), objClass, fa);
   }
 
   auto fieldType = typeTable.getType(attribute->getType());
@@ -1126,7 +1126,7 @@ bool SemanticAnalysis::visit(SpawnStatement *s) {
 
   auto method = typeTable.getMethod(target, call->getName());
   if (!method) {
-    throw MethodNotFoundException(call->getName(), target);
+    throw MethodNotFoundException(call->getName(), target, call);
   }
 
   auto parameters = std::distance(method->begin(), method->end());
@@ -1193,7 +1193,7 @@ bool SemanticAnalysis::visit(LocalDefinition *local) {
                                  ? typeTable.getType(local->getInit())
                                  : typeTable.getVoidType());
   } else {
-    typeTable.setType(local, typeTable.getType(local->getType()));
+    typeTable.setType(local, typeTable.getType(local->getType(), local));
   }
 
   return true;

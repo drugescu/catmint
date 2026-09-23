@@ -284,9 +284,9 @@ bool TypeTable::isBuiltinClass(Class *c) const {
   return c && c->isBuiltin();
 }
 
-Type *TypeTable::getType(const std::string &name) const {
+Type *TypeTable::getType(const std::string &name, TreeNode *at) const {
   if (!typeTable.count(name)) {
-    throw TypeNotFoundException(name);
+    throw TypeNotFoundException(name, at);
   }
   return typeTable.at(name);
 }
