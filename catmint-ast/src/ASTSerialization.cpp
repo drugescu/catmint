@@ -65,6 +65,7 @@ const auto NewObjectNodeType = "NewObject";
 const auto FieldAccessNodeType = "FieldAccess";
 const auto TryStatementNodeType = "TryStatement";
 const auto ThrowStatementNodeType = "ThrowStatement";
+const auto DeferStatementNodeType = "DeferStatement";
 const auto Handler = "Handler";
 const auto IfStatementNodeType = "IfStatement";
 const auto WhileStatementNodeType = "WhileStatement";
@@ -677,6 +678,19 @@ bool ASTSerializer::visit(ThrowStatement *Throw) {
   return visit(value);
 }
 
+bool ASTSerializer::visit(DeferStatement *Defer) {
+  assert(isValid() && "Invalid serializer");
+  assert(Defer && "Expected non-null defer statement");
+
+  CreateJSONObject deferObject(*this, keys::DeferStatementNodeType, Defer);
+  writePair(keys::LineNumber, Defer->getLineNumber());
+
+  writer->Key(keys::Object);
+  auto action = Defer->getAction();
+  assert(action && "Defer without an action");
+  return visit(action);
+}
+
 bool ASTSerializer::visit(ReturnExpression *R) {
   assert(isValid() && "Invalid serializer");
   assert(R && "Expected non-null return expression");
@@ -1093,6 +1107,8 @@ ASTDeserializer::parseExpression(rapidjson::Value &tree) {
     return parseTryStatement(tree);
   } else if (nodeType == keys::ThrowStatementNodeType) {
     return parseThrowStatement(tree);
+  } else if (nodeType == keys::DeferStatementNodeType) {
+    return parseDeferStatement(tree);
   } else if (nodeType == keys::IfStatementNodeType) {
     return parseIfStatement(tree);
   } else if (nodeType == keys::WhileStatementNodeType) {
@@ -1541,6 +1557,20 @@ ASTDeserializer::parseThrowStatement(rapidjson::Value &tree) {
 
   return createNode<ThrowStatement>(tree, parseLineNumber(tree),
                                     std::move(value));
+}
+
+std::unique_ptr<DeferStatement>
+ASTDeserializer::parseDeferStatement(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::DeferStatementNodeType &&
+         "Expected defer statement object");
+
+  assert(tree.HasMember(keys::Object) && "Defer without an action");
+  auto action = parseExpression(tree[keys::Object]);
+  assert(action && "Expected non-null expression node");
+
+  return createNode<DeferStatement>(tree, parseLineNumber(tree),
+                                    std::move(action));
 }
 
 std::unique_ptr<IfStatement>

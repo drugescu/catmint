@@ -612,7 +612,7 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
 
   auto *SelfSlot = createEntryAlloca(Ptr, "self");
   Builder.CreateStore(CI->Init->getArg(0), SelfSlot);
-  Scopes.back()["self"] = {SelfSlot, Name};
+  Scopes.back().Locals["self"] = {SelfSlot, Name};
 
   // Chain to the parent initialiser (Object_init / IO_init / String_init are
   // provided by the runtime; user parents get the one we generate).
@@ -733,7 +733,7 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
   if (!M->isStatic()) {
     auto *SelfSlot = createEntryAlloca(Ptr, "self");
     Builder.CreateStore(F->getArg(0), SelfSlot);
-    Scopes.back()["self"] = {SelfSlot, CI->AST->getName()};
+    Scopes.back().Locals["self"] = {SelfSlot, CI->AST->getName()};
     Idx = 1;
   }
 
@@ -748,7 +748,7 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
       storeReference(F->getArg(Idx), Slot, /*SlotIsLive=*/false);
     else
       Builder.CreateStore(F->getArg(Idx), Slot);
-    Scopes.back()[P->getName()] = {Slot, P->getType()};
+    Scopes.back().Locals[P->getName()] = {Slot, P->getType()};
     ++Idx;
   }
 
@@ -881,8 +881,8 @@ llvm::AllocaInst *IRGenerator::createEntryAlloca(llvm::Type *Ty,
 
 IRGenerator::Local *IRGenerator::findLocal(const std::string &Name) {
   for (auto It = Scopes.rbegin(); It != Scopes.rend(); ++It) {
-    auto Found = It->find(Name);
-    if (Found != It->end())
+    auto Found = It->Locals.find(Name);
+    if (Found != It->Locals.end())
       return &Found->second;
   }
   return nullptr;
@@ -964,7 +964,7 @@ void IRGenerator::releaseScopes(unsigned Count) {
   unsigned Seen = 0;
   for (auto It = Scopes.rbegin(); It != Scopes.rend() && Seen < Count;
        ++It, ++Seen) {
-    for (auto &Entry : *It) {
+    for (auto &Entry : It->Locals) {
       if (Entry.first == strings::Self)
         continue;
       if (!isReferenceTypeName(Entry.second.TypeName))
@@ -1044,6 +1044,7 @@ void IRGenerator::emitCleanupAndReturn(llvm::Value *RV) {
   if (Reference)
     emitRetain(RV);
 
+  runDeferred(static_cast<unsigned>(Scopes.size()));
   releaseScopes(static_cast<unsigned>(Scopes.size()));
   popOpenHandlers();
   // Every pool open around this return is closed here. Each close is
@@ -1161,6 +1162,7 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
   if (dynamic_cast<ForStatement *>(E))          return strings::Void;
   if (dynamic_cast<TryStatement *>(E))          return strings::Void;
   if (dynamic_cast<ThrowStatement *>(E))        return strings::Void;
+  if (dynamic_cast<DeferStatement *>(E))        return strings::Void;
 
   if (auto *D = dynamic_cast<Dispatch *>(E)) {
     if (ClassInfo *Target = staticReceiver(D)) {
@@ -1300,6 +1302,7 @@ llvm::Value *IRGenerator::emit(Expression *E) {
   if (auto *N = dynamic_cast<FieldAccess *>(E))      return emitFieldAccess(N);
   if (auto *N = dynamic_cast<TryStatement *>(E))     return emitTry(N);
   if (auto *N = dynamic_cast<ThrowStatement *>(E))   return emitThrow(N);
+  if (auto *N = dynamic_cast<DeferStatement *>(E))   return emitDefer(N);
   if (auto *N = dynamic_cast<Cast *>(E))             return emitCast(N);
   if (auto *N = dynamic_cast<Substring *>(E))        return emitSubstring(N);
   if (auto *N = dynamic_cast<Symbol *>(E))           return emitSymbol(N);
@@ -1325,6 +1328,9 @@ llvm::Value *IRGenerator::emitBlock(Block *B) {
       emitRetain(Last);
       emitPoolAdd(Last);
     }
+    // Deferred work first: it almost always uses one of the locals that the
+    // release below is about to let go of.
+    runDeferred(1);
     releaseScopes(1);
   }
   Scopes.pop_back();
@@ -1478,7 +1484,7 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
     } else {
       Builder.CreateStore(Builder.getInt32(0), Slot);
     }
-    Scopes.back()[Name] = {Slot, DeclaredType};
+    Scopes.back().Locals[Name] = {Slot, DeclaredType};
     Slots.push_back(Slot);
   }
 
@@ -1865,7 +1871,7 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
                                : OverString ? strings::String
                                             : strings::Int;
   auto *VarSlot = createEntryAlloca(lowerType(ElemType), IterSym->getName());
-  Scopes.back()[IterSym->getName()] = {VarSlot, ElemType};
+  Scopes.back().Locals[IterSym->getName()] = {VarSlot, ElemType};
   // Cleared before the loop, so the first iteration's store has something
   // defined to release and the last iteration's value is released at the end.
   if (isReferenceTypeName(ElemType))
@@ -1916,6 +1922,7 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
   Builder.CreateBr(CondBB);
 
   Builder.SetInsertPoint(EndBB);
+  runDeferred(1);
   releaseScopes(1);
   Scopes.pop_back();
   return nullptr;
@@ -2316,7 +2323,7 @@ llvm::Value *IRGenerator::emitTry(TryStatement *T) {
   Scopes.emplace_back();
   storeReference(Builder.CreateCall(CaughtFn, {}, "caught"), CaughtSlot,
                  /*SlotIsLive=*/true);
-  Scopes.back()[T->getCatchName()] = {CaughtSlot, strings::Object};
+  Scopes.back().Locals[T->getCatchName()] = {CaughtSlot, strings::Object};
   (void)emit(T->getHandler());
   Scopes.pop_back();
   if (!blockTerminated())
@@ -2324,6 +2331,29 @@ llvm::Value *IRGenerator::emitTry(TryStatement *T) {
 
   Builder.SetInsertPoint(EndBB);
   return nullptr;
+}
+
+/// Registering a defer emits nothing here: the expression is kept and
+/// emitted at each point the enclosing block can be left.
+llvm::Value *IRGenerator::emitDefer(DeferStatement *D) {
+  if (Scopes.empty())
+    fail(D->getLineNumber(), "'defer' outside any scope");
+  Scopes.back().Deferred.push_back(D->getAction());
+  return nullptr;
+}
+
+void IRGenerator::runDeferred(unsigned Count) {
+  unsigned Seen = 0;
+  for (auto It = Scopes.rbegin(); It != Scopes.rend() && Seen < Count;
+       ++It, ++Seen) {
+    // Last registered runs first, as everywhere else that has defer.
+    for (auto Action = It->Deferred.rbegin(); Action != It->Deferred.rend();
+         ++Action) {
+      if (blockTerminated())
+        return;
+      (void)emit(*Action);
+    }
+  }
 }
 
 llvm::Value *IRGenerator::emitThrow(ThrowStatement *T) {

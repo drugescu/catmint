@@ -7,6 +7,7 @@
 #include "Block.h"
 #include "Cast.h"
 #include "Class.h"
+#include "DeferStatement.h"
 #include "Dispatch.h"
 #include "Expression.h"
 #include "FieldAccess.h"

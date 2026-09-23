@@ -334,6 +334,16 @@ only a debug map in the executable; compiling and linking in one command
 would delete the object first, which is why `clang -g one.c -o one` also
 produces an executable a debugger cannot read.
 
+`defer <expression>` runs the expression where the enclosing **block** ends,
+on every path out of it, last registered first. It is emitted at those points
+rather than recorded, so it costs nothing at run time and the runtime knows
+nothing about it. Two consequences worth knowing, both documented for
+programmers in `COMPILING.md`: the expression is evaluated when the block
+ends, not where the `defer` is written, so it sees the final values; and a
+`throw` passing through does not run it, because the jump leaves no
+opportunity to. Deferred work runs before the scope's locals are released,
+since a deferred call almost always uses one of them.
+
 String interpolation is a source rewrite in the preprocessor: `"a ${e} b"`
 becomes `("a " + (e) + " b")` before the lexer sees the line, so what is
 inside the braces is ordinary catmint parsed by the ordinary grammar, and the

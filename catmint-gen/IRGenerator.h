@@ -174,7 +174,13 @@ private:
     llvm::Value *Addr;
     std::string TypeName;
   };
-  std::vector<std::map<std::string, Local>> Scopes;
+  /// One scope: the names it declares, and the expressions a `defer` in it
+  /// asked to run where it ends.
+  struct Scope {
+    std::map<std::string, Local> Locals;
+    std::vector<Expression *> Deferred;
+  };
+  std::vector<Scope> Scopes;
 
   ClassInfo *CurrentClass = nullptr;
   llvm::Function *CurrentFunction = nullptr;
@@ -287,6 +293,12 @@ private:
   llvm::Value *emitFieldAccess(FieldAccess *FA);
   llvm::Value *emitTry(TryStatement *T);
   llvm::Value *emitThrow(ThrowStatement *T);
+  llvm::Value *emitDefer(DeferStatement *D);
+  /// Emit the deferred expressions of the innermost \p Count scopes, newest
+  /// scope first and, within a scope, last registered first. Run before the
+  /// scope's locals are released, because a deferred call almost always uses
+  /// one of them.
+  void runDeferred(unsigned Count);
   /// Every alloca in \p F is accessed volatilely from here on. A function
   /// containing a try needs this: longjmp returns to the middle of the
   /// frame, and a value the optimiser had promoted to a register would be

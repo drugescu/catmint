@@ -1,0 +1,20 @@
+working on job 4
+closing job 4
+result 8
+too big
+closing job 99
+result -1
+--- order ---
+body
+first
+second
+third
+--- loop ---
+pass 0
+end of pass
+pass 1
+end of pass
+--- timing ---
+n in the body is 42
+n at the end is 42
+done

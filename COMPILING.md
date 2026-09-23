@@ -144,6 +144,14 @@ Things worth knowing, because they are not obvious:
   declared return type. There is no limit on the number of parameters. The
   paren-less form the README shows, `def show Int a, Int b:`, is not
   implemented; use parentheses.
+- **`defer <expression>` moves cleanup to the end of the block.** Write
+  `defer file.close()` next to the open, and it runs however the block is
+  left, including through a `return`. Several of them run in reverse order,
+  so the first thing opened is the last thing closed. Two differences from
+  Go's: it is scoped to the **block**, not the function, so a loop body runs
+  its own defers every time round; and the expression is evaluated when the
+  block ends rather than where you wrote it, so it sees the final values of
+  the variables it names. A `throw` passing through does not run it.
 - **`"${...}"` puts an expression in a string.** `out("hello ${name}, you
   are ${age} today\n")`. Anything that can be written as an expression can go
   in the braces, including a call or another string. `\$` is a literal dollar

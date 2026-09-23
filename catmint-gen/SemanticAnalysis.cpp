@@ -899,6 +899,20 @@ bool SemanticAnalysis::visit(ThrowStatement *t) {
   return true;
 }
 
+/// The action is checked where it is written, and emitted where the block
+/// ends. Nothing about the type matters: its value is discarded.
+bool SemanticAnalysis::visit(DeferStatement *d) {
+  auto action = d->getAction();
+  if (!action) {
+    throw MissingOperandException(d);
+  }
+  if (!visit(action)) {
+    return false;
+  }
+  typeTable.setType(d, typeTable.getVoidType());
+  return true;
+}
+
 bool SemanticAnalysis::visit(ReturnExpression *r) {
   // A return carries the type of the expression it returns, so that the
   // enclosing block -- and through it the method's return-type check -- sees

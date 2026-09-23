@@ -154,7 +154,7 @@
 %token KW_USING KW_IS
 %token KW_CONSTRUCTOR KW_NEW
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
-%token KW_TRY KW_CATCH KW_THROW
+%token KW_TRY KW_CATCH KW_THROW KW_DEFER
 
 %token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE OP_NOT OP_AND OP_OR OP_XOR OP_LSHIFT OP_RSHIFT
 %token OP_ANDALSO OP_ORELSE
@@ -201,6 +201,7 @@ expression
 	    for_iterator_expression
 	  try_expression
 	  throw_expression
+	  defer_expression
 
 %type <vecstr> id_list
 %type <expressions> dispatch_arguments vector_arguments
@@ -1009,7 +1010,17 @@ void_expression
   | for_expression
   | try_expression
   | throw_expression
+  | defer_expression
   ;
+
+// `defer <expression>` runs the expression where the enclosing block ends,
+// on every path out of it. It is emitted there rather than recorded, so it
+// costs nothing at run time and needs nothing from the runtime.
+defer_expression
+    : KW_DEFER value_expression {
+		$$ = new catmint::DeferStatement(@1.first_line, Expression($2));
+	}
+    ;
 
 // try: <block> catch <name>: <block> end
 //
