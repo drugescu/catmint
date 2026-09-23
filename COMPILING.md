@@ -36,6 +36,34 @@ checked-in IR when there is none. With a compiler it rebuilds from the `.c`
 and refreshes the checked-in copy whenever the source is newer, so if you
 edit `runtime.c`, commit the regenerated `runtime.ll` alongside it.
 
+### On Linux
+
+Distributions name the binary after the version, so there is often no plain
+`llvm-config` on `PATH`; every part of the build takes `LLVM_CONFIG` to say
+where it is. `zlib1g-dev` is not optional: `LLVMSupport` as Debian and Ubuntu
+build it names `ZLIB::ZLIB` in its link interface, and CMake refuses to
+generate without it, with an error that points at `LLVMExports.cmake` rather
+than at the cause.
+
+```sh
+sudo apt-get install flex bison cmake llvm-18-dev clang-18 zlib1g-dev
+export PATH=/usr/lib/llvm-18/bin:$PATH
+make -C catmint-ast -f GNUmakefile build LLVM_CONFIG=/usr/bin/llvm-config-18
+make -C catmint-lex  LLVM_CONFIG=/usr/bin/llvm-config-18
+make -C catmint-gen  LLVM_CONFIG=/usr/bin/llvm-config-18
+```
+
+Verified: a clean checkout builds and passes all 50 code generation tests and
+all 11 parser tests on Ubuntu 24.04 against LLVM 18.
+
+**The checked-in `runtime.ll` is tied to the LLVM that wrote it.** It exists
+so that a C compiler is optional, but the textual IR format changes between
+LLVM major versions -- `captures(none)` replaced `nocapture` in LLVM 21 -- so
+a copy written by LLVM 22 is a parse error on LLVM 18. The file says which
+LLVM wrote it on its first line, and `build-runtime.sh` checks it can be read
+before falling back to it. With a C compiler present none of this matters:
+`runtime.c` is rebuilt every time.
+
 ## 2. Build the compiler
 
 Three components, built in dependency order. The second and third build the

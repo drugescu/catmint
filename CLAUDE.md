@@ -626,6 +626,37 @@ means `Void`), and lists and dictionaries.
 `catmint-gen/ASTCodeGen.cpp.old` and `include/ASTCodeGen.h` are a superseded
 earlier attempt, not built and not included by anything.
 
+## Building on Linux
+
+Verified, not assumed: a clean checkout builds and passes everything on
+Ubuntu 24.04 against LLVM 18, in a container. Three things about that were
+broken until it was tried, all of them invisible on macOS.
+
+- **Every part of the build takes `LLVM_CONFIG`**, `catmint-ast` included.
+  Its `GNUmakefile` used to hardcode the Homebrew path and fall back to a
+  bare `llvm-config`, which distributions do not ship -- Ubuntu names it
+  `llvm-config-18`.
+- **`find_package(ZLIB)` is needed in `catmint-ast/CMakeLists.txt`**, because
+  `LLVMSupport` as Debian builds it names `ZLIB::ZLIB` in its link interface
+  and CMake will not generate without the imported target. The error names
+  `LLVMExports.cmake` and sends you looking in the wrong place.
+- **The checked-in `runtime.ll` only reads on an LLVM close to the one that
+  wrote it.** The IR text format is not stable across major versions;
+  `captures(none)` replaced `nocapture` in LLVM 21. The file carries a stamp
+  saying what wrote it and `build-runtime.sh` checks before falling back.
+
+`./portability.sh` answers what can be answered without another machine:
+object layouts agreeing on every target (asserted at compile time, nothing
+runs), no target pinning in the checked-in runtime, and both it and a
+generated program compiling for x86-64 and arm64, Linux and macOS.
+
+**LeakSanitizer runs by default on Linux and not on macOS**, which is why
+`./catmintc --asan` is quiet here and not there. It found a real bug --
+`emitProgramMain` allocated the `Main` object without `noteAllocation`, so
+the pool erased itself and every program leaked one object at exit -- and it
+reports the shallow-free limitation on 5 of the 50 tests, which is why CI
+sets `detect_leaks=0` on the gating step and reports the count separately.
+
 ## Traps that have already cost time
 
 Each of these produced a crash or a silent miscompile during development.
