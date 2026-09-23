@@ -301,14 +301,19 @@ is only worth it if Windows becomes a first-class target.
 
 ## Phase 4 — leftovers
 
-- **Follow reference fields when freeing** (~80 lines). Promoted to the top
-  of this list by Phase 3, which measured what it costs: 5 of the 50 tests
-  leak at exit, every byte of it a reference held in a user class's field,
-  because the run-time type information does not say which fields are
-  references. The generator already knows; it would emit a list of offsets
-  and `object_free` would walk it. Another change to the RTTI layout, which
-  has been done twice now without incident. It is also what would let
-  LeakSanitizer become a gate on Linux rather than a report.
+- ~~**Follow reference fields when freeing**~~ **done.** The run-time type
+  information carries a list of reference-field byte offsets, ending in -1,
+  which `object_free` walks with the count held at 1 so a field pointing back
+  at the object cannot re-enter. Inherited fields come free, since a
+  subclass's layout begins with its parent's. The vtable moved to index 6,
+  the third time the record has grown.
+
+  It was worth more than the exit-time leak that prompted it: the leak grows.
+  Two hundred objects made and dropped in a loop left 400 behind before, and
+  `examples/mini.cm` finishes with 70 objects alive where it used to hold
+  131. **All 51 tests are now clean under AddressSanitizer and LeakSanitizer
+  together on Linux**, down from 11 leaking, so CI gates on leaks rather than
+  reporting them.
 - **A `Map` keyed by anything, not just String** (~130 lines of `.cmm`).
   Needs only an `Object.hash` interface, which `interface` made expressible.
   Pure library; writable whenever someone needs it.

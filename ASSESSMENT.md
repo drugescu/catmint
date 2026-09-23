@@ -223,24 +223,29 @@ literal too large for an Int is typed Int64, but `a * b` where both are Int
 stays 32-bit and overflows silently. A 64-bit computation needs a 64-bit
 operand to start from.
 
-**5. Freeing is shallow.** Releasing an object returns what a built-in owns,
-but does not follow a user class's fields, because the RTTI does not say
-which of them are references. A structure held in fields is taken apart by
-assigning over them. Reference cycles are never collected, which is the
-standing cost of counting rather than tracing.
+**5. ~~Freeing is shallow.~~ Fixed.** Releasing an object now follows its
+reference fields, from a list of byte offsets in the run-time type
+information that the generator writes down and `object_free` walks. This had
+been the largest correctness gap here: a class with a String field leaked
+that String every time an instance went away, so a loop making and dropping a
+hundred objects left a hundred behind, and `IO.allocated()` said so.
+Inherited fields come for free, since a subclass's layout begins with its
+parent's.
 
-Now measured rather than asserted. LeakSanitizer runs by default on Linux and
-not on macOS, so this was invisible until the suite was run in a Linux
-container: **5 of the 50 tests leak at exit**, between 16 and 96 bytes each,
-and every byte of it is a reference held in a user class's field. Closing it
-would need a list of reference-field offsets in the run-time type
-information, which the generator already knows, and a walk of that list in
-`object_free` -- perhaps eighty lines, and another change to the RTTI layout.
+Measured rather than asserted throughout. LeakSanitizer runs by default on
+Linux and not on macOS, so none of this was visible until the suite was built
+and run in a Linux container: **11 of the 50 tests leaked at exit**. One
+cause was a plain bug -- the generated `main` allocated the `Main` object
+without calling `noteAllocation`, so the speculative pool around it erased
+itself as unused and every program ever compiled leaked one object -- and
+fixing that took it to 5. Following reference fields took it to **0**. All 51
+tests are clean under AddressSanitizer and LeakSanitizer together, which is
+why CI now gates on it rather than reporting. `examples/mini.cm` shows what
+it was worth: the objects still alive when it finishes went from 131 to 70.
 
-The same run found a leak that *was* a bug and is now fixed: the generated
-`main` allocated the `Main` object without calling `noteAllocation`, so the
-speculative pool around it erased itself as unused and **every program ever
-compiled leaked one object at exit**. That took the count from 11 tests to 5.
+Reference cycles are still never collected, which is the standing cost of
+counting rather than tracing, and a structure can still be taken apart by
+assigning over its fields.
 
 **6. A throw leaks what the abandoned work had stored.** The jump closes the
 pools it skipped, so temporaries go back, but the scope-exit releases never

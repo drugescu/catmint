@@ -262,10 +262,16 @@ held in a variable (the allocation's, still owed to the pool, and the
 variable's). `IO.allocated()` is the live object count, which is how test 31
 proves a thousand-iteration loop returns to where it started.
 
-Freeing is shallow: it returns what a built-in owns -- a String's characters,
-a List's items, a File's handle -- but does not follow a user class's fields.
-A structure held in fields is taken apart by assigning over them, which
-releases what was there.
+**Freeing follows a class's reference fields.** The run-time type information
+carries a list of their byte offsets ending in -1, which the generator writes
+because it is the only thing that knows the layout, and `object_free` walks
+with the count held at 1 so that a field pointing back at the object cannot
+re-enter and free it twice. Inherited fields need no special case: a
+subclass's layout begins with its parent's, so `FieldIndex` already covers
+both. Until this existed a class with a String field leaked that String on
+every instance that went away -- not bytes at exit but a leak that grows.
+Reference cycles are still never collected, which is what counting rather
+than tracing costs.
 
 The whole codegen suite runs clean under AddressSanitizer, which is the check
 to repeat after touching any of this.
@@ -656,11 +662,13 @@ runs), no target pinning in the checked-in runtime, and both it and a
 generated program compiling for x86-64 and arm64, Linux and macOS.
 
 **LeakSanitizer runs by default on Linux and not on macOS**, which is why
-`./catmintc --asan` is quiet here and not there. It found a real bug --
+`./catmintc --asan` was quiet here and not there. It found two real things:
 `emitProgramMain` allocated the `Main` object without `noteAllocation`, so
-the pool erased itself and every program leaked one object at exit -- and it
-reports the shallow-free limitation on 5 of the 50 tests, which is why CI
-sets `detect_leaks=0` on the gating step and reports the count separately.
+the pool erased itself and every program leaked one object at exit; and the
+shallow freeing, which leaked a reference field on every instance that went
+away. Both are fixed, all 51 tests are clean under ASan and LSan together,
+and CI gates on it. **Run the suite on Linux after anything touching the
+memory model** -- it is the only place a leak is visible at all.
 
 ## Traps that have already cost time
 
