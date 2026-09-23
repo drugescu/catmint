@@ -72,4 +72,21 @@ Process.start and wait 5
 Process.pid 1
 Worker.wait 42
 Worker.count 1
+Bytes.len 4
+Bytes.fill 7
+Bytes.set 9
+Bytes.get 9
+Bytes.toString 4
+Bytes.slice 2
+Ints.len 3
+Ints.fill 5
+Ints.set 11
+Ints.get 11
+Floats.len 2
+Floats.fill 1.5
+Floats.set 2.5
+Floats.get 2.5
+String.toBytes 3
+File.writeBytes 3
+File.readBytes 3
 done

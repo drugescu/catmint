@@ -184,6 +184,7 @@ void TypeTable::addBuiltinClasses(Program *p) {
   declare(methods, "replace", strings::String,
           {{"from", strings::String}, {"to", strings::String}});
   declare(methods, "toFloat", strings::Float);
+  declare(methods, "toBytes", strings::Bytes);
   // Static, and so after every slot-taking method: a character code does not
   // belong to a particular String. Written String.chr(65).
   declareStatic(methods, "chr", strings::String, {{"code", strings::Int}});
@@ -215,6 +216,9 @@ void TypeTable::addBuiltinClasses(Program *p) {
   declare(methods, strings::Eof, strings::Int);
   declare(methods, "close", strings::File);
   declare(methods, "isOpen", strings::Int);
+  declare(methods, "readBytes", strings::Int, {{"buffer", strings::Bytes}});
+  declare(methods, "writeBytes", strings::Int,
+          {{"buffer", strings::Bytes}, {"count", strings::Int}});
   // These two are about a path, not about an open file.
   declareStatic(methods, "exists", strings::Int, {{"path", strings::String}});
   declareStatic(methods, "remove", strings::Int, {{"path", strings::String}});
@@ -267,6 +271,14 @@ void TypeTable::addBuiltinClasses(Program *p) {
     declare(methods, strings::Set, array.element,
             {{"index", strings::Int}, {"value", array.element}});
     declare(methods, strings::Fill, array.name, {{"value", array.element}});
+    // Only Bytes bridges to String and File, so only Bytes gets the two
+    // extra slots. Appended after the shared four, so Ints and Floats keep
+    // exactly the slot numbers they had.
+    if (array.name == std::string(strings::Bytes)) {
+      declare(methods, "toString", strings::String);
+      declare(methods, "slice", strings::Bytes,
+              {{"start", strings::Int}, {"end", strings::Int}});
+    }
     addBuiltinClass(p, array.name, strings::Object, methods);
   }
 

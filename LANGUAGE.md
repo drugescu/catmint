@@ -259,11 +259,17 @@ flags.set(7, 0)
 out("${flags.get(7)} of ${flags.len()}\n")
 ```
 
+`Bytes` also bridges to the rest of the world: `text.toBytes()`,
+`b.toString()`, `b.slice(start, end)` (half-open, its own buffer), and
+`File.readBytes(buffer)` / `File.writeBytes(buffer, count)`. A catmint String
+carries its length rather than ending at a NUL, so binary data round-trips
+through one.
+
 Fixed length, numbers stored as numbers. This is the one thing `List` cannot
 be: a `List` holds object references, so a million flags would be a million
 allocations. Three concrete classes rather than one generic one, because
 there are no generics. Out of bounds is a catchable error.
-→ `43_arrays.cm`
+→ `43_arrays.cm`, `48_bytes.cm`
 
 ## The standard library
 

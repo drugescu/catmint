@@ -134,6 +134,40 @@ class Main from IO
     out("Worker.wait ${Worker.wait(h)}\n")
     out("Worker.count ${Worker.count() >= 1}\n")
 
+    # Bytes, Ints and Floats, and the bridge from Bytes to String and File.
+    Bytes by = new Bytes(4)
+    out("Bytes.len ${by.len()}\n")
+    out("Bytes.fill ${by.fill(7).get(0)}\n")
+    out("Bytes.set ${by.set(1, 9)}\n")
+    out("Bytes.get ${by.get(1)}\n")
+    out("Bytes.toString ${by.toString().len()}\n")
+    out("Bytes.slice ${by.slice(1, 3).len()}\n")
+
+    Ints ns = new Ints(3)
+    out("Ints.len ${ns.len()}\n")
+    out("Ints.fill ${ns.fill(5).get(2)}\n")
+    out("Ints.set ${ns.set(0, 11)}\n")
+    out("Ints.get ${ns.get(0)}\n")
+
+    Floats fs = new Floats(2)
+    out("Floats.len ${fs.len()}\n")
+    out("Floats.fill ${fs.fill(1.5).get(1)}\n")
+    out("Floats.set ${fs.set(0, 2.5)}\n")
+    out("Floats.get ${fs.get(0)}\n")
+
+    out("String.toBytes ${"abc".toBytes().len()}\n")
+    String bpath = "/tmp/catmint_slots_bytes.bin"
+    File bw
+    bw.open(bpath, "w")
+    out("File.writeBytes ${bw.writeBytes("xyz".toBytes(), 3)}\n")
+    bw.close()
+    File br
+    br.open(bpath, "r")
+    Bytes buf = new Bytes(8)
+    out("File.readBytes ${br.readBytes(buf)}\n")
+    br.close()
+    File.remove(bpath)
+
     out("done\n")
   end
 end

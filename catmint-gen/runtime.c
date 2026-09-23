@@ -185,10 +185,14 @@ CATMINT_RTTI_TYPE(catmint_rtti6_object, 6);
 CATMINT_RTTI_TYPE(catmint_rtti20_io, 20);
 CATMINT_RTTI_TYPE(catmint_rtti11_list, 11);
 CATMINT_RTTI_TYPE(catmint_rtti8_integer, 8);
-CATMINT_RTTI_TYPE(catmint_rtti13_file, 13);
+CATMINT_RTTI_TYPE(catmint_rtti15_file, 15);
 CATMINT_RTTI_TYPE(catmint_rtti11_process, 11);
 CATMINT_RTTI_TYPE(catmint_rtti10_array, 10);
-CATMINT_RTTI_TYPE(catmint_rtti19_string, 19);
+/* Bytes carries two more than Ints and Floats do: it is the one of the three
+ * that bridges to String and File, because it is the one whose element is a
+ * byte. */
+CATMINT_RTTI_TYPE(catmint_rtti12_bytes, 12);
+CATMINT_RTTI_TYPE(catmint_rtti20_string, 20);
 
 
 #define RTTI(x) ((struct __catmint_rtti *)&(x))
@@ -215,6 +219,7 @@ struct TString *M6_String_chr(int code);
 struct TString *M6_String_replace(struct TString *self, struct TString *from,
                                   struct TString *to);
 double M6_String_toFloat(struct TString *self);
+struct TBytes *M6_String_toBytes(struct TString *self);
 
 struct TString *M2_IO_in(struct TIO *self);
 struct TIO *M2_IO_out(struct TIO *self, struct TString *message);
@@ -238,6 +243,8 @@ struct TFile *M4_File_write(struct TFile *self, struct TString *text);
 int M4_File_eof(struct TFile *self);
 struct TFile *M4_File_close(struct TFile *self);
 int M4_File_isOpen(struct TFile *self);
+int M4_File_readBytes(struct TFile *self, struct TBytes *buffer);
+int M4_File_writeBytes(struct TFile *self, struct TBytes *buffer, int count);
 int M4_File_exists(struct TString *path);
 int M4_File_remove(struct TString *path);
 
@@ -260,6 +267,8 @@ int M5_Bytes_len(struct TBytes *self);
 int M5_Bytes_get(struct TBytes *self, int index);
 int M5_Bytes_set(struct TBytes *self, int index, int value);
 struct TBytes *M5_Bytes_fill(struct TBytes *self, int value);
+struct TString *M5_Bytes_toString(struct TBytes *self);
+struct TBytes *M5_Bytes_slice(struct TBytes *self, int start, int end);
 
 void M4_Ints_init(struct TInts *self, int count);
 int M4_Ints_len(struct TInts *self);
@@ -317,7 +326,7 @@ int __cm_poolDepth(void);
 void __cm_poolUnwind(int depth);
 void __cm_poolPop(void);
 
-extern catmint_rtti19_string RString;
+extern catmint_rtti20_string RString;
 
 /* Class names. Each is itself a String, so its rtti is RString, and each has
  * a reference count of zero: they are static and must never be freed. */
@@ -344,7 +353,7 @@ catmint_rtti6_object RObject = {
   { CATMINT_OBJECT_SLOTS }
 };
 
-catmint_rtti19_string RString = {
+catmint_rtti20_string RString = {
   &NString, sizeof(struct TString), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M6_String_length, (void *)M6_String_toInt,
@@ -353,7 +362,8 @@ catmint_rtti19_string RString = {
     (void *)M6_String_indexOf, (void *)M6_String_trim,
     (void *)M6_String_upper, (void *)M6_String_lower,
     (void *)M6_String_split,
-    (void *)M6_String_replace, (void *)M6_String_toFloat }
+    (void *)M6_String_replace, (void *)M6_String_toFloat,
+    (void *)M6_String_toBytes }
 };
 
 /* The two new slots go on the end. Inserting anywhere else would renumber
@@ -369,12 +379,13 @@ catmint_rtti20_io RIO = {
     (void *)M2_IO_exit, (void *)M2_IO_allocated }
 };
 
-catmint_rtti13_file RFile = {
+catmint_rtti15_file RFile = {
   &NFile, sizeof(struct TFile), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M4_File_open, (void *)M4_File_readLine, (void *)M4_File_readAll,
     (void *)M4_File_write, (void *)M4_File_eof, (void *)M4_File_close,
-    (void *)M4_File_isOpen }
+    (void *)M4_File_isOpen,
+    (void *)M4_File_readBytes, (void *)M4_File_writeBytes }
 };
 
 /* Every Math method is static, so the class contributes no slots of its own
@@ -389,11 +400,12 @@ catmint_rtti6_object RWorker = {
   { CATMINT_OBJECT_SLOTS }
 };
 
-catmint_rtti10_array RBytes = {
+catmint_rtti12_bytes RBytes = {
   &NBytes, sizeof(struct TBytes), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M5_Bytes_len, (void *)M5_Bytes_get, (void *)M5_Bytes_set,
-    (void *)M5_Bytes_fill }
+    (void *)M5_Bytes_fill,
+    (void *)M5_Bytes_toString, (void *)M5_Bytes_slice }
 };
 
 catmint_rtti10_array RInts = {
@@ -2140,6 +2152,73 @@ int M5_Bytes_set(struct TBytes *self, int index, int value) {
   array_bounds(index, self->length, "Bytes");
   self->data[index] = (unsigned char)(value & 0xff);
   return value;
+}
+
+/* The bridge between Bytes and the rest of the world. Only Bytes has it, of
+ * the three arrays, because a byte is what a file and a string are made of.
+ *
+ * A catmint String carries an explicit length rather than ending at a NUL, so
+ * these round-trip binary data -- a zero byte in the middle included -- which
+ * is what makes them usable for anything but text. */
+struct TString *M5_Bytes_toString(struct TBytes *self) {
+  struct TString *result = new_string(self->length);
+
+  if (self->data && self->length > 0) {
+    memcpy(result->string, self->data, (size_t)self->length);
+  }
+  return result;
+}
+
+/* Half-open [start, end), the same convention as String.substring, and the
+ * copy owns its own buffer. */
+struct TBytes *M5_Bytes_slice(struct TBytes *self, int start, int end) {
+  struct TBytes *result;
+
+  if (start < 0 || start > end || end > self->length) {
+    __cm_runtimeError("Bytes slice indices out of bounds.");
+  }
+  result = (struct TBytes *)__catmint_new(RTTI(RBytes));
+  M5_Bytes_init(result, end - start);
+  if (end > start) {
+    memcpy(result->data, self->data + start, (size_t)(end - start));
+  }
+  return result;
+}
+
+struct TBytes *M6_String_toBytes(struct TString *self) {
+  struct TBytes *result = (struct TBytes *)__catmint_new(RTTI(RBytes));
+
+  M5_Bytes_init(result, self->length);
+  if (self->length > 0) {
+    memcpy(result->data, self->string, (size_t)self->length);
+  }
+  return result;
+}
+
+/* Fills the buffer and answers how many bytes arrived, which is less than the
+ * buffer holds at the end of the file. Nothing is appended and nothing is
+ * interpreted: this is read(2) with bounds. */
+int M4_File_readBytes(struct TFile *self, struct TBytes *buffer) {
+  size_t got;
+
+  if (!self->handle || !buffer->data || buffer->length <= 0) {
+    return 0;
+  }
+  got = fread(buffer->data, 1, (size_t)buffer->length, self->handle);
+  return (int)got;
+}
+
+int M4_File_writeBytes(struct TFile *self, struct TBytes *buffer, int count) {
+  size_t put;
+
+  if (!self->handle || !buffer->data || count <= 0) {
+    return 0;
+  }
+  if (count > buffer->length) {
+    count = buffer->length;
+  }
+  put = fwrite(buffer->data, 1, (size_t)count, self->handle);
+  return (int)put;
 }
 
 struct TBytes *M5_Bytes_fill(struct TBytes *self, int value) {

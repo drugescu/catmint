@@ -34,12 +34,12 @@ source_filename = "runtime.c"
 @.str.11 = private unnamed_addr constant [7 x i8] c"Floats\00", align 1
 @NFloats = global %struct.TString { ptr @RString, i32 0, i32 6, ptr @.str.11 }, align 8
 @RObject = global { ptr, i32, [4 x i8], ptr, ptr, [6 x ptr] } { ptr @NObject, i32 16, [4 x i8] zeroinitializer, ptr null, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
-@RString = global { ptr, i32, [4 x i8], ptr, ptr, [19 x ptr] } { ptr @NString, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [19 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M6_String_length, ptr @M6_String_toInt, ptr @M6_String_substring, ptr @M6_String_concat, ptr @M6_String_equal, ptr @M6_String_at, ptr @M6_String_indexOf, ptr @M6_String_trim, ptr @M6_String_upper, ptr @M6_String_lower, ptr @M6_String_split, ptr @M6_String_replace, ptr @M6_String_toFloat] }, align 8
+@RString = global { ptr, i32, [4 x i8], ptr, ptr, [20 x ptr] } { ptr @NString, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [20 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M6_String_length, ptr @M6_String_toInt, ptr @M6_String_substring, ptr @M6_String_concat, ptr @M6_String_equal, ptr @M6_String_at, ptr @M6_String_indexOf, ptr @M6_String_trim, ptr @M6_String_upper, ptr @M6_String_lower, ptr @M6_String_split, ptr @M6_String_replace, ptr @M6_String_toFloat, ptr @M6_String_toBytes] }, align 8
 @RIO = local_unnamed_addr global { ptr, i32, [4 x i8], ptr, ptr, [20 x ptr] } { ptr @NIO, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [20 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M2_IO_in, ptr @M2_IO_out, ptr @M2_IO_readLine, ptr @M2_IO_eof, ptr @M2_IO_entropy, ptr @M2_IO_ticks, ptr @M2_IO_epoch, ptr @M2_IO_localOffset, ptr @M2_IO_sleep, ptr @M2_IO_args, ptr @M2_IO_arg, ptr @M2_IO_err, ptr @M2_IO_exit, ptr @M2_IO_allocated] }, align 8
-@RFile = global { ptr, i32, [4 x i8], ptr, ptr, [13 x ptr] } { ptr @NFile, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [13 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_File_open, ptr @M4_File_readLine, ptr @M4_File_readAll, ptr @M4_File_write, ptr @M4_File_eof, ptr @M4_File_close, ptr @M4_File_isOpen] }, align 8
+@RFile = global { ptr, i32, [4 x i8], ptr, ptr, [15 x ptr] } { ptr @NFile, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [15 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_File_open, ptr @M4_File_readLine, ptr @M4_File_readAll, ptr @M4_File_write, ptr @M4_File_eof, ptr @M4_File_close, ptr @M4_File_isOpen, ptr @M4_File_readBytes, ptr @M4_File_writeBytes] }, align 8
 @RMath = local_unnamed_addr global { ptr, i32, [4 x i8], ptr, ptr, [6 x ptr] } { ptr @NMath, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
 @RWorker = local_unnamed_addr global { ptr, i32, [4 x i8], ptr, ptr, [6 x ptr] } { ptr @NWorker, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
-@RBytes = global { ptr, i32, [4 x i8], ptr, ptr, [10 x ptr] } { ptr @NBytes, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [10 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M5_Bytes_len, ptr @M5_Bytes_get, ptr @M5_Bytes_set, ptr @M5_Bytes_fill] }, align 8
+@RBytes = global { ptr, i32, [4 x i8], ptr, ptr, [12 x ptr] } { ptr @NBytes, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [12 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M5_Bytes_len, ptr @M5_Bytes_get, ptr @M5_Bytes_set, ptr @M5_Bytes_fill, ptr @M5_Bytes_toString, ptr @M5_Bytes_slice] }, align 8
 @RInts = global { ptr, i32, [4 x i8], ptr, ptr, [10 x ptr] } { ptr @NInts, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [10 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_Ints_len, ptr @M4_Ints_get, ptr @M4_Ints_set, ptr @M4_Ints_fill] }, align 8
 @RFloats = global { ptr, i32, [4 x i8], ptr, ptr, [10 x ptr] } { ptr @NFloats, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [10 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M6_Floats_len, ptr @M6_Floats_get, ptr @M6_Floats_set, ptr @M6_Floats_fill] }, align 8
 @RProcess = global { ptr, i32, [4 x i8], ptr, ptr, [11 x ptr] } { ptr @NProcess, i32 32, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [11 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Process_open, ptr @M7_Process_readLine, ptr @M7_Process_write, ptr @M7_Process_eof, ptr @M7_Process_finish] }, align 8
@@ -91,16 +91,17 @@ source_filename = "runtime.c"
 @.str.41 = private unnamed_addr constant [51 x i8] c"no such worker; wait for each handle exactly once.\00", align 1
 @.str.42 = private unnamed_addr constant [41 x i8] c"that worker has already been waited for.\00", align 1
 @gWorkersCollected = internal unnamed_addr global i32 0, align 4
-@.str.44 = private unnamed_addr constant [26 x i8] c"List index out of bounds.\00", align 1
+@.str.43 = private unnamed_addr constant [35 x i8] c"Bytes slice indices out of bounds.\00", align 1
+@.str.45 = private unnamed_addr constant [26 x i8] c"List index out of bounds.\00", align 1
 @_DefaultRuneLocale = external local_unnamed_addr global %struct._RuneLocale, align 8
-@.str.45 = private unnamed_addr constant [28 x i8] c"%s cannot have %d elements.\00", align 1
-@.str.46 = private unnamed_addr constant [31 x i8] c"Out of memory making an array.\00", align 1
-@.str.47 = private unnamed_addr constant [32 x i8] c"%s index %d is outside 0 to %d.\00", align 1
+@.str.46 = private unnamed_addr constant [28 x i8] c"%s cannot have %d elements.\00", align 1
+@.str.47 = private unnamed_addr constant [31 x i8] c"Out of memory making an array.\00", align 1
+@.str.48 = private unnamed_addr constant [32 x i8] c"%s index %d is outside 0 to %d.\00", align 1
 @str = private unnamed_addr constant [53 x i8] c"Runtime error : out of memory recording a temporary.\00", align 1
-@str.48 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory making a String.\00", align 1
-@str.49 = private unnamed_addr constant [46 x i8] c"Runtime error : out of memory entering a try.\00", align 1
-@str.50 = private unnamed_addr constant [15 x i8] c"Uncaught: null\00", align 1
-@str.51 = private unnamed_addr constant [46 x i8] c"Runtime error : out of memory opening a pool.\00", align 1
+@str.49 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory making a String.\00", align 1
+@str.50 = private unnamed_addr constant [46 x i8] c"Runtime error : out of memory entering a try.\00", align 1
+@str.51 = private unnamed_addr constant [15 x i8] c"Uncaught: null\00", align 1
+@str.52 = private unnamed_addr constant [46 x i8] c"Runtime error : out of memory opening a pool.\00", align 1
 
 ; Function Attrs: cold nofree noreturn nounwind ssp uwtable(sync)
 define void @M6_Object_abort(ptr readnone captures(none) %0) #0 {
@@ -1288,6 +1289,58 @@ define double @M6_String_toFloat(ptr noundef readonly captures(none) %0) #2 {
 }
 
 ; Function Attrs: nounwind ssp uwtable(sync)
+define noundef ptr @M6_String_toBytes(ptr noundef readonly captures(none) %0) #2 {
+  %2 = alloca [128 x i8], align 1
+  %3 = tail call ptr @__catmint_new(ptr noundef nonnull @RBytes)
+  %4 = getelementptr inbounds nuw i8, ptr %0, i64 12
+  %5 = load i32, ptr %4, align 4, !tbaa !20
+  %6 = getelementptr inbounds nuw i8, ptr %3, i64 16
+  %7 = load ptr, ptr %6, align 8, !tbaa !34
+  tail call void @free(ptr noundef %7)
+  %8 = icmp slt i32 %5, 0
+  br i1 %8, label %9, label %11
+
+9:                                                ; preds = %1
+  call void @llvm.lifetime.start.p0(ptr nonnull %2) #40
+  %10 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %2, i64 128, ptr nonnull @.str.46, ptr nonnull @.str.9, i32 %5)
+  call void @__cm_runtimeError(ptr noundef nonnull %2) #43
+  unreachable
+
+11:                                               ; preds = %1
+  %12 = icmp eq i32 %5, 0
+  br i1 %12, label %18, label %13
+
+13:                                               ; preds = %11
+  %14 = zext nneg i32 %5 to i64
+  %15 = tail call ptr @calloc(i64 noundef %14, i64 noundef 1) #41
+  %16 = icmp eq ptr %15, null
+  br i1 %16, label %17, label %18
+
+17:                                               ; preds = %13
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.47) #43
+  unreachable
+
+18:                                               ; preds = %11, %13
+  %19 = phi ptr [ null, %11 ], [ %15, %13 ]
+  store ptr %19, ptr %6, align 8, !tbaa !34
+  %20 = getelementptr inbounds nuw i8, ptr %3, i64 12
+  store i32 %5, ptr %20, align 4, !tbaa !36
+  %21 = load i32, ptr %4, align 4, !tbaa !20
+  %22 = icmp sgt i32 %21, 0
+  br i1 %22, label %23, label %27
+
+23:                                               ; preds = %18
+  %24 = getelementptr inbounds nuw i8, ptr %0, i64 16
+  %25 = load ptr, ptr %24, align 8, !tbaa !17
+  %26 = zext nneg i32 %21 to i64
+  tail call void @llvm.memcpy.p0.p0.i64(ptr noundef align 1 %19, ptr noundef align 1 %25, i64 noundef %26, i1 noundef false) #40
+  br label %27
+
+27:                                               ; preds = %23, %18
+  ret ptr %3
+}
+
+; Function Attrs: nounwind ssp uwtable(sync)
 define nonnull ptr @M2_IO_in(ptr readnone captures(none) %0) #2 {
   %2 = alloca [256 x i8], align 1
   call void @llvm.lifetime.start.p0(ptr nonnull %2) #40
@@ -1805,6 +1858,65 @@ define range(i32 0, 2) i32 @M4_File_isOpen(ptr noundef readonly captures(none) %
   ret i32 %5
 }
 
+; Function Attrs: nofree nounwind ssp uwtable(sync)
+define noundef i32 @M4_File_readBytes(ptr noundef readonly captures(none) %0, ptr noundef readonly captures(none) %1) #8 {
+  %3 = getelementptr inbounds nuw i8, ptr %0, i64 16
+  %4 = load ptr, ptr %3, align 8, !tbaa !29
+  %5 = icmp eq ptr %4, null
+  br i1 %5, label %18, label %6
+
+6:                                                ; preds = %2
+  %7 = getelementptr inbounds nuw i8, ptr %1, i64 16
+  %8 = load ptr, ptr %7, align 8, !tbaa !34
+  %9 = icmp eq ptr %8, null
+  br i1 %9, label %18, label %10
+
+10:                                               ; preds = %6
+  %11 = getelementptr inbounds nuw i8, ptr %1, i64 12
+  %12 = load i32, ptr %11, align 4, !tbaa !36
+  %13 = icmp slt i32 %12, 1
+  br i1 %13, label %18, label %14
+
+14:                                               ; preds = %10
+  %15 = zext nneg i32 %12 to i64
+  %16 = tail call i64 @fread(ptr noundef nonnull %8, i64 noundef 1, i64 noundef %15, ptr noundef nonnull %4)
+  %17 = trunc i64 %16 to i32
+  br label %18
+
+18:                                               ; preds = %2, %6, %10, %14
+  %19 = phi i32 [ %17, %14 ], [ 0, %10 ], [ 0, %6 ], [ 0, %2 ]
+  ret i32 %19
+}
+
+; Function Attrs: nounwind ssp uwtable(sync)
+define i32 @M4_File_writeBytes(ptr noundef readonly captures(none) %0, ptr noundef readonly captures(none) %1, i32 noundef %2) #2 {
+  %4 = getelementptr inbounds nuw i8, ptr %0, i64 16
+  %5 = load ptr, ptr %4, align 8, !tbaa !29
+  %6 = icmp eq ptr %5, null
+  br i1 %6, label %20, label %7
+
+7:                                                ; preds = %3
+  %8 = getelementptr inbounds nuw i8, ptr %1, i64 16
+  %9 = load ptr, ptr %8, align 8, !tbaa !34
+  %10 = icmp eq ptr %9, null
+  %11 = icmp slt i32 %2, 1
+  %12 = or i1 %11, %10
+  br i1 %12, label %20, label %13
+
+13:                                               ; preds = %7
+  %14 = getelementptr inbounds nuw i8, ptr %1, i64 12
+  %15 = load i32, ptr %14, align 4, !tbaa !36
+  %16 = tail call i32 @llvm.smin.i32(i32 %2, i32 %15)
+  %17 = sext i32 %16 to i64
+  %18 = tail call i64 @"\01_fwrite"(ptr noundef nonnull %9, i64 noundef 1, i64 noundef %17, ptr noundef nonnull %5) #40
+  %19 = trunc i64 %18 to i32
+  br label %20
+
+20:                                               ; preds = %3, %7, %13
+  %21 = phi i32 [ %19, %13 ], [ 0, %7 ], [ 0, %3 ]
+  ret i32 %21
+}
+
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind ssp willreturn memory(argmem: read) uwtable(sync)
 define i32 @M5_Bytes_len(ptr noundef readonly captures(none) %0) #4 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 12
@@ -1825,7 +1937,7 @@ define range(i32 0, 256) i32 @M5_Bytes_get(ptr noundef readonly captures(none) %
 9:                                                ; preds = %2
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
   %10 = add nsw i32 %5, -1
-  %11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.47, ptr nonnull @.str.9, i32 %1, i32 %10)
+  %11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.48, ptr nonnull @.str.9, i32 %1, i32 %10)
   call void @__cm_runtimeError(ptr noundef nonnull %3) #43
   unreachable
 
@@ -1852,7 +1964,7 @@ define noundef i32 @M5_Bytes_set(ptr noundef readonly captures(none) %0, i32 nou
 10:                                               ; preds = %3
   call void @llvm.lifetime.start.p0(ptr nonnull %4) #40
   %11 = add nsw i32 %6, -1
-  %12 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %4, i64 128, ptr nonnull @.str.47, ptr nonnull @.str.9, i32 %1, i32 %11)
+  %12 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %4, i64 128, ptr nonnull @.str.48, ptr nonnull @.str.9, i32 %1, i32 %11)
   call void @__cm_runtimeError(ptr noundef nonnull %4) #43
   unreachable
 
@@ -1885,6 +1997,89 @@ define noundef ptr @M5_Bytes_fill(ptr noundef readonly returned captures(ret: ad
   ret ptr %0
 }
 
+; Function Attrs: nounwind ssp uwtable(sync)
+define nonnull ptr @M5_Bytes_toString(ptr noundef readonly captures(none) %0) #2 {
+  %2 = getelementptr inbounds nuw i8, ptr %0, i64 12
+  %3 = load i32, ptr %2, align 4, !tbaa !36
+  %4 = tail call fastcc ptr @new_string(i32 noundef %3)
+  %5 = getelementptr inbounds nuw i8, ptr %0, i64 16
+  %6 = load ptr, ptr %5, align 8, !tbaa !34
+  %7 = icmp eq ptr %6, null
+  br i1 %7, label %15, label %8
+
+8:                                                ; preds = %1
+  %9 = load i32, ptr %2, align 4, !tbaa !36
+  %10 = icmp sgt i32 %9, 0
+  br i1 %10, label %11, label %15
+
+11:                                               ; preds = %8
+  %12 = getelementptr inbounds nuw i8, ptr %4, i64 16
+  %13 = load ptr, ptr %12, align 8, !tbaa !17
+  %14 = zext nneg i32 %9 to i64
+  tail call void @llvm.memcpy.p0.p0.i64(ptr noundef align 1 %13, ptr noundef nonnull align 1 %6, i64 noundef %14, i1 noundef false) #40
+  br label %15
+
+15:                                               ; preds = %11, %8, %1
+  ret ptr %4
+}
+
+; Function Attrs: nounwind ssp uwtable(sync)
+define noundef ptr @M5_Bytes_slice(ptr noundef readonly captures(none) %0, i32 noundef %1, i32 noundef %2) #2 {
+  %4 = icmp slt i32 %1, 0
+  %5 = icmp sgt i32 %1, %2
+  %6 = or i1 %4, %5
+  br i1 %6, label %11, label %7
+
+7:                                                ; preds = %3
+  %8 = getelementptr inbounds nuw i8, ptr %0, i64 12
+  %9 = load i32, ptr %8, align 4, !tbaa !36
+  %10 = icmp sgt i32 %2, %9
+  br i1 %10, label %11, label %12
+
+11:                                               ; preds = %7, %3
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.43) #43
+  unreachable
+
+12:                                               ; preds = %7
+  %13 = tail call ptr @__catmint_new(ptr noundef nonnull @RBytes)
+  %14 = sub nsw i32 %2, %1
+  %15 = getelementptr inbounds nuw i8, ptr %13, i64 16
+  %16 = load ptr, ptr %15, align 8, !tbaa !34
+  tail call void @free(ptr noundef %16)
+  %17 = icmp eq i32 %2, %1
+  br i1 %17, label %23, label %18
+
+18:                                               ; preds = %12
+  %19 = zext nneg i32 %14 to i64
+  %20 = tail call ptr @calloc(i64 noundef %19, i64 noundef 1) #41
+  %21 = icmp eq ptr %20, null
+  br i1 %21, label %22, label %23
+
+22:                                               ; preds = %18
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.47) #43
+  unreachable
+
+23:                                               ; preds = %12, %18
+  %24 = phi ptr [ null, %12 ], [ %20, %18 ]
+  store ptr %24, ptr %15, align 8, !tbaa !34
+  %25 = getelementptr inbounds nuw i8, ptr %13, i64 12
+  store i32 %14, ptr %25, align 4, !tbaa !36
+  %26 = icmp sgt i32 %2, %1
+  br i1 %26, label %27, label %33
+
+27:                                               ; preds = %23
+  %28 = getelementptr inbounds nuw i8, ptr %0, i64 16
+  %29 = load ptr, ptr %28, align 8, !tbaa !34
+  %30 = zext nneg i32 %1 to i64
+  %31 = getelementptr inbounds nuw i8, ptr %29, i64 %30
+  %32 = zext nneg i32 %14 to i64
+  tail call void @llvm.memcpy.p0.p0.i64(ptr noundef align 1 %24, ptr noundef align 1 %31, i64 noundef %32, i1 noundef false) #40
+  br label %33
+
+33:                                               ; preds = %27, %23
+  ret ptr %13
+}
+
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind ssp willreturn memory(argmem: read) uwtable(sync)
 define i32 @M4_Ints_len(ptr noundef readonly captures(none) %0) #4 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 12
@@ -1905,7 +2100,7 @@ define i64 @M4_Ints_get(ptr noundef readonly captures(none) %0, i32 noundef %1) 
 9:                                                ; preds = %2
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
   %10 = add nsw i32 %5, -1
-  %11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.47, ptr nonnull @.str.10, i32 %1, i32 %10)
+  %11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.48, ptr nonnull @.str.10, i32 %1, i32 %10)
   call void @__cm_runtimeError(ptr noundef nonnull %3) #43
   unreachable
 
@@ -1931,7 +2126,7 @@ define noundef i64 @M4_Ints_set(ptr noundef readonly captures(none) %0, i32 noun
 10:                                               ; preds = %3
   call void @llvm.lifetime.start.p0(ptr nonnull %4) #40
   %11 = add nsw i32 %6, -1
-  %12 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %4, i64 128, ptr nonnull @.str.47, ptr nonnull @.str.10, i32 %1, i32 %11)
+  %12 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %4, i64 128, ptr nonnull @.str.48, ptr nonnull @.str.10, i32 %1, i32 %11)
   call void @__cm_runtimeError(ptr noundef nonnull %4) #43
   unreachable
 
@@ -2018,7 +2213,7 @@ define double @M6_Floats_get(ptr noundef readonly captures(none) %0, i32 noundef
 9:                                                ; preds = %2
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
   %10 = add nsw i32 %5, -1
-  %11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.47, ptr nonnull @.str.11, i32 %1, i32 %10)
+  %11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.48, ptr nonnull @.str.11, i32 %1, i32 %10)
   call void @__cm_runtimeError(ptr noundef nonnull %3) #43
   unreachable
 
@@ -2044,7 +2239,7 @@ define noundef double @M6_Floats_set(ptr noundef readonly captures(none) %0, i32
 10:                                               ; preds = %3
   call void @llvm.lifetime.start.p0(ptr nonnull %4) #40
   %11 = add nsw i32 %6, -1
-  %12 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %4, i64 128, ptr nonnull @.str.47, ptr nonnull @.str.11, i32 %1, i32 %11)
+  %12 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %4, i64 128, ptr nonnull @.str.48, ptr nonnull @.str.11, i32 %1, i32 %11)
   call void @__cm_runtimeError(ptr noundef nonnull %4) #43
   unreachable
 
@@ -2279,7 +2474,7 @@ define ptr @M4_List_get(ptr noundef readonly captures(none) %0, i32 noundef %1) 
   br i1 %7, label %9, label %8
 
 8:                                                ; preds = %4, %2
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.44) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.45) #43
   unreachable
 
 9:                                                ; preds = %4
@@ -2303,7 +2498,7 @@ define noundef ptr @M4_List_set(ptr noundef readonly captures(none) %0, i32 noun
   br i1 %8, label %10, label %9
 
 9:                                                ; preds = %5, %3
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.44) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.45) #43
   unreachable
 
 10:                                               ; preds = %5
@@ -2936,7 +3131,7 @@ define internal fastcc nonnull ptr @new_string(i32 noundef %0) unnamed_addr #2 {
   br i1 %5, label %6, label %8
 
 6:                                                ; preds = %1
-  %7 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.48)
+  %7 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.49)
   tail call void @exit(i32 noundef 1) #39
   unreachable
 
@@ -4095,7 +4290,7 @@ define void @__cm_pushHandler(ptr noundef %0) local_unnamed_addr #8 {
   br i1 %3, label %4, label %6
 
 4:                                                ; preds = %1
-  %5 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.49)
+  %5 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.50)
   tail call void @exit(i32 noundef 1) #39
   unreachable
 
@@ -4173,7 +4368,7 @@ define void @__cm_throw(ptr noundef %0) local_unnamed_addr #20 {
   br label %20
 
 18:                                               ; preds = %4
-  %19 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.50)
+  %19 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.51)
   br label %20
 
 20:                                               ; preds = %13, %18, %9
@@ -4290,7 +4485,7 @@ define void @__cm_poolPush() local_unnamed_addr #2 {
   br i1 %12, label %13, label %15
 
 13:                                               ; preds = %5
-  %14 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.51)
+  %14 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.52)
   tail call void @exit(i32 noundef 1) #39
   unreachable
 
@@ -4614,7 +4809,7 @@ define void @M5_Bytes_init(ptr noundef captures(none) %0, i32 noundef %1) local_
 
 7:                                                ; preds = %2
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
-  %8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.45, ptr nonnull @.str.9, i32 %1)
+  %8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.46, ptr nonnull @.str.9, i32 %1)
   call void @__cm_runtimeError(ptr noundef nonnull %3) #43
   unreachable
 
@@ -4629,7 +4824,7 @@ define void @M5_Bytes_init(ptr noundef captures(none) %0, i32 noundef %1) local_
   br i1 %14, label %15, label %16
 
 15:                                               ; preds = %11
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.46) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.47) #43
   unreachable
 
 16:                                               ; preds = %9, %11
@@ -4651,7 +4846,7 @@ define void @M4_Ints_init(ptr noundef captures(none) %0, i32 noundef %1) local_u
 
 7:                                                ; preds = %2
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
-  %8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.45, ptr nonnull @.str.10, i32 %1)
+  %8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.46, ptr nonnull @.str.10, i32 %1)
   call void @__cm_runtimeError(ptr noundef nonnull %3) #43
   unreachable
 
@@ -4666,7 +4861,7 @@ define void @M4_Ints_init(ptr noundef captures(none) %0, i32 noundef %1) local_u
   br i1 %14, label %15, label %16
 
 15:                                               ; preds = %11
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.46) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.47) #43
   unreachable
 
 16:                                               ; preds = %9, %11
@@ -4688,7 +4883,7 @@ define void @M6_Floats_init(ptr noundef captures(none) %0, i32 noundef %1) local
 
 7:                                                ; preds = %2
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
-  %8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.45, ptr nonnull @.str.11, i32 %1)
+  %8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr nonnull dereferenceable(1) %3, i64 128, ptr nonnull @.str.46, ptr nonnull @.str.11, i32 %1)
   call void @__cm_runtimeError(ptr noundef nonnull %3) #43
   unreachable
 
@@ -4703,7 +4898,7 @@ define void @M6_Floats_init(ptr noundef captures(none) %0, i32 noundef %1) local
   br i1 %14, label %15, label %16
 
 15:                                               ; preds = %11
-  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.46) #43
+  tail call void @__cm_runtimeError(ptr noundef nonnull @.str.47) #43
   unreachable
 
 16:                                               ; preds = %9, %11
