@@ -59,6 +59,16 @@ else
   failed=1
 fi
 
+if [ -n "$THOROUGH" ]; then
+  printf "\n${BOLD}differential against C${NC}\n"
+  if ( cd "$ROOT" && ./difftest/run.sh 50 1 ) > "$ROOT/.difftest.log" 2>&1; then
+    grep -o "[0-9]* seeds agreed with C" "$ROOT/.difftest.log" | sed 's/^/  /'
+  else
+    printf "  ${RED}disagreed${NC} - see .difftest.log and difftest/failures/\n"
+    failed=1
+  fi
+fi
+
 printf "\n${BOLD}examples${NC}\n"
 for source in "$ROOT"/examples/*.cm; do
   name=$(basename "$source" .cm)

@@ -99,3 +99,7 @@ catmint-lex/test_suite/*.errlog.txt
 .wtest.log
 .ctest.log
 .build.log
+
+# Sources of a differential-testing disagreement, kept for inspection.
+difftest/failures/
+.difftest.log
