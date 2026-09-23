@@ -17,7 +17,13 @@ OUT=${1:-"$HERE/runtime.host.ll"}
 SOURCE="$HERE/runtime.c"
 CHECKED_IN="$HERE/runtime.ll"
 
-LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v clang 2>/dev/null || echo /opt/homebrew/opt/llvm@22/bin/clang)")}
+# llvm-link first, not clang: catmintc links and compiles with one toolchain,
+# and the runtime has to be built by that same one. Picking clang off PATH
+# instead is how a program ends up compiled by one vendor's front end and one
+# vendor's back end, which do not always agree on what a function attribute
+# means.
+LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v llvm-link 2>/dev/null || \
+                                  echo /opt/homebrew/opt/llvm@22/bin/llvm-link)")}
 CLANG="$LLVM_BIN/clang"
 
 # A module with no triple and no data layout takes the host's, which is what
@@ -30,9 +36,24 @@ CLANG="$LLVM_BIN/clang"
 #
 # The module id and source filename are normalised so the committed copy does
 # not carry whoever's absolute build path.
+# target-cpu and target-features go too. clang pins them to the machine it ran
+# on -- "apple-m1", "+neon", "+sha3" -- and a copy carrying those is not a
+# portable runtime, whatever the triple says.
+#
+# So does probe-stack, which is worse than unportable: Apple clang puts
+# "probe-stack"="__chkstk_darwin" on the two functions here with a 4K buffer,
+# and LLVM 22's AArch64 back end accepts only the value "inline-asm" and calls
+# report_fatal_error on anything else. One vendor's front end and another's
+# back end then cannot build hello world. Dropping it costs those two
+# functions their stack-clash hardening, which for a 4K frame under a 16K
+# guard page is nothing, and it makes the checked-in IR independent of
+# whichever clang happened to produce it.
 strip_target() {
   sed -e '/^target datalayout = /d' \
       -e '/^target triple = /d' \
+      -e 's/ "target-cpu"="[^"]*"//g' \
+      -e 's/ "target-features"="[^"]*"//g' \
+      -e 's/ "probe-stack"="[^"]*"//g' \
       -e "s|^; ModuleID = .*|; ModuleID = 'runtime.c'|" \
       -e 's|^source_filename = .*|source_filename = "runtime.c"|' "$1" > "$2"
 }

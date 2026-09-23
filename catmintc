@@ -21,6 +21,14 @@ GENDIR="$ROOT/catmint-gen"
 LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v llvm-link 2>/dev/null || echo /opt/homebrew/opt/llvm@22/bin/llvm-link)")}
 LLVM_LINK="$LLVM_BIN/llvm-link"
 CLANG="$LLVM_BIN/clang"
+# Exported so build-runtime.sh compiles the runtime with the same clang that
+# compiles the program. It must not look the compiler up on PATH by itself:
+# one clang's front end can emit a function attribute another clang's back end
+# refuses. Apple clang marks large frames "probe-stack"="__chkstk_darwin",
+# which LLVM 22's AArch64 back end rejects outright -- every program then dies
+# with "Unsupported stack probing method" in a function the programmer never
+# wrote.
+export LLVM_BIN
 
 RUN=0
 OUT=""
