@@ -1,0 +1,258 @@
+# mini -- an expression interpreter, written in catmint.
+#
+# A tokenizer, a recursive-descent parser, an AST of classes and a
+# tree-walking evaluator that dispatches virtually. This is here as evidence:
+# it is the shape of program the language claims to be for, and test.sh builds
+# it, so the claim stays checked.
+#
+#   ./catmintc -I lib examples/mini.cm --run
+#
+# Two things it had to work around, both listed in ASSESSMENT.md: there is no
+# "else if", so the tokenizer nests, and there are no character literals, so
+# it compares against ASCII codes.
+
+using dict as d
+
+class Token from Object
+  Int kind          # 0 number, 1 name, 2 punctuation/keyword
+  Int value
+  String text
+
+  constructor(Int k, Int v, String t):
+    kind = k
+    value = v
+    text = t
+  end
+end
+
+class Lexer from Object
+  String src
+  Int pos
+
+  constructor(String source):
+    src = source
+    pos = 0
+  end
+
+  def Int digit(Int c):
+    if c >= 48 and c <= 57:
+      return 1
+    end
+    return 0
+  end
+
+  def Int letter(Int c):
+    if c >= 97 and c <= 122:
+      return 1
+    end
+    if c >= 65 and c <= 90:
+      return 1
+    end
+    return 0
+  end
+
+  def List run:
+    List out
+    while pos < src.len():
+      Int c = src.at(pos)
+      if c == 32 or c == 10 or c == 9:
+        pos = pos + 1
+      else
+        if digit(c) == 1:
+          Int n = 0
+          while pos < src.len() and digit(src.at(pos)) == 1:
+            n = n * 10 + (src.at(pos) - 48)
+            pos = pos + 1
+          end
+          out.append(new Token(0, n, "num"))
+        else
+          if letter(c) == 1:
+            Int start = pos
+            while pos < src.len() and letter(src.at(pos)) == 1:
+              pos = pos + 1
+            end
+            out.append(new Token(1, 0, src.substr(start, pos)))
+          else
+            out.append(new Token(2, 0, src.substr(pos, pos + 1)))
+            pos = pos + 1
+          end
+        end
+      end
+    end
+    out.append(new Token(3, 0, "eof"))
+    return out
+  end
+end
+
+class Node from Object
+  def Int eval(d::Dict env):
+    return 0
+  end
+end
+
+class Num from Node
+  Int n
+  constructor(Int v):
+    n = v
+  end
+  def Int eval(d::Dict env):
+    return n
+  end
+end
+
+class Var from Node
+  String name
+  constructor(String s):
+    name = s
+  end
+  def Int eval(d::Dict env):
+    if env.has(name) == 0:
+      throw "undefined variable " + name
+    end
+    return env.get(name)
+  end
+end
+
+class Bin from Node
+  String op
+  Node left
+  Node right
+  constructor(String o, Node l, Node r):
+    op = o
+    left = l
+    right = r
+  end
+  def Int eval(d::Dict env):
+    Int a = left.eval(env)
+    Int b = right.eval(env)
+    if op.equals("+"):
+      return a + b
+    end
+    if op.equals("-"):
+      return a - b
+    end
+    if op.equals("*"):
+      return a * b
+    end
+    if op.equals("/"):
+      if b == 0:
+        throw "divide by zero"
+      end
+      return a / b
+    end
+    if op.equals("<"):
+      if a < b:
+        return 1
+      end
+      return 0
+    end
+    if op.equals(">"):
+      if a > b:
+        return 1
+      end
+      return 0
+    end
+    throw "bad operator " + op
+  end
+end
+
+class Parser from Object
+  List toks
+  Int at
+
+  constructor(List tokens):
+    toks = tokens
+    at = 0
+  end
+
+  def Token peek:
+    return toks.get(at)
+  end
+
+  def Token next:
+    Token t = toks.get(at)
+    at = at + 1
+    return t
+  end
+
+  def Int isText(String s):
+    Token t = peek()
+    if t.text.equals(s):
+      return 1
+    end
+    return 0
+  end
+
+  def Void expect(String s):
+    if isText(s) == 0:
+      throw "expected " + s
+    end
+    next()
+  end
+
+  def Node primary:
+    Token t = next()
+    if t.kind == 0:
+      return new Num(t.value)
+    end
+    if t.kind == 1:
+      return new Var(t.text)
+    end
+    if t.text.equals("("):
+      Node inner = expression()
+      expect(")")
+      return inner
+    end
+    throw "unexpected " + t.text
+  end
+
+  def Node product:
+    Node left = primary()
+    while isText("*") == 1 or isText("/") == 1:
+      String op = next().text
+      left = new Bin(op, left, primary())
+    end
+    return left
+  end
+
+  def Node sum:
+    Node left = product()
+    while isText("+") == 1 or isText("-") == 1:
+      String op = next().text
+      left = new Bin(op, left, product())
+    end
+    return left
+  end
+
+  def Node expression:
+    Node left = sum()
+    while isText("<") == 1 or isText(">") == 1:
+      String op = next().text
+      left = new Bin(op, left, sum())
+    end
+    return left
+  end
+end
+
+class Main from IO
+  def main:
+    String program = "1 + 2 * (30 - 5) / 5 + fact"
+    Lexer lex = new Lexer(program)
+    Parser p = new Parser(lex.run())
+    Node tree = p.expression()
+
+    d::Dict env
+    env.put("fact", 100)
+
+    out("${program} = ${tree.eval(env)}\n")
+
+    try:
+      Parser bad = new Parser(new Lexer("1 / 0").run())
+      out("unreachable ${bad.expression().eval(env)}\n")
+    catch e:
+      out("caught: ${e}\n")
+    end
+
+    out("live objects ${allocated()}\n")
+  end
+end

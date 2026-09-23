@@ -250,6 +250,9 @@ so no reference count has to be atomic.
 ## Longer examples
 
 - `examples/tour.cm` — classes, inheritance, virtual dispatch, recursion.
+- `examples/mini.cm` — an interpreter: tokenizer, recursive-descent parser,
+  an AST of classes, a tree-walking evaluator, caught errors. Two hundred
+  lines, which is the answer to "can something non-trivial be written in it".
 - `examples/wordcount.cm` — a real program: a filename from the command line,
   a file read line by line, a hash table, usage and an exit status.
 - `bench/` — the same five problems in catmint, C and C++; `bench/run.sh`

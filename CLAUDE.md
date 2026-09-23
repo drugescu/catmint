@@ -550,6 +550,23 @@ Each of these produced a crash or a silent miscompile during development.
   pieces of work so far -- a minute field in `lib/time.cmm`, and twice a
   benchmark -- so treat an unparenthesised `%` in a mixed expression as a bug
   in the program, not in the grammar.
+- **The runtime and the program must be built by one toolchain.** ~~`catmintc`
+  found `llvm-link` and `clang` through `LLVM_BIN`, while `build-runtime.sh`
+  looked `clang` up on `PATH` by itself.~~ **Fixed:** `catmintc` exports
+  `LLVM_BIN`, and `build-runtime.sh` derives its clang from `llvm-link` rather
+  than from `PATH`. On a stock macOS shell the two used to disagree -- Apple
+  clang's front end for the runtime, LLVM 22's back end for the program -- and
+  Apple clang marks the two 4K-buffer functions `"probe-stack"="__chkstk_darwin"`,
+  which LLVM 22's AArch64 back end refuses with `report_fatal_error`. Every
+  program, `01_hello.cm` included, died with "Unsupported stack probing method"
+  in a function nobody wrote. `strip_target` now removes `probe-stack`,
+  `target-cpu` and `target-features`, so the checked-in `runtime.ll` no longer
+  carries whichever clang produced it -- it used to say `"target-cpu"="apple-m1"`
+  on all thirty functions while claiming to be portable.
+- **`test.sh` puts the LLVM bin directory on `PATH` before it runs anything.**
+  That is why the suite stayed green through the bug above: the harness
+  repaired the environment the bug depended on. When something works under
+  `./test.sh`, check it also works under a bare `./catmintc`.
 - **String escapes are decoded in the lexer**, not by the AST's JSON round
   trip. They used to be decoded by accident, because JSON spells `\n` and
   `\t` the same way; a quote or a backslash then produced an AST file the
