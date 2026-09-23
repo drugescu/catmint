@@ -25,6 +25,7 @@ const auto Type = "Type";
 const auto Initializer = "Initializer";
 const auto ReturnType = "ReturnType";
 const auto Static = "Static";
+const auto Abstract = "Abstract";
 const auto Body = "Body";
 const auto FormalParams = "FormalParams";
 const auto Value = "Value";
@@ -239,6 +240,11 @@ bool ASTSerializer::visit(Method *M) {
   // is byte-for-byte what it was before static methods existed.
   if (M->isStatic()) {
     writer->Key(keys::Static);
+    writer->Bool(true);
+  }
+
+  if (M->isAbstract()) {
+    writer->Key(keys::Abstract);
     writer->Bool(true);
   }
 
@@ -1077,6 +1083,11 @@ std::unique_ptr<Method> ASTDeserializer::parseMethod(rapidjson::Value &tree) {
   if (tree.HasMember(keys::Static)) {
     assert(tree[keys::Static].IsBool() && "Invalid static flag");
     method->setStatic(tree[keys::Static].GetBool());
+  }
+
+  if (tree.HasMember(keys::Abstract)) {
+    assert(tree[keys::Abstract].IsBool() && "Invalid abstract flag");
+    method->setAbstract(tree[keys::Abstract].GetBool());
   }
 
   //if (tree.HasMember(keys::AttributeNodeType)) {

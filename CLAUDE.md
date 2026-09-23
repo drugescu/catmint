@@ -457,6 +457,20 @@ declaration order in `TypeTable::addBuiltinClasses` is that slot order. A new
 built-in method must be appended, never inserted, or every already-compiled
 caller silently calls the wrong slot.
 
+`abstract def Int area` declares a method with no body that a subclass must
+supply. It reuses the `interface_method` grammar rules, since a signature
+with no body is exactly what those parse; the only difference is that this
+one sits in a class next to fields and implemented methods. A class is
+abstract when any entry in its finished virtual table still has no body,
+which accounts for inheritance for free -- an override replaced the entry.
+`new` on such a class is a semantic error naming the methods still missing;
+*declaring* a variable of the type gives null, the same as an interface,
+because both name what a value can do rather than what to build. The slot
+still holds a real function, one that calls `__cm_runtimeError` and is
+`unreachable` after it, because a separately compiled unit could have been
+built against an older declaration. A body-less method is otherwise required
+to return `Void`; an abstract one is the exception, which is the point of it.
+
 `break` and `continue` leave the innermost loop and start its next
 iteration. Neither takes a label. The branch is the easy part: what matters
 is that they leave blocks the way a `return` leaves the function, and undo

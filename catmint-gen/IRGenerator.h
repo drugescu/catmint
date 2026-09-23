@@ -109,6 +109,10 @@ struct ClassInfo {
 
   /// Declared with `interface`: signatures only, and never instantiated.
   bool IsInterface = false;
+  /// True while any `abstract def` in this class or its ancestors has no
+  /// body. Such a class is a type to hold a subclass in, not something to
+  /// make -- the same as an interface, and treated the same way.
+  bool IsAbstract = false;
   /// Every interface this class promises, its own and its ancestors'.
   std::vector<std::string> AllInterfaces;
   /// For each of those, where its run of slots begins in this class's

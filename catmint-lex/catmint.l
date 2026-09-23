@@ -74,6 +74,7 @@ static int gColumnNumber = 1;
 "constexpr"   { countColumns(); return KW_CONSTEXPR; }
 "def"         { countColumns(); return KW_DEF; }
 "static"      { countColumns(); return KW_STATIC; }
+"abstract"    { countColumns(); return KW_ABSTRACT; }
 "var"		      { countColumns(); return KW_VAR; }
 "if"		      { countColumns(); return KW_IF; }
 "for"		      { countColumns(); return KW_FOR; }

@@ -168,7 +168,7 @@
 %token OP_ATTRIB OP_DIV OP_PLUS OP_MINUS OP_MUL
 %token OP_OPAREN OP_CPAREN OP_COLON OP_STATIC_ACCESS
 
-%token KW_CONSTEXPR KW_DEF KW_STATIC
+%token KW_CONSTEXPR KW_DEF KW_STATIC KW_ABSTRACT
 
 %token <stringValue> IDENTIFIER
 %token <stringValue> STRING_CONSTANT
@@ -494,6 +494,16 @@ method
   | KW_STATIC method {
 		if (auto m = dynamic_cast<catmint::Method*>($2)) {
 			m->setStatic(true);
+		}
+		$$ = $2;
+	}
+  // An abstract method: a signature with no body, which a subclass must
+  // supply. It reuses the interface_method rules, since a signature with no
+  // body is exactly what those parse -- the only difference is that this one
+  // appears in a class, alongside fields and implemented methods.
+  | KW_ABSTRACT interface_method {
+		if (auto m = dynamic_cast<catmint::Method*>($2)) {
+			m->setAbstract(true);
 		}
 		$$ = $2;
 	}

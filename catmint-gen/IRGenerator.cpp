@@ -841,7 +841,28 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
     ++Idx;
   }
 
-  llvm::Value *Body = M->getBody() ? emit(M->getBody()) : nullptr;
+  // An abstract method takes a virtual table slot but has no body. Nothing
+  // should ever reach it -- the class cannot be instantiated and any subclass
+  // that can be has overridden it -- but a separately compiled unit could be
+  // built against an older declaration, so the slot says what happened rather
+  // than quietly returning zero. The unreachable terminates the block, so the
+  // default-return code below skips itself.
+  llvm::Value *Body = nullptr;
+  if (M->isAbstract()) {
+    auto Error = Module.getOrInsertFunction(
+        "__cm_runtimeError",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(Context),
+                                {llvm::PointerType::getUnqual(Context)},
+                                false));
+    auto *Message = Builder.CreateGlobalString(
+        "abstract method '" + CI->AST->getName() + "." + M->getName() +
+            "' has no implementation",
+        ".abstract." + M->getName(), 0, &Module);
+    Builder.CreateCall(Error, {Message});
+    Builder.CreateUnreachable();
+  } else {
+    Body = M->getBody() ? emit(M->getBody()) : nullptr;
+  }
 
   if (!blockTerminated()) {
     if (M->getReturnType() == strings::Void || M->getReturnType() == "auto") {
@@ -928,6 +949,15 @@ llvm::Module *IRGenerator::runGenerator() {
     if (!layoutClass(CI))
       return nullptr;
     buildVTable(CI);
+    // Once the table says who provides each method, a class is abstract
+    // exactly when one of those providers still has no body. Inheritance is
+    // already accounted for: an override replaced the entry.
+    for (const auto &Entry : CI->VTableImpl) {
+      if (Entry.second.second && Entry.second.second->isAbstract()) {
+        CI->IsAbstract = true;
+        break;
+      }
+    }
   }
   startDebugInfo();
   for (auto *CI : ClassOrder)
@@ -1569,8 +1599,10 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
 
   ClassInfo *DeclClass = lookupClass(DeclaredType);
   // An interface names what a value can do, not what to make, so declaring
-  // one produces a null reference waiting to be given an object.
-  if (DeclClass && DeclClass->IsInterface)
+  // one produces a null reference waiting to be given an object. A class
+  // with an abstract method left in it is the same case: there is no body to
+  // run for that method, so there is nothing to build.
+  if (DeclClass && (DeclClass->IsInterface || DeclClass->IsAbstract))
     DeclClass = nullptr;
   // A self-contained initialiser supplies the whole value, so there is nothing
   // to default-construct first.

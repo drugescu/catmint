@@ -354,7 +354,9 @@ bool SemanticAnalysis::visit(Method *m) {
         !typeTable.isEqualOrImplicitlyConvertibleTo(bodyType, returnType)) {
       throw WrongTypeException(bodyType, returnType, m);
     }
-  } else {
+  } else if (!m->isAbstract()) {
+    // A method with no body returns nothing -- except an abstract one, whose
+    // whole purpose is to declare what a subclass will return.
     if (returnType != typeTable.getVoidType()) {
       throw WrongTypeException(returnType, typeTable.getVoidType(), m);
     }
@@ -706,11 +708,55 @@ bool SemanticAnalysis::visit(StaticDispatch *d) {
   return true;
 }
 
+/// Walk the class and its ancestors for `abstract def`s, and ask what the
+/// class actually resolves each name to. If that is still the abstract
+/// declaration, nobody has supplied a body for it.
+std::vector<std::string> SemanticAnalysis::unimplementedAbstract(Class *c) {
+  std::vector<std::string> left;
+  std::set<std::string> seen;
+
+  for (Class *k = c; k;) {
+    for (auto f : *k) {
+      auto m = dynamic_cast<Method *>(f);
+      if (!m || !m->isAbstract() || !seen.insert(m->getName()).second) {
+        continue;
+      }
+      auto provided = typeTable.getMethod(c, m->getName());
+      if (!provided || provided->isAbstract()) {
+        left.push_back(m->getName());
+      }
+    }
+    if (k->getParent().empty()) {
+      break;
+    }
+    auto parentType = typeTable.getType(k->getParent(), k);
+    k = parentType ? parentType->getClass() : nullptr;
+  }
+
+  return left;
+}
+
 bool SemanticAnalysis::visit(NewObject *n) {
-  auto type = typeTable.getType(n->getType());
+  auto type = typeTable.getType(n->getType(), n);
 
   if (!type->getClass()) {
     throw WrongTypeException(type, n);
+  }
+
+  // A class that still has an abstract method has no body to run for it, so
+  // there is nothing to make. Declaring a variable of the type is fine and
+  // gives a null reference, exactly as declaring an interface does -- both
+  // name what a value can do rather than what to build.
+  auto missing = unimplementedAbstract(type->getClass());
+  if (!missing.empty()) {
+    std::string names;
+    for (const auto &name : missing) {
+      names += (names.empty() ? "" : ", ") + name;
+    }
+    throw SemanticException("cannot make a '" + type->getName() +
+                                "': it still has the abstract method" +
+                                (missing.size() > 1 ? "s " : " ") + names,
+                            n);
   }
 
   // The arguments are the constructor's, and a constructor is just a method

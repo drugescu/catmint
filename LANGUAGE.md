@@ -125,6 +125,22 @@ nothing. A method with no declared return type returns nothing.
 `Geometry.square(7)`. It cannot use `self` or any field.
 → `34_static.cm`
 
+## Abstract methods
+
+```
+class Shape
+  String label = "shape"
+  abstract def Int area          # no body; a subclass supplies it
+end
+```
+
+For a base class that has state and shared methods *and* one method each
+subclass must write. A class with an abstract method left in it cannot be
+`new`ed; declaring a variable of the type gives a null reference, the same as
+declaring an interface does. An interface cannot cover this case, because an
+interface has no fields and no bodies.
+→ `46_abstract.cm`, `examples/mini.cm`
+
 ## Interfaces
 
 ```

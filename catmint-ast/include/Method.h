@@ -59,6 +59,12 @@ public:
   bool isStatic() const { return staticMethod; }
   void setStatic(bool value) { staticMethod = value; }
 
+  /// True for `abstract def`: a signature a subclass must supply. It takes a
+  /// virtual table slot like any other method, so a call through the base
+  /// type reaches the subclass's implementation; what it has no body of.
+  bool isAbstract() const { return abstractMethod; }
+  void setAbstract(bool value) { abstractMethod = value; }
+
   /// @{
   /// \brief Iterate through the parameters
   iterator begin() const { return iterator(parameters.begin()); }
@@ -77,6 +83,7 @@ private:
   std::string returnType;
   FormalParamsType parameters;
   bool staticMethod = false;
+  bool abstractMethod = false;
   
 public:
   std::unique_ptr<Expression> body;

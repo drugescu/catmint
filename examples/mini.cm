@@ -81,9 +81,9 @@ class Lexer from Object
 end
 
 class Node from Object
-  def Int eval(d::Dict env):
-    return 0
-  end
+  # abstract: every node supplies this, and a subclass that forgets is a
+  # compile error rather than one that silently inherits a zero.
+  abstract def Int eval(d::Dict env)
 end
 
 class Num from Node

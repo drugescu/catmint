@@ -62,6 +62,11 @@ private:
   bool workerSafe(Class *c, Method *m, std::set<Method *> &seen,
                   std::string &why);
 
+  /// The abstract methods \p c still has no body for: its own, and any it
+  /// inherited without overriding. Empty means the class is concrete and can
+  /// be made.
+  std::vector<std::string> unimplementedAbstract(Class *c);
+
   /// The class named by a static call's receiver, or null for a normal call.
   Class *staticReceiverClass(Dispatch *d);
   bool visit(IfStatement *i) override;

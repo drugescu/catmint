@@ -1,0 +1,66 @@
+#!/bin/sh
+# What the program's own output cannot show: a class with an abstract method
+# left over cannot be instantiated, and a subclass that forgets one is
+# rejected. Run by ctest.sh with the source file as $1, from catmint-gen.
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+fail() { echo "46_abstract.check: $1"; exit 1; }
+
+# rejected <description> <source>
+rejected() {
+  printf '%s' "$2" > "$work/t.cm"
+  if ../catmintc "$work/t.cm" -o "$work/t.bin" >"$work/log" 2>&1; then
+    fail "$1 was accepted"
+  fi
+  grep -q "abstract" "$work/log" || fail "$1 was rejected without saying why:
+$(cat "$work/log")"
+}
+
+rejected "instantiating a class with an abstract method" 'class Shape
+  abstract def Int area
+end
+class Main from IO
+  def main:
+    Shape s = new Shape
+    out("${s.area()}\n")
+  end
+end
+'
+
+# Declaring one is *accepted*, and gives a null reference. This is the same
+# rule interfaces already follow: both name what a value can do rather than
+# what to build, so there is nothing to construct and nothing to reject. It
+# is `new` that has no body to run.
+printf '%s' 'class Shape
+  abstract def Int area
+end
+class Main from IO
+  def main:
+    Shape s
+    out("declared\n")
+  end
+end
+' > "$work/ok.cm"
+../catmintc "$work/ok.cm" -o "$work/ok.bin" >"$work/oklog" 2>&1 \
+  || fail "declaring a variable of an abstract class was rejected:
+$(cat "$work/oklog")"
+[ "$("$work/ok.bin")" = "declared" ] || fail "declaring one did not run"
+
+rejected "a subclass that implements only some of them" 'class Shape
+  abstract def Int area
+  abstract def Int sides
+end
+class Square from Shape
+  def Int area:
+    return 4
+  end
+end
+class Main from IO
+  def main:
+    Square s = new Square
+    out("${s.area()}\n")
+  end
+end
+'
+exit 0
