@@ -1,0 +1,76 @@
+Object.type Object
+Object.copy Object
+Object.refs 3
+IO.out works
+IO.input []
+IO.readLine []
+IO.eof 1
+IO.entropy in range 1
+IO.ticks not negative 1
+IO.epoch past 2020 1
+IO.localOffset in range 1
+IO.sleep returned
+IO.args 1
+IO.arg empty beyond 1
+IO.err returned
+IO.allocated 1
+String.len 5
+String.toInt 42
+String.substr el
+String.concat Hello!
+String.equals 1
+String.at 72
+String.indexOf 2
+String.trim [x]
+String.upper HELLO
+String.lower hello
+String.split 3
+String.replace HeLLo
+String.toFloat 2.5
+String.chr A
+List.len 2
+List.get 10
+List.set 99
+List.append returned a list 2
+List.slice 1
+Integer.get 7
+Integer.set 8
+Integer.getLong 8
+File.open 1
+File.write returned
+File.close returned
+File.isOpen 1
+File.eof 0
+File.readLine one
+File.readAll 4
+File.exists 1
+File.remove 1
+Math.sqrt 4
+Math.pow 8
+Math.exp 1
+Math.log 0
+Math.log10 2
+Math.sin 0
+Math.cos 1
+Math.tan 0
+Math.atan2 0
+Math.floor 2
+Math.ceil 3
+Math.round 3
+Math.absf 3.5
+Math.abs 4
+Math.min 3
+Math.max 9
+Math.pi 1
+Math.e 1
+Process.open 1
+Process.eof 0
+Process.readLine x
+Process.finish 0
+Process.write returned 0
+Process.run 2
+Process.start and wait 5
+Process.pid 1
+Worker.wait 42
+Worker.count 1
+done

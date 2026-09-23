@@ -13,6 +13,8 @@
 #include <FloatConstant.h>
 #include <StringConstant.h>
 #include <Attribute.h>
+#include <Block.h>
+#include <Method.h>
 #include <BinaryOperator.h>
 #include <Type.h>
 
@@ -176,6 +178,9 @@ private:
   void addTypes(Program *p);
   void addBuiltinTypes(Program *p);
   void addBuiltinClasses(Program *p);
+  /// Register one built-in class and hand its features to the program.
+  Type *addBuiltinClass(Program *p, const char *name, const char *parent,
+                        std::vector<Feature *> &methods);
   void buildInheritanceGraph(Program *p);
   void buildFeatureTable(Class *c);
 

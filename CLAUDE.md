@@ -474,23 +474,30 @@ Each of these produced a crash or a silent miscompile during development.
   declaration order in `TypeTable::addBuiltinClasses` *is* that slot order.
   Append a new built-in method, never insert one: inserting renumbers the
   slots after it and every already-compiled caller then calls the wrong
-  function, with no error anywhere.
-- **`Method` takes ownership of the `Attribute`s passed as its parameters.**
-  Reusing one `builtinMethodsParams` vector across two methods hands the same
-  object to two owners and double-frees it. Clear the vector and allocate
-  fresh parameters for every method.
-- **`TypeTable::isBuiltinClass` decides whether a class is checked as user
-  code.** A new built-in that is missing from it goes down the user path,
-  where its body-less methods are rejected with a confusing type error.
-- **`TypeTable::getType(TreeNode *)` returns a freshly allocated `Type` for
-  constants.** Compare types by `getName()`, never by pointer, or the
-  comparison silently fails for literals.
+  function. **Guarded now:** `42_builtin_slots.cm` calls every built-in
+  method of every built-in class, so a renumbered slot is a failing test
+  instead of a call to the wrong function.
+- ~~**`Method` takes ownership of the `Attribute`s passed as its
+  parameters.**~~ **Fixed.** `declare` and `declareStatic` in `TypeTable.cpp`
+  allocate the parameters for each method, so no vector is ever shared. The
+  double free that used to be possible cannot be written any more, and
+  `addBuiltinClasses` went from 498 lines to 124.
+- ~~**`TypeTable::isBuiltinClass` decides whether a class is checked as user
+  code.**~~ **Fixed.** `Class::isBuiltin()` is set where the class is
+  declared, and both `isBuiltinClass` and the generator's `collectClasses`
+  read it. The two lists of names they each kept are gone. One list remains,
+  `isGlobalTypeName` in the parser, and it has to: the built-ins are added by
+  the type table long after the parser has finished.
+- ~~**`TypeTable::getType(TreeNode *)` returns a freshly allocated `Type`
+  for constants.**~~ **Fixed, and no longer true.** It returns the registered
+  type, so every `Type` in the program is canonical and comparing by pointer
+  is safe. The comparisons written by name still work and are still clearer.
 - **`Builder.CreateGlobalString` takes the module from the current insert
   block.** Class metadata is emitted with no insert point set, so the module
   must be passed explicitly or it segfaults.
-- **Catching an exception by value slices it.** `main.cpp` did this and every
-  code generation error printed a useless generic message for years. Catch by
-  reference and exit non-zero.
+- ~~**Catching an exception by value slices it.**~~ **Fixed** in `main.cpp`,
+  which catches by reference and exits non-zero. Kept here because it hid
+  every code generation error for years and cost a day to find.
 - **`%` binds less tightly than `/` and `*`, and this is settled.** It sits
   with `+` and `-` in `additive_expression`, so `a % b / c` means
   `a % (b / c)` and `a + b % c` means `(a + b) % c`. Every other C-like
@@ -521,7 +528,13 @@ Each of these produced a crash or a silent miscompile during development.
   children, until one did not.
 - **The grammar produces no `Assignment` node.** `x = expr` is always a
   `LocalDefinition` with the type `auto`; the generator decides between
-  assignment and declaration by whether the name already resolves.
+  assignment and declaration by whether the name already resolves. This one
+  is inherent: the parser cannot know which names exist.
+- ~~**A comparison bound tighter than arithmetic**, so `a > b - c` was a
+  syntax error.~~ **Fixed.** `PREC_REL` now sits below `and`/`or` and above
+  the arithmetic operators. Unlike the `%` question this was safe to change:
+  the affected expressions did not compile at all, so no program's meaning
+  could move.
 
 ## Documents
 

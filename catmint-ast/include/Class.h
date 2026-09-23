@@ -63,6 +63,12 @@ public:
   bool isInterface() const { return interfaceDeclaration; }
   void setInterface(bool value) { interfaceDeclaration = value; }
 
+  /// True for a class the compiler supplies rather than one the program
+  /// wrote: Object, IO, String and the rest. Set where they are declared, so
+  /// that nothing has to keep a list of their names in step.
+  bool isBuiltin() const { return builtinDeclaration; }
+  void setBuiltin(bool value) { builtinDeclaration = value; }
+
   /// \brief Add a feature and take ownership of it
   void addFeature(std::unique_ptr<Feature> F) {
     features.push_back(std::move(F));
@@ -99,6 +105,7 @@ private:
   std::string fileName;
   std::vector<std::string> interfaces;
   bool interfaceDeclaration = false;
+  bool builtinDeclaration = false;
   FeaturesType features;
   Symbol self;
 };

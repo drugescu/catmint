@@ -324,12 +324,10 @@ bool IRGenerator::collectClasses() {
     ClassInfo CI;
     CI.AST = C;
     CI.IsInterface = C->isInterface();
+    // The class says whether it is one the compiler supplies; this used to
+    // be a second list of names here, which is one more place to forget.
+    CI.Builtin = C->isBuiltin();
     const std::string Name = C->getName();
-    CI.Builtin = (Name == strings::Object || Name == strings::Io ||
-                  Name == strings::String || Name == strings::List ||
-                  Name == strings::Integer || Name == strings::File ||
-                  Name == strings::Math || Name == strings::Process ||
-                  Name == strings::Worker);
     // Two definitions of one name used to overwrite each other here, so a
     // program importing two modules that both define a Point silently got
     // whichever came last. Until there are namespaces, say so instead.

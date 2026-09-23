@@ -75,526 +75,192 @@ bool TypeTable::isBuiltinType(Type *t) const {
 }
 
 // Add 'Object', 'IO', 'String' classes
-/// Mark the method just declared as static: no receiver, no virtual table
-/// slot. Statics are declared after every instance method of their class, so
-/// that declaration order stays equal to slot order for the rest.
-static Method *asStatic(std::vector<Feature *> &methods) {
-  auto method = static_cast<Method *>(methods.back());
+namespace {
+
+/// One parameter of a built-in method: its name and its type.
+using Param = std::pair<const char *, const char *>;
+
+/// Declare a built-in method, in slot order.
+///
+/// Every call allocates its own parameters. That is the point of this
+/// helper: `Method` takes ownership of the `Attribute`s it is given, so
+/// sharing one vector between two methods handed the same object to two
+/// owners and double-freed it at startup. Declaring them here means it
+/// cannot happen again.
+Method *declare(std::vector<Feature *> &methods, const char *name,
+                const char *returnType,
+                std::initializer_list<Param> params = {}) {
+  std::vector<Attribute *> own;
+  own.reserve(params.size());
+  for (const auto &param : params) {
+    own.push_back(new Attribute(0, param.first, param.second));
+  }
+
+  auto *method = new Method(0, name, returnType, nullptr, own);
+  methods.push_back(method);
+  return method;
+}
+
+/// The same, for a method with no receiver: it takes no virtual table slot,
+/// so it is declared after every method that does.
+Method *declareStatic(std::vector<Feature *> &methods, const char *name,
+                      const char *returnType,
+                      std::initializer_list<Param> params = {}) {
+  auto *method = declare(methods, name, returnType, params);
   method->setStatic(true);
   return method;
 }
 
+} // namespace
+
+/// Register a built-in class and hand its features over to the program,
+/// which owns them from here.
+Type *TypeTable::addBuiltinClass(Program *p, const char *name,
+                                 const char *parent,
+                                 std::vector<Feature *> &methods) {
+  std::unique_ptr<Class> declared(new Class(0, name, parent, methods));
+  declared->setBuiltin(true);
+  Type *type = createNewType(declared.get());
+  p->addClass(std::move(declared));
+  methods.clear();
+  return type;
+}
+
+// Add the classes the compiler supplies. Declaration order here is virtual
+// table slot order in runtime.c, and the two must agree exactly: test 42
+// calls every one of these methods so that a disagreement is a failing test
+// rather than a call to the wrong function.
 void TypeTable::addBuiltinClasses(Program *p) {
-  std::vector<Feature *> builtinMethods;
-  //std::vector<FormalParam *> builtinMethodsParams;
-  std::vector<Attribute *> builtinMethodsParams;
+  std::vector<Feature *> methods;
 
-  // ---------------------------------------------------------------------------
-  // Add built-in class - 'Object'
-  // ---------------------------------------------------------------------------
-  
-  // Method(int, string &name, string &returnType, Expression* body, vector<...> &formalParameters
-  // Method - 'Obj_object.abort()' returning 'Void'
-  builtinMethods.push_back(new Method(0, strings::Abort, strings::Void, nullptr,
-                                      builtinMethodsParams));
-
-  // Method - 'Obj_object.type()' returning obj of type 'String'
-  builtinMethods.push_back(new Method(0, strings::TypeName, strings::String,
-                                      nullptr, builtinMethodsParams));
-
-  // Method - 'Obj_object.copy()' returning obj of type 'Object'
-  builtinMethods.push_back(new Method(0, strings::Copy, strings::Object,
-                                      nullptr, builtinMethodsParams));
-
-  // Slots 3 to 5: reference counting. These sit on Object, so every class has
-  // them, which means every subclass's own methods start at slot 6. There is
-  // no unconditional "free it now": the compiler counts references, so one
+  // --- Object ---------------------------------------------------------
+  declare(methods, strings::Abort, strings::Void);
+  declare(methods, strings::TypeName, strings::String);
+  declare(methods, strings::Copy, strings::Object);
+  // Slots 3 to 5: reference counting. These sit on Object, so every class
+  // has them, and every subclass's own methods start at slot 6. There is no
+  // unconditional "free it now": the compiler counts references, so one
   // would leave counted references pointing at freed memory.
-  builtinMethods.push_back(
-      new Method(0, "retain", strings::Object, nullptr, builtinMethodsParams));
-  builtinMethods.push_back(
-      new Method(0, "release", strings::Void, nullptr, builtinMethodsParams));
-  builtinMethods.push_back(
-      new Method(0, "refs", strings::Int, nullptr, builtinMethodsParams));
-  
-  // Add these methods to class 'Object' with no parent, add class to typeTable,  park it in the program
-  std::unique_ptr<Class> objectClass(
-      new Class(0, strings::Object, "", builtinMethods));
-  (void)createNewType(objectClass.get());
-  p->addClass(std::move(objectClass)); // we're parking this in the program, so
-                                       // someone will have ownership of it, but
-                                       // it's not very nice of us...
+  declare(methods, "retain", strings::Object);
+  declare(methods, "release", strings::Void);
+  declare(methods, "refs", strings::Int);
+  addBuiltinClass(p, strings::Object, "", methods);
 
-  builtinMethods.clear();
-  builtinMethodsParams.clear();
-
-  // ---------------------------------------------------------------------------
-  // Add built-in class - 'IO'
-  // ---------------------------------------------------------------------------
-
-  // Method - 'IO_object.in(String message)' returning obj of type 'String'
-  builtinMethods.push_back(new Method(0, strings::In, strings::String, nullptr,
-                                      builtinMethodsParams));
-  
-  // Method - 'IO_object.out(String message)' returning obj of type 'IO'
-  builtinMethodsParams.push_back(
-      // Attribute(int lineNum, const std::string &name, const std::string &type, catmint::Program::ExprType init = nullptr)
-      new Attribute(0, strings::Message, strings::String));
-  builtinMethods.push_back(
-      new Method(0, strings::Out, strings::Io, nullptr, builtinMethodsParams));
-
-  // Appended after 'out' on purpose: the virtual table slot of a built-in is
-  // fixed by runtime.c, and inserting earlier would renumber 'input' and
-  // 'out'. Declaration order here is slot order there.
-  builtinMethodsParams.clear();
-  // Method - 'IO_object.readLine()' returning obj of type 'String'
-  builtinMethods.push_back(new Method(0, strings::ReadLine, strings::String,
-                                      nullptr, builtinMethodsParams));
-  // Method - 'IO_object.eof()' returning an 'Int'
-  builtinMethods.push_back(
-      new Method(0, strings::Eof, strings::Int, nullptr, builtinMethodsParams));
-  // Method - 'IO_object.entropy()' returning an 'Int': a seed for a random
-  // number generator, the only unpredictable thing the runtime supplies.
-  builtinMethods.push_back(new Method(0, strings::Entropy, strings::Int,
-                                      nullptr, builtinMethodsParams));
-
+  // --- IO -------------------------------------------------------------
+  declare(methods, strings::In, strings::String);
+  declare(methods, strings::Out, strings::Io, {{strings::Message, strings::String}});
+  declare(methods, strings::ReadLine, strings::String);
+  declare(methods, strings::Eof, strings::Int);
+  // A seed for a random number generator: the only unpredictable thing the
+  // runtime supplies, since the generator itself is in lib/random.cmm.
+  declare(methods, strings::Entropy, strings::Int);
   // Time. Only these three readings come from the runtime; turning a
-  // timestamp into a date is integer arithmetic and lives in lib/time.cmm.
-  builtinMethods.push_back(
-      new Method(0, strings::Ticks, strings::Int, nullptr, builtinMethodsParams));
-  // Seconds since 1970 is an Int64, so it keeps working past 2038.
-  builtinMethods.push_back(new Method(0, strings::Epoch, strings::Int64,
-                                      nullptr, builtinMethodsParams));
-  builtinMethods.push_back(new Method(0, strings::LocalOffset, strings::Int,
-                                      nullptr, builtinMethodsParams));
+  // timestamp into a date is arithmetic and lives in lib/time.cmm.
+  declare(methods, strings::Ticks, strings::Int);
+  declare(methods, strings::Epoch, strings::Int64); // 64-bit, so past 2038
+  declare(methods, strings::LocalOffset, strings::Int);
+  declare(methods, strings::Sleep, strings::Io, {{"milliseconds", strings::Int}});
+  declare(methods, "args", strings::Int);
+  declare(methods, "arg", strings::String, {{"index", strings::Int}});
+  declare(methods, "err", strings::Io, {{strings::Message, strings::String}});
+  declare(methods, "exit", strings::Void, {{"code", strings::Int}});
+  declare(methods, "allocated", strings::Int);
+  addBuiltinClass(p, strings::Io, strings::Object, methods);
 
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "milliseconds", strings::Int));
-  builtinMethods.push_back(
-      new Method(0, strings::Sleep, strings::Io, nullptr, builtinMethodsParams));
+  // --- String ---------------------------------------------------------
+  declare(methods, strings::Length, strings::Int);
+  declare(methods, strings::ToInt, strings::Int);
+  declare(methods, strings::Substr, strings::String,
+          {{"start", strings::Int}, {"end", strings::Int}});
+  declare(methods, strings::Concat, strings::String, {{"other", strings::String}});
+  declare(methods, strings::Equals, strings::Int, {{"other", strings::String}});
+  // The character code at an index, which is what a hash needs.
+  declare(methods, strings::At, strings::Int, {{"index", strings::Int}});
+  declare(methods, "indexOf", strings::Int, {{"needle", strings::String}});
+  declare(methods, "trim", strings::String);
+  declare(methods, "upper", strings::String);
+  declare(methods, "lower", strings::String);
+  declare(methods, "split", strings::List, {{"separator", strings::String}});
+  declare(methods, "replace", strings::String,
+          {{"from", strings::String}, {"to", strings::String}});
+  declare(methods, "toFloat", strings::Float);
+  // Static, and so after every slot-taking method: a character code does not
+  // belong to a particular String. Written String.chr(65).
+  declareStatic(methods, "chr", strings::String, {{"code", strings::Int}});
+  addBuiltinClass(p, strings::String, strings::Object, methods);
 
-  // Slots 12 to 15: the command line, standard error and the exit status.
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(
-      new Method(0, "args", strings::Int, nullptr, builtinMethodsParams));
+  // --- List, the one container the runtime provides -------------------
+  declare(methods, strings::Length, strings::Int);
+  declare(methods, strings::Get, strings::Object, {{"index", strings::Int}});
+  declare(methods, strings::Set, strings::Object,
+          {{"index", strings::Int}, {"value", strings::Object}});
+  declare(methods, strings::Append, strings::List, {{"value", strings::Object}});
+  declare(methods, strings::Slice, strings::List,
+          {{"start", strings::Int}, {"end", strings::Int}});
+  addBuiltinClass(p, strings::List, strings::Object, methods);
 
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "index", strings::Int));
-  builtinMethods.push_back(
-      new Method(0, "arg", strings::String, nullptr, builtinMethodsParams));
+  // --- Integer, the box that lets a number live in a List -------------
+  declare(methods, strings::Get, strings::Int);
+  declare(methods, strings::Set, strings::Integer, {{"value", strings::Int}});
+  declare(methods, strings::GetLong, strings::Int64);
+  addBuiltinClass(p, strings::Integer, strings::Object, methods);
 
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, strings::Message, strings::String));
-  builtinMethods.push_back(
-      new Method(0, "err", strings::Io, nullptr, builtinMethodsParams));
+  // --- File -----------------------------------------------------------
+  declare(methods, "open", strings::Int,
+          {{"path", strings::String}, {"mode", strings::String}});
+  declare(methods, strings::ReadLine, strings::String);
+  declare(methods, "readAll", strings::String);
+  declare(methods, "write", strings::File, {{"text", strings::String}});
+  declare(methods, strings::Eof, strings::Int);
+  declare(methods, "close", strings::File);
+  declare(methods, "isOpen", strings::Int);
+  // These two are about a path, not about an open file.
+  declareStatic(methods, "exists", strings::Int, {{"path", strings::String}});
+  declareStatic(methods, "remove", strings::Int, {{"path", strings::String}});
+  addBuiltinClass(p, strings::File, strings::Object, methods);
 
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "code", strings::Int));
-  builtinMethods.push_back(
-      new Method(0, "exit", strings::Void, nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(
-      new Method(0, "allocated", strings::Int, nullptr, builtinMethodsParams));
-  builtinMethodsParams.clear();
-  
-  // Add these methods to class 'IO' which inherits 'Object', add class to typeTable,  park it in the program
-  // Class(int, const std::string &name, const std::string &parentClassName, const std::vector<...> &features = {})
-  std::unique_ptr<Class> ioClass(
-      new Class(0, strings::Io, strings::Object, builtinMethods));
-  (void)createNewType(ioClass.get());
-  p->addClass(std::move(ioClass));
-
-  builtinMethods.clear();
-  builtinMethodsParams.clear();
-
-  // ---------------------------------------------------------------------------
-  // Add built-in class - 'String'
-  // ---------------------------------------------------------------------------
-
-  // Method - 'String_object.len()' returning an 'Int'
-  builtinMethods.push_back(new Method(0, strings::Length, strings::Int, nullptr,
-                                      builtinMethodsParams));
-  // Method - 'String_object.toInt()' returning an 'Int'
-  builtinMethods.push_back(new Method(0, strings::ToInt, strings::Int, nullptr,
-                                      builtinMethodsParams));
-
-  // The next three were always in runtime.c's virtual table but were never
-  // declared here, so slots 5 to 7 existed without a way to call them.
-  // Declaration order is slot order, so they go in exactly this sequence.
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "start", strings::Int));
-  builtinMethodsParams.push_back(new Attribute(0, "end", strings::Int));
-  builtinMethods.push_back(new Method(0, strings::Substr, strings::String,
-                                      nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "other", strings::String));
-  builtinMethods.push_back(new Method(0, strings::Concat, strings::String,
-                                      nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "other", strings::String));
-  builtinMethods.push_back(new Method(0, strings::Equals, strings::Int, nullptr,
-                                      builtinMethodsParams));
-
-  // New slot 8: the character code at an index, which is what a hash needs.
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "index", strings::Int));
-  builtinMethods.push_back(
-      new Method(0, strings::At, strings::Int, nullptr, builtinMethodsParams));
-
-  // Slots 9 to 16: the text operations a program needs on its first page.
-  // These names are not remapped in IRGenerator::runtimeSymbol, so the C
-  // functions are named by the ordinary mangling, M6_String_<name>.
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "needle", strings::String));
-  builtinMethods.push_back(
-      new Method(0, "indexOf", strings::Int, nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(
-      new Method(0, "trim", strings::String, nullptr, builtinMethodsParams));
-  builtinMethods.push_back(
-      new Method(0, "upper", strings::String, nullptr, builtinMethodsParams));
-  builtinMethods.push_back(
-      new Method(0, "lower", strings::String, nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "separator", strings::String));
-  builtinMethods.push_back(
-      new Method(0, "split", strings::List, nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "from", strings::String));
-  builtinMethodsParams.push_back(new Attribute(0, "to", strings::String));
-  builtinMethods.push_back(
-      new Method(0, "replace", strings::String, nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(
-      new Method(0, "toFloat", strings::Float, nullptr, builtinMethodsParams));
-
-  // Static, and therefore after every slot-taking method: a character code
-  // does not belong to a particular String. Written String.chr(65).
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "code", strings::Int));
-  builtinMethods.push_back(
-      new Method(0, "chr", strings::String, nullptr, builtinMethodsParams));
-  asStatic(builtinMethods);
-  builtinMethodsParams.clear();
-  
-  // Add these methods to class 'String' which inherits 'Object', add class to typeTable,  park it in the program
-  // Class(int, const std::string &name, const std::string &parentClassName, const std::vector<...> &features = {})
-  std::unique_ptr<Class> stringClass(
-      new Class(0, strings::String, strings::Object, builtinMethods));
-  (void)createNewType(stringClass.get());
-  p->addClass(std::move(stringClass));
-
-  builtinMethods.clear();
-  builtinMethodsParams.clear();
-
-  // ---------------------------------------------------------------------------
-  // Add built-in class - 'List'
-  //
-  // The one container the runtime provides: a growable array of object
-  // references. Declaration order is virtual table slot order and must match
-  // RList in runtime.c.
-  // ---------------------------------------------------------------------------
-
-  // 'len()' returning an 'Int'
-  builtinMethods.push_back(new Method(0, strings::Length, strings::Int, nullptr,
-                                      builtinMethodsParams));
-
-  // Method takes ownership of each Attribute it is given, so every method
-  // needs its own freshly allocated parameters. Reusing one vector across two
-  // methods would hand the same object to two owners.
-
-  // 'get(Int index)' returning an 'Object'
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "index", strings::Int));
-  builtinMethods.push_back(new Method(0, strings::Get, strings::Object, nullptr,
-                                      builtinMethodsParams));
-
-  // 'set(Int index, Object value)' returning the value
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "index", strings::Int));
-  builtinMethodsParams.push_back(new Attribute(0, "value", strings::Object));
-  builtinMethods.push_back(new Method(0, strings::Set, strings::Object, nullptr,
-                                      builtinMethodsParams));
-
-  // 'append(Object value)' returning the list
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "value", strings::Object));
-  builtinMethods.push_back(new Method(0, strings::Append, strings::List,
-                                      nullptr, builtinMethodsParams));
-
-  // 'slice(Int start, Int end)' returning a new 'List'
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "start", strings::Int));
-  builtinMethodsParams.push_back(new Attribute(0, "end", strings::Int));
-  builtinMethods.push_back(new Method(0, strings::Slice, strings::List, nullptr,
-                                      builtinMethodsParams));
-
-  std::unique_ptr<Class> listClass(
-      new Class(0, strings::List, strings::Object, builtinMethods));
-  (void)createNewType(listClass.get());
-  p->addClass(std::move(listClass));
-
-  builtinMethods.clear();
-  builtinMethodsParams.clear();
-
-  // ---------------------------------------------------------------------------
-  // Add built-in class - 'Integer', the box that lets an Int live in a List
-  // ---------------------------------------------------------------------------
-
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(new Method(0, strings::Get, strings::Int, nullptr,
-                                      builtinMethodsParams));
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "value", strings::Int));
-  builtinMethods.push_back(new Method(0, strings::Set, strings::Integer,
-                                      nullptr, builtinMethodsParams));
-
-  // Appended: the whole 64-bit value, where get() truncates to an Int.
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(new Method(0, strings::GetLong, strings::Int64,
-                                      nullptr, builtinMethodsParams));
-
-  std::unique_ptr<Class> integerClass(
-      new Class(0, strings::Integer, strings::Object, builtinMethods));
-  (void)createNewType(integerClass.get());
-  p->addClass(std::move(integerClass));
-
-  builtinMethods.clear();
-  builtinMethodsParams.clear();
-
-  // ---------------------------------------------------------------------------
-  // Add built-in class - 'File'
-  //
-  // The handle is the whole of the state. open() answers 1 or 0 rather than
-  // aborting, because a missing file is something a program has an opinion
-  // about. Declaration order is virtual table slot order and must match
-  // RFile in runtime.c.
-  // ---------------------------------------------------------------------------
-
-  builtinMethodsParams.push_back(new Attribute(0, "path", strings::String));
-  builtinMethodsParams.push_back(new Attribute(0, "mode", strings::String));
-  builtinMethods.push_back(
-      new Method(0, "open", strings::Int, nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(new Method(0, strings::ReadLine, strings::String,
-                                      nullptr, builtinMethodsParams));
-  builtinMethods.push_back(
-      new Method(0, "readAll", strings::String, nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "text", strings::String));
-  builtinMethods.push_back(
-      new Method(0, "write", strings::File, nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(
-      new Method(0, strings::Eof, strings::Int, nullptr, builtinMethodsParams));
-  builtinMethods.push_back(
-      new Method(0, "close", strings::File, nullptr, builtinMethodsParams));
-  builtinMethods.push_back(
-      new Method(0, "isOpen", strings::Int, nullptr, builtinMethodsParams));
-
-  // Static, and therefore after every slot-taking method: these two are
-  // about a path, not about an open file. Written File.exists(path).
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "path", strings::String));
-  builtinMethods.push_back(
-      new Method(0, "exists", strings::Int, nullptr, builtinMethodsParams));
-  asStatic(builtinMethods);
-
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "path", strings::String));
-  builtinMethods.push_back(
-      new Method(0, "remove", strings::Int, nullptr, builtinMethodsParams));
-  asStatic(builtinMethods);
-
-  std::unique_ptr<Class> fileClass(
-      new Class(0, strings::File, strings::Object, builtinMethods));
-  (void)createNewType(fileClass.get());
-  p->addClass(std::move(fileClass));
-
-  builtinMethods.clear();
-  builtinMethodsParams.clear();
-
-  // ---------------------------------------------------------------------------
-  // Add built-in class - 'Math'
-  //
+  // --- Math -----------------------------------------------------------
   // A shell over libm, with no state. Every method is static, so the class
-  // contributes no virtual table slots at all and exists to name the
-  // functions: Math.sqrt(2.0).
-  // ---------------------------------------------------------------------------
+  // takes no virtual table slots at all and exists to name the functions.
+  for (const char *name : {"sqrt"}) declareStatic(methods, name, strings::Float, {{"x", strings::Float}});
+  declareStatic(methods, "pow", strings::Float, {{"x", strings::Float}, {"y", strings::Float}});
+  for (const char *name : {"exp", "log", "log10", "sin", "cos", "tan"})
+    declareStatic(methods, name, strings::Float, {{"x", strings::Float}});
+  declareStatic(methods, "atan2", strings::Float, {{"y", strings::Float}, {"x", strings::Float}});
+  for (const char *name : {"floor", "ceil", "round", "absf"})
+    declareStatic(methods, name, strings::Float, {{"x", strings::Float}});
+  declareStatic(methods, "abs", strings::Int, {{"x", strings::Int}});
+  for (const char *name : {"min", "max"})
+    declareStatic(methods, name, strings::Int, {{"a", strings::Int}, {"b", strings::Int}});
+  declareStatic(methods, "pi", strings::Float);
+  declareStatic(methods, "e", strings::Float);
+  addBuiltinClass(p, strings::Math, strings::Object, methods);
 
-  // One entry per slot, in RMath's order. Written out rather than generated
-  // from a table, because the order is the calling convention.
-  auto oneFloat = [&](const char *name) {
-    builtinMethodsParams.clear();
-    builtinMethodsParams.push_back(new Attribute(0, "x", strings::Float));
-    builtinMethods.push_back(
-        new Method(0, name, strings::Float, nullptr, builtinMethodsParams));
-    asStatic(builtinMethods);
-  };
-  auto twoFloats = [&](const char *name, const char *first,
-                       const char *second) {
-    builtinMethodsParams.clear();
-    builtinMethodsParams.push_back(new Attribute(0, first, strings::Float));
-    builtinMethodsParams.push_back(new Attribute(0, second, strings::Float));
-    builtinMethods.push_back(
-        new Method(0, name, strings::Float, nullptr, builtinMethodsParams));
-    asStatic(builtinMethods);
-  };
-  auto twoInts = [&](const char *name) {
-    builtinMethodsParams.clear();
-    builtinMethodsParams.push_back(new Attribute(0, "a", strings::Int));
-    builtinMethodsParams.push_back(new Attribute(0, "b", strings::Int));
-    builtinMethods.push_back(
-        new Method(0, name, strings::Int, nullptr, builtinMethodsParams));
-    asStatic(builtinMethods);
-  };
+  // --- Process, another program running beside this one ---------------
+  declare(methods, "open", strings::Int,
+          {{"command", strings::String}, {"mode", strings::String}});
+  declare(methods, strings::ReadLine, strings::String);
+  declare(methods, "write", strings::Process, {{"text", strings::String}});
+  declare(methods, strings::Eof, strings::Int);
+  declare(methods, "finish", strings::Int);
+  declareStatic(methods, "run", strings::Int, {{"command", strings::String}});
+  declareStatic(methods, "start", strings::Int, {{"command", strings::String}});
+  declareStatic(methods, "wait", strings::Int, {{"pid", strings::Int}});
+  declareStatic(methods, "pid", strings::Int);
+  addBuiltinClass(p, strings::Process, strings::Object, methods);
 
-  oneFloat("sqrt");
-  twoFloats("pow", "x", "y");
-  oneFloat("exp");
-  oneFloat("log");
-  oneFloat("log10");
-  oneFloat("sin");
-  oneFloat("cos");
-  oneFloat("tan");
-  twoFloats("atan2", "y", "x");
-  oneFloat("floor");
-  oneFloat("ceil");
-  oneFloat("round");
-  oneFloat("absf");
-
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "x", strings::Int));
-  builtinMethods.push_back(
-      new Method(0, "abs", strings::Int, nullptr, builtinMethodsParams));
-  asStatic(builtinMethods);
-
-  twoInts("min");
-  twoInts("max");
-
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(
-      new Method(0, "pi", strings::Float, nullptr, builtinMethodsParams));
-  asStatic(builtinMethods);
-  builtinMethods.push_back(
-      new Method(0, "e", strings::Float, nullptr, builtinMethodsParams));
-  asStatic(builtinMethods);
-
-  std::unique_ptr<Class> mathClass(
-      new Class(0, strings::Math, strings::Object, builtinMethods));
-  (void)createNewType(mathClass.get());
-  p->addClass(std::move(mathClass));
-
-  builtinMethods.clear();
-  builtinMethodsParams.clear();
-
-  // ---------------------------------------------------------------------------
-  // Add built-in class - 'Process'
-  //
-  // Another program running beside this one: the only concurrency catmint
-  // offers, because processes share nothing and so cost the object model
-  // nothing. The five instance methods take slots, in this order and
-  // matching RProcess in runtime.c; the four static ones take none.
-  // ---------------------------------------------------------------------------
-
-  builtinMethodsParams.push_back(new Attribute(0, "command", strings::String));
-  builtinMethodsParams.push_back(new Attribute(0, "mode", strings::String));
-  builtinMethods.push_back(
-      new Method(0, "open", strings::Int, nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(new Method(0, strings::ReadLine, strings::String,
-                                      nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "text", strings::String));
-  builtinMethods.push_back(
-      new Method(0, "write", strings::Process, nullptr, builtinMethodsParams));
-
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(
-      new Method(0, strings::Eof, strings::Int, nullptr, builtinMethodsParams));
-  builtinMethods.push_back(
-      new Method(0, "finish", strings::Int, nullptr, builtinMethodsParams));
-
-  // Static from here: these are about starting and collecting programs, not
-  // about a pipe that is already open.
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "command", strings::String));
-  builtinMethods.push_back(
-      new Method(0, "run", strings::Int, nullptr, builtinMethodsParams));
-  asStatic(builtinMethods);
-
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "command", strings::String));
-  builtinMethods.push_back(
-      new Method(0, "start", strings::Int, nullptr, builtinMethodsParams));
-  asStatic(builtinMethods);
-
-  builtinMethodsParams.clear();
-  builtinMethodsParams.push_back(new Attribute(0, "pid", strings::Int));
-  builtinMethods.push_back(
-      new Method(0, "wait", strings::Int, nullptr, builtinMethodsParams));
-  asStatic(builtinMethods);
-
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(
-      new Method(0, "pid", strings::Int, nullptr, builtinMethodsParams));
-  asStatic(builtinMethods);
-
-  std::unique_ptr<Class> processClass(
-      new Class(0, strings::Process, strings::Object, builtinMethods));
-  (void)createNewType(processClass.get());
-  p->addClass(std::move(processClass));
-
-  builtinMethods.clear();
-  builtinMethodsParams.clear();
-
-  // ---------------------------------------------------------------------------
-  // Add built-in class - 'Worker'
-  //
-  // A thread, reached only through `spawn`. Both methods are static, so the
-  // class takes no virtual table slots of its own.
-  // ---------------------------------------------------------------------------
-
-  builtinMethodsParams.push_back(new Attribute(0, "handle", strings::Int));
-  builtinMethods.push_back(
-      new Method(0, "wait", strings::Int64, nullptr, builtinMethodsParams));
-  asStatic(builtinMethods);
-
-  builtinMethodsParams.clear();
-  builtinMethods.push_back(
-      new Method(0, "count", strings::Int, nullptr, builtinMethodsParams));
-  asStatic(builtinMethods);
-
-  std::unique_ptr<Class> workerClass(
-      new Class(0, strings::Worker, strings::Object, builtinMethods));
-  (void)createNewType(workerClass.get());
-  p->addClass(std::move(workerClass));
+  // --- Worker, a thread reached only through `spawn` ------------------
+  declareStatic(methods, "wait", strings::Int64, {{"handle", strings::Int}});
+  declareStatic(methods, "count", strings::Int);
+  addBuiltinClass(p, strings::Worker, strings::Object, methods);
 }
 
 bool TypeTable::isBuiltinClass(Class *c) const {
-  if (!c) {
-    return false;
-  }
-  // Compare by name: a built-in's methods have no body, so missing one here
-  // sends it down the user-class path and the body-less methods are rejected.
-  const std::string &name = c->getName();
-  return name == strings::Object || name == strings::String ||
-         name == strings::Io || name == strings::List ||
-         name == strings::Integer || name == strings::File ||
-         name == strings::Math || name == strings::Process ||
-         name == strings::Worker;
+  // The class says so itself, set where it was declared. This used to be a
+  // list of names here, and a new built-in missing from it went down the
+  // user-class path, where its body-less methods were rejected with a
+  // confusing type error.
+  return c && c->isBuiltin();
 }
 
 Type *TypeTable::getType(const std::string &name) const {

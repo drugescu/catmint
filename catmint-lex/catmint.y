@@ -55,6 +55,10 @@
 	// Inside a namespace, an unqualified class name means one of that module's
 	// own classes. The built-in and primitive names are the exception: they are
 	// global, and there is a fixed list of them.
+	//
+	// This list has to be written out, unlike the two the compiler used to
+	// keep: the built-in classes are added by the type table long after the
+	// parser has finished, so there is nothing here to ask.
 	static bool isGlobalTypeName(const std::string &name) {
 		return name == "Int" || name == "Int8" || name == "Int16" ||
 		       name == "Int32" || name == "Int64" ||
@@ -224,11 +228,16 @@ expression
 // 'a > 1 and a < 10' needs no parentheses.
 %left OP_ORELSE
 %left OP_ANDALSO
+// A comparison binds looser than arithmetic, so 'a > b - c' means
+// 'a > (b - c)'. It used to sit below the arithmetic operators, where the
+// parser reduced 'a > b' as soon as it could and then had nowhere to put the
+// '-': the expression was a syntax error rather than a wrong answer, which
+// is why moving it here cannot change what any existing program computes.
+%nonassoc <operator> PREC_REL
 %left OP_MOD OP_PLUS OP_MINUS 
 %left OP_MUL OP_DIV OP_POW OP_AND OP_OR OP_XOR OP_LSHIFT OP_RHIFT
 %right OP_NOT
 %left PREC_NEG
-%nonassoc <operator> PREC_REL
 %left '[' ']'
 %left OP_ATTRIB
 //%left '[' ']' '{' '}' KW_IF KW_WHILE
