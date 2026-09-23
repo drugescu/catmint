@@ -12,6 +12,23 @@
 # things the program's own output cannot show -- what is in the generated IR,
 # say. A non-zero exit fails the test.
 # Run a single test:  ./ctest.sh test_suite/01_hello.cm
+#
+# --thorough additionally compiles every test to a native binary at -O0, -O1,
+# -O2 and -O3 and requires the same output from all four, and tries the
+# separately compiled build as well. The everyday run does none of that: it
+# JITs one build with lli, which is fast but sees only one set of optimiser
+# decisions. Bugs that appear at one -O level and not another are a real
+# class here -- a function containing a `try` needs its locals volatile, and
+# without that it is correct at -O0 and wrong at -O2.
+THOROUGH=0
+WANTED=""
+for arg in "$@"; do
+  case "$arg" in
+    --thorough) THOROUGH=1 ;;
+    *) WANTED="$WANTED $arg" ;;
+  esac
+done
+
 LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v llvm-link 2>/dev/null || echo /opt/homebrew/opt/llvm@22/bin/llvm-link)")}
 LLVM_LINK="$LLVM_BIN/llvm-link"
 LLI="$LLVM_BIN/lli"
@@ -25,11 +42,61 @@ trap 'rm -rf "$WORK"' EXIT
 
 ./build-runtime.sh "$WORK/runtime.host.ll"
 
+# run_binary <binary> <output file> -- with this test's stdin and arguments.
+# Standard error goes to its own file, not into the output being compared:
+# 30_args writes a usage line there on purpose, and folding the two together
+# made the sweep disagree with the run it was supposed to be checking.
+run_binary() {
+  # shellcheck disable=SC2086
+  if [ -f "test_suite/$name.stdin" ]; then
+    "$1" $PROGRAM_ARGS <"test_suite/$name.stdin" >"$2" 2>"$2.err"
+  else
+    "$1" $PROGRAM_ARGS </dev/null >"$2" 2>"$2.err"
+  fi
+}
+
+# sweep -- compile this test to a native binary at every optimisation level and
+# require identical output from all of them, then try the separately compiled
+# build. Only --thorough runs it. Sets sweep_note for the success line.
+sweep() {
+  sweep_note=""
+  for opt in -O0 -O1 -O2 -O3; do
+    if ! ../catmintc $opt -I test_suite/modules -I ../lib "$file" \
+          -o "$WORK/$name$opt.bin" >"$WORK/$name$opt.log" 2>&1; then
+      printf "${RED}FAIL${NC} ($opt build; see $WORK/$name$opt.log)\n"
+      return 1
+    fi
+    run_binary "$WORK/$name$opt.bin" "$WORK/$name$opt.out"
+    if ! diff -q "$WORK/$name$opt.out" "$expected" >/dev/null 2>&1; then
+      printf "${RED}FAIL${NC} (output at $opt)\n"
+      diff "$expected" "$WORK/$name$opt.out" | sed 's/^/      /' | head -20
+      return 1
+    fi
+  done
+  sweep_note=" -O0..3"
+
+  # The separately compiled build too, where the program can be built that
+  # way. A build failure here is not a test failure: `using namespace` has no
+  # meaning under --separate and several tests use it. Wrong output is.
+  if ../catmintc --separate -I test_suite/modules -I ../lib "$file" \
+        -o "$WORK/$name.sep.bin" >"$WORK/$name.sep.log" 2>&1; then
+    run_binary "$WORK/$name.sep.bin" "$WORK/$name.sep.out"
+    if ! diff -q "$WORK/$name.sep.out" "$expected" >/dev/null 2>&1; then
+      printf "${RED}FAIL${NC} (output when separately compiled)\n"
+      diff "$expected" "$WORK/$name.sep.out" | sed 's/^/      /' | head -20
+      return 1
+    fi
+    sweep_note="$sweep_note +sep"
+  fi
+  return 0
+}
+
 tests=0; errors=0; failed=""
-for file in ${*:-test_suite/*.cm}; do
+for file in ${WANTED:-test_suite/*.cm}; do
   tests=$((tests+1))
   name=$(basename "$file" .cm)
   expected="test_suite/$name.expected"
+  sweep_note=""
   printf "%-28s " "$name"
 
   # Command-line arguments for the program under test, if it wants any.
@@ -118,6 +185,11 @@ for file in ${*:-test_suite/*.cm}; do
     continue
   fi
 
+  if [ "$THOROUGH" -eq 1 ] && ! sweep; then
+    errors=$((errors+1)); failed="$failed $name"
+    continue
+  fi
+
   if [ -x "test_suite/$name.check" ]; then
     if ! "test_suite/$name.check" "$file" >"$WORK/$name.check.log" 2>&1; then
       printf "${RED}FAIL${NC} (check)\n"
@@ -125,11 +197,11 @@ for file in ${*:-test_suite/*.cm}; do
       errors=$((errors+1)); failed="$failed $name"
       continue
     fi
-    printf "${GREEN}ok${NC} (checked)\n"
+    printf "${GREEN}ok${NC} (checked)$sweep_note\n"
     continue
   fi
 
-  printf "${GREEN}ok${NC}\n"
+  printf "${GREEN}ok${NC}$sweep_note\n"
 done
 
 echo "------------------------------------------------------------"

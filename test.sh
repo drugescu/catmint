@@ -1,8 +1,10 @@
 #!/bin/sh
 # Build everything and run every test in the repository.
 #
-#   ./test.sh            build, then run both suites
+#   ./test.sh             build, then run both suites
 #   ./test.sh --no-build  run the suites against what is already built
+#   ./test.sh --thorough  also compile every codegen test at -O0..-O3 and
+#                         separately, and require the same output from each
 #
 # The parser suite diffs each test_suite/*.cm against its committed .ref;
 # the code generation suite compiles and runs every catmint-gen/test_suite/*.cm
@@ -14,7 +16,14 @@ ROOT=$(cd "$(dirname "$0")" && pwd)
 GREEN='\033[1;32m'; RED='\033[1;31m'; BOLD='\033[1m'; NC='\033[0m'
 
 BUILD=1
-[ "$1" = "--no-build" ] && BUILD=0
+THOROUGH=""
+for arg in "$@"; do
+  case "$arg" in
+    --no-build) BUILD=0 ;;
+    --thorough) THOROUGH="--thorough" ;;
+    *) echo "test.sh: unknown option $arg" >&2; exit 2 ;;
+  esac
+done
 
 # Homebrew's LLVM and bison are keg-only, so put them first if they are there.
 for dir in /opt/homebrew/opt/llvm@22/bin /opt/homebrew/opt/bison/bin; do
@@ -42,7 +51,7 @@ else
 fi
 
 printf "\n${BOLD}code generation${NC}\n"
-if ( cd "$ROOT/catmint-gen" && ./ctest.sh ) > "$ROOT/.ctest.log" 2>&1; then
+if ( cd "$ROOT/catmint-gen" && ./ctest.sh $THOROUGH ) > "$ROOT/.ctest.log" 2>&1; then
   grep -o "all [0-9]* passed" "$ROOT/.ctest.log" | tail -1 | sed 's/^/  /'
 else
   printf "  ${RED}failed${NC}\n"
