@@ -50,6 +50,9 @@ struct __catmint_rtti {
   void *interfaces;             /* __cm_iface[], ending in a null entry */
   void *finalize;               /* run before the memory goes back, or  */
                                 /* null; see M6_Object_release          */
+  int *fields;                  /* byte offsets of this class's         */
+                                /* reference fields, ending in -1, or   */
+                                /* null; see object_free                */
   void *vtable[];               /* parent's slots first, then new ones  */
 };
 
@@ -179,6 +182,7 @@ struct TWorker {
     struct __catmint_rtti *parent;                                             \
     void *interfaces;                                                          \
     void *finalize;                                                            \
+    int *fields;                                                               \
     void *vtable[slots];                                                       \
   } name
 
@@ -352,12 +356,12 @@ struct TString NFloats  = { RTTI(RString), 0, 6, "Floats" };
       (void *)M6_Object_release, (void *)M6_Object_refs
 
 catmint_rtti6_object RObject = {
-  &NObject, sizeof(struct TObject), NULL, NULL, NULL,
+  &NObject, sizeof(struct TObject), NULL, NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS }
 };
 
 catmint_rtti20_string RString = {
-  &NString, sizeof(struct TString), RTTI(RObject), NULL, NULL,
+  &NString, sizeof(struct TString), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M6_String_length, (void *)M6_String_toInt,
     (void *)M6_String_substring, (void *)M6_String_concat,
@@ -372,7 +376,7 @@ catmint_rtti20_string RString = {
 /* The two new slots go on the end. Inserting anywhere else would renumber
  * `in` and `out` and silently break every already-compiled caller. */
 catmint_rtti20_io RIO = {
-  &NIO, sizeof(struct TIO), RTTI(RObject), NULL, NULL,
+  &NIO, sizeof(struct TIO), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M2_IO_in, (void *)M2_IO_out,
     (void *)M2_IO_readLine, (void *)M2_IO_eof, (void *)M2_IO_entropy,
@@ -383,7 +387,7 @@ catmint_rtti20_io RIO = {
 };
 
 catmint_rtti15_file RFile = {
-  &NFile, sizeof(struct TFile), RTTI(RObject), NULL, NULL,
+  &NFile, sizeof(struct TFile), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M4_File_open, (void *)M4_File_readLine, (void *)M4_File_readAll,
     (void *)M4_File_write, (void *)M4_File_eof, (void *)M4_File_close,
@@ -394,17 +398,17 @@ catmint_rtti15_file RFile = {
 /* Every Math method is static, so the class contributes no slots of its own
  * and its table is Object's. The class exists only to name the functions. */
 catmint_rtti6_object RMath = {
-  &NMath, sizeof(struct TMath), RTTI(RObject), NULL, NULL,
+  &NMath, sizeof(struct TMath), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS }
 };
 
 catmint_rtti6_object RWorker = {
-  &NWorker, sizeof(struct TWorker), RTTI(RObject), NULL, NULL,
+  &NWorker, sizeof(struct TWorker), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS }
 };
 
 catmint_rtti12_bytes RBytes = {
-  &NBytes, sizeof(struct TBytes), RTTI(RObject), NULL, NULL,
+  &NBytes, sizeof(struct TBytes), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M5_Bytes_len, (void *)M5_Bytes_get, (void *)M5_Bytes_set,
     (void *)M5_Bytes_fill,
@@ -412,21 +416,21 @@ catmint_rtti12_bytes RBytes = {
 };
 
 catmint_rtti10_array RInts = {
-  &NInts, sizeof(struct TInts), RTTI(RObject), NULL, NULL,
+  &NInts, sizeof(struct TInts), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M4_Ints_len, (void *)M4_Ints_get, (void *)M4_Ints_set,
     (void *)M4_Ints_fill }
 };
 
 catmint_rtti10_array RFloats = {
-  &NFloats, sizeof(struct TFloats), RTTI(RObject), NULL, NULL,
+  &NFloats, sizeof(struct TFloats), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M6_Floats_len, (void *)M6_Floats_get, (void *)M6_Floats_set,
     (void *)M6_Floats_fill }
 };
 
 catmint_rtti11_process RProcess = {
-  &NProcess, sizeof(struct TProcess), RTTI(RObject), NULL, NULL,
+  &NProcess, sizeof(struct TProcess), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M7_Process_open, (void *)M7_Process_readLine,
     (void *)M7_Process_write, (void *)M7_Process_eof,
@@ -434,14 +438,14 @@ catmint_rtti11_process RProcess = {
 };
 
 catmint_rtti11_list RList = {
-  &NList, sizeof(struct TList), RTTI(RObject), NULL, NULL,
+  &NList, sizeof(struct TList), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M4_List_len, (void *)M4_List_get, (void *)M4_List_set,
     (void *)M4_List_append, (void *)M4_List_slice }
 };
 
 catmint_rtti8_integer RInteger = {
-  &NInteger, sizeof(struct TInteger), RTTI(RObject), NULL, NULL,
+  &NInteger, sizeof(struct TInteger), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M7_Integer_get, (void *)M7_Integer_getLong }
 };
@@ -719,6 +723,28 @@ static void object_free(struct TObject *self) {
     self->refs = 1;
     finalize(self);
   }
+  /* Let go of what this object's fields were holding. Until this existed a
+   * class with a String field leaked that String every time an instance went
+   * away -- not a few bytes at exit but a leak that grows, since a loop
+   * making and dropping a hundred objects left a hundred Strings behind and
+   * `IO.allocated()` said so.
+   *
+   * The offsets come from the generator, which knows the layout; the runtime
+   * only walks them. The count is held at 1 for the walk so that a field
+   * pointing back at this object cannot re-enter and free it twice. */
+  self->refs = 1;
+  if (self->rtti != NULL && self->rtti->fields != NULL) {
+    const int *offset;
+    for (offset = self->rtti->fields; *offset >= 0; ++offset) {
+      void **slot = (void **)((char *)self + *offset);
+      if (*slot != NULL) {
+        void *held = *slot;
+        *slot = NULL;
+        __cm_release(held);
+      }
+    }
+  }
+
   release_owned_buffers(self);
   self->refs = 0;
   gLiveObjects -= 1;

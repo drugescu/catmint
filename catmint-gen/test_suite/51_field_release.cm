@@ -1,0 +1,105 @@
+# Freeing follows a class's reference fields.
+#
+# Releasing an object used to return only what a built-in owned -- a String's
+# characters, a List's items -- and never looked at a user class's fields,
+# because the run-time type information did not say which of them held
+# references. A class with a String field therefore leaked that String every
+# time an instance went away, which in a loop is a leak that grows: a hundred
+# instances made and freed left a hundred Strings behind, and `allocated()`
+# said so.
+#
+# The fix is a list of reference-field offsets in the type information, which
+# the generator already knew and simply had not been writing down.
+
+class Node
+  String label
+  Node next
+  List items
+
+  constructor(String text):
+    label = text
+  end
+end
+
+class Labelled from Node
+  String extra
+
+  constructor(String text, String more):
+    label = text
+    extra = more
+  end
+end
+
+class Main from IO
+  def Void simple(Int n):
+    Node a = new Node("item " + n)
+  end
+
+  # One object holding another, which holds a String of its own.
+  def Void chained(Int n):
+    Node a = new Node("head " + n)
+    Node b = new Node("tail " + n)
+    a.next = b
+  end
+
+  # A built-in container in a field: freeing the Node frees the List, which
+  # frees what it holds.
+  def Void withList(Int n):
+    Node a = new Node("list " + n)
+    List things
+    things.append("one " + n)
+    things.append("two " + n)
+    a.items = things
+  end
+
+  def main:
+    Int before = allocated()
+    Int i = 0
+    while i < 200:
+      simple(i)
+      i = i + 1
+    end
+    out("simple ${allocated() - before}\n")
+
+    before = allocated()
+    i = 0
+    while i < 200:
+      chained(i)
+      i = i + 1
+    end
+    out("chained ${allocated() - before}\n")
+
+    before = allocated()
+    i = 0
+    while i < 200:
+      withList(i)
+      i = i + 1
+    end
+    out("withList ${allocated() - before}\n")
+
+    # Inherited fields count too: a subclass's layout begins with its
+    # parent's, so the offsets have to cover both.
+    before = allocated()
+    i = 0
+    while i < 200:
+      Labelled x = new Labelled("base " + i, "extra " + i)
+      i = i + 1
+    end
+    out("inherited ${allocated() - before}\n")
+
+    # Assigning over a field still releases what was there, which is how a
+    # structure had to be taken apart before this existed. The answer is 1,
+    # not 0, and that is right: `keep` is still alive at the end holding one
+    # String, and it started out holding a literal, which is static and never
+    # counted. Two hundred assignments net one live object, not two hundred.
+    Node keep = new Node("first")
+    before = allocated()
+    i = 0
+    while i < 200:
+      keep.label = "replacement " + i
+      i = i + 1
+    end
+    out("reassigned ${allocated() - before}\n")
+    out("done\n")
+  end
+end

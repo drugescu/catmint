@@ -32,8 +32,9 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
   IOType = llvm::StructType::create(Context, "struct.TIO");
 
   // { TString *name; int size; __catmint_rtti *parent; void *interfaces;
-  //   void *finalize; void *vtable[]; }
-  RTTIType->setBody({Ptr, I32, Ptr, Ptr, Ptr, llvm::ArrayType::get(Ptr, 0)});
+  //   void *finalize; int *fields; void *vtable[]; }
+  RTTIType->setBody(
+      {Ptr, I32, Ptr, Ptr, Ptr, Ptr, llvm::ArrayType::get(Ptr, 0)});
   // Every object is { rtti, int refs, ... }; refs is 0 for a static object,
   // which is how free() knows not to touch a string literal.
   // { rtti; int refs; int length; char *chars; }
@@ -664,8 +665,38 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
 
   // The RTTI record is a distinct struct per class because the vtable length
   // varies; __catmint_rtti declares it as a flexible [0 x ptr] member.
+  // Where this class's reference fields live, as byte offsets ending in -1.
+  // The generator is the only thing that knows the layout, so it writes the
+  // list down and the runtime only walks it. Inherited fields are included
+  // for free: a subclass's layout begins with its parent's, and FieldIndex
+  // covers both.
+  llvm::Constant *Fields = llvm::ConstantPointerNull::get(Ptr);
+  if (!CI->Builtin && !CI->IsInterface && !CI->IsExtern && CI->Ty) {
+    const llvm::StructLayout *Layout = SizingLayout.getStructLayout(CI->Ty);
+    std::vector<unsigned> Indices;
+    for (const auto &Field : CI->FieldIndex) {
+      auto TypeIt = CI->FieldType.find(Field.first);
+      if (TypeIt != CI->FieldType.end() && isReferenceTypeName(TypeIt->second))
+        Indices.push_back(Field.second);
+    }
+    if (!Indices.empty()) {
+      std::sort(Indices.begin(), Indices.end());
+      std::vector<llvm::Constant *> Offsets;
+      for (unsigned Index : Indices)
+        Offsets.push_back(llvm::ConstantInt::get(
+            I32, Layout->getElementOffset(Index)));
+      Offsets.push_back(llvm::ConstantInt::get(I32, static_cast<uint64_t>(-1),
+                                               /*IsSigned=*/true));
+      auto *ListTy = llvm::ArrayType::get(I32, Offsets.size());
+      Fields = new llvm::GlobalVariable(
+          Module, ListTy, /*isConstant=*/true,
+          llvm::GlobalValue::PrivateLinkage,
+          llvm::ConstantArray::get(ListTy, Offsets), "D" + symbolName(Name));
+    }
+  }
+
   auto *RTTITy =
-      llvm::StructType::get(Context, {Ptr, I32, Ptr, Ptr, Ptr, VTableTy});
+      llvm::StructType::get(Context, {Ptr, I32, Ptr, Ptr, Ptr, Ptr, VTableTy});
   uint64_t Size = SizingLayout.getTypeAllocSize(CI->Ty);
   llvm::Constant *ParentRTTI =
       CI->Parent ? llvm::cast<llvm::Constant>(CI->Parent->RTTI)
@@ -688,7 +719,7 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
 
   auto *RTTIInit = llvm::ConstantStruct::get(
       RTTITy, {CI->NameGlobal, llvm::ConstantInt::get(I32, Size), ParentRTTI,
-               Interfaces, Finalizer,
+               Interfaces, Finalizer, Fields,
                llvm::ConstantArray::get(VTableTy, Slots)});
   CI->RTTI = new llvm::GlobalVariable(Module, RTTITy, /*isConstant=*/false,
                                       llvm::GlobalValue::ExternalLinkage,
@@ -2359,10 +2390,11 @@ llvm::Value *IRGenerator::emitCall(ClassInfo *RecvClass,
 
   auto *SlotAddr = Builder.CreateGEP(
       Runtime.rttiType(), RTTI,
-      // Index 5, not 4: the record gained a finalizer between `interfaces`
-      // and the table. runtime.c and this GEP have to agree, and nothing
-      // would say so if they did not.
-      {Builder.getInt32(0), Builder.getInt32(5), SlotIndex},
+      // Index 6. The record has grown twice since the table was at 3:
+      // `interfaces` for `does`, `finalize` for the FFI's wrappers, and
+      // `fields` for releasing what a class holds. runtime.c and this GEP
+      // have to agree, and nothing would say so if they did not.
+      {Builder.getInt32(0), Builder.getInt32(6), SlotIndex},
       MethodName + ".slot");
   auto *Fn = Builder.CreateLoad(Ptr, SlotAddr, MethodName + ".fn");
   auto *Call = Builder.CreateCall(FT, Fn, CallArgs);
