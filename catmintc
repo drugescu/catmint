@@ -10,6 +10,12 @@
 #   ./catmintc -O0 app.cm                  -> no optimisation, for debugging
 #   ./catmintc -g -O0 app.cm               -> line numbers a debugger can use
 #   ./catmintc --asan app.cm               -> build under AddressSanitizer
+#   ./catmintc -lSDL2 -L/opt/lib app.cm    -> link against another library
+#
+# A program can also name its own libraries, so that plain `catmintc app.cm`
+# works: a line `link "SDL2"` anywhere in a .cm or .cmm becomes -lSDL2. The
+# compiler never sees the line -- the preprocessor removes it -- so there is
+# no grammar rule and no AST node behind it.
 #
 # Set LLVM_BIN if llvm-link/clang are not on PATH.
 set -e
@@ -47,6 +53,12 @@ DEBUG=""
 # what makes it the check to run after touching reference counting: a release
 # too many shows up as a use-after-free here and as nothing at all otherwise.
 SAN=""
+# Libraries and library directories, from -l/-L on the command line and from
+# `link "..."` lines in the sources. -lm starts the list rather than being
+# hardcoded on the link line, so a program that says `link "m"` does not make
+# the linker warn about a duplicate. On macOS libm is part of libSystem and
+# the flag does nothing; on Linux it does not.
+LIBS="-lm"
 while [ $# -gt 0 ]; do
   case "$1" in
     --run) RUN=1; shift ;;
@@ -55,6 +67,10 @@ while [ $# -gt 0 ]; do
     -g) DEBUG=1; shift ;;
     --asan) SAN=-fsanitize=address; shift ;;
     -o)    OUT="$2"; shift 2 ;;
+    -l)    LIBS="$LIBS -l$2"; shift 2 ;;
+    -l*)   LIBS="$LIBS $1"; shift ;;
+    -L)    LIBS="$LIBS -L$2"; shift 2 ;;
+    -L*)   LIBS="$LIBS $1"; shift ;;
     -I)    INCLUDES="$INCLUDES -I $2"; shift 2 ;;
     -I*)   INCLUDES="$INCLUDES -I ${1#-I}"; shift ;;
     -*)    echo "catmintc: unknown option $1" >&2; exit 2 ;;
@@ -63,7 +79,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$SRC" ]; then
-  echo "usage: catmintc [--run] [--separate] [-g] [--asan] [-O0|-O1|-O2|-O3] [-o output] [-I moduledir]... <program.cm>" >&2
+  echo "usage: catmintc [--run] [--separate] [-g] [--asan] [-O0|-O1|-O2|-O3] [-o output] [-I moduledir]... [-l lib]... [-L dir]... <program.cm>" >&2
   exit 2
 fi
 for tool in "$PARSER" "$GEN"; do
@@ -98,6 +114,19 @@ collect_modules() {
   done
 }
 
+# The libraries the sources ask for. Collected the same way the modules are,
+# by reading the text: a `link "SDL2"` line becomes -lSDL2. Listed once each,
+# so two modules asking for the same library do not repeat it.
+collect_links() {
+  for file in "$@"; do
+    [ -f "$file" ] || continue
+    for lib in $(sed -n 's/^[[:space:]]*link[[:space:]]*"\([^"]*\)"[[:space:]]*$/\1/p' "$file"); do
+      case " $LIBS " in *" -l$lib "*) continue ;; esac
+      LIBS="$LIBS -l$lib"
+    done
+  done
+}
+
 parse_one() {
   # parse_one <source> <output.ast> <extra parser flags...>
   src=$1; out=$2; shift 2
@@ -119,6 +148,17 @@ generate_one() {
     echo "catmintc: compilation failed for $name" >&2
     cat "$WORK/gen.$name.err" >&2; exit 1; }
 }
+
+# Which libraries the sources ask for. collect_modules only records names, so
+# running it here is harmless in both build modes and idempotent if the
+# separate path runs it again.
+collect_modules "$SRC"
+MODULE_FILES=""
+for name in $MODULE_ORDER; do
+  MODULE_FILES="$MODULE_FILES $(find_module "$name")"
+done
+# shellcheck disable=SC2086
+collect_links "$SRC" $MODULE_FILES
 
 OBJECTS=""
 
@@ -163,13 +203,13 @@ if [ -n "$DEBUG" ]; then
   # would delete the object before dsymutil could read it, which is why
   # `clang -g one.c -o one` gives an executable a debugger cannot read either.
   "$CLANG" -Wno-override-module "$OPT" $SAN -g -c "$WORK/$BASE.bc" -o "$WORK/$BASE.o"
-  "$CLANG" "$OPT" $SAN -g -pthread "$WORK/$BASE.o" -o "$OUT" -lm
+  "$CLANG" "$OPT" $SAN -g -pthread "$WORK/$BASE.o" -o "$OUT" $LIBS
   if [ "$(uname)" = "Darwin" ] && command -v dsymutil >/dev/null 2>&1; then
     dsymutil "$OUT" >/dev/null 2>&1 || \
       echo "catmintc: warning: dsymutil could not collect debug information" >&2
   fi
 else
-  "$CLANG" -Wno-override-module "$OPT" $SAN -pthread "$WORK/$BASE.bc" -o "$OUT" -lm
+  "$CLANG" -Wno-override-module "$OPT" $SAN -pthread "$WORK/$BASE.bc" -o "$OUT" $LIBS
 fi
 echo "catmintc: wrote $OUT"
 

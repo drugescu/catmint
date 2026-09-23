@@ -32,8 +32,8 @@ RuntimeInterface::RuntimeInterface(llvm::Module &M) {
   IOType = llvm::StructType::create(Context, "struct.TIO");
 
   // { TString *name; int size; __catmint_rtti *parent; void *interfaces;
-  //   void *vtable[]; }
-  RTTIType->setBody({Ptr, I32, Ptr, Ptr, llvm::ArrayType::get(Ptr, 0)});
+  //   void *finalize; void *vtable[]; }
+  RTTIType->setBody({Ptr, I32, Ptr, Ptr, Ptr, llvm::ArrayType::get(Ptr, 0)});
   // Every object is { rtti, int refs, ... }; refs is 0 for a static object,
   // which is how free() knows not to touch a string literal.
   // { rtti; int refs; int length; char *chars; }
@@ -656,14 +656,32 @@ void IRGenerator::emitClassMetadata(ClassInfo *CI) {
 
   // The RTTI record is a distinct struct per class because the vtable length
   // varies; __catmint_rtti declares it as a flexible [0 x ptr] member.
-  auto *RTTITy = llvm::StructType::get(Context, {Ptr, I32, Ptr, Ptr, VTableTy});
+  auto *RTTITy =
+      llvm::StructType::get(Context, {Ptr, I32, Ptr, Ptr, Ptr, VTableTy});
   uint64_t Size = SizingLayout.getTypeAllocSize(CI->Ty);
   llvm::Constant *ParentRTTI =
       CI->Parent ? llvm::cast<llvm::Constant>(CI->Parent->RTTI)
                  : llvm::cast<llvm::Constant>(llvm::ConstantPointerNull::get(Ptr));
+
+  // What runs when the last reference goes. Taken from the virtual table, so
+  // a subclass that does not write its own inherits the one it was given and
+  // one that overrides gets its own -- the table has already worked that out.
+  // It is a field here rather than a slot because a slot would have had to go
+  // into Object, which shifts every other built-in's numbering.
+  llvm::Constant *Finalizer = llvm::ConstantPointerNull::get(Ptr);
+  auto FinalizeIt = CI->VTableImpl.find(strings::Finalize);
+  if (!CI->IsInterface && FinalizeIt != CI->VTableImpl.end()) {
+    ClassInfo *Owner = FinalizeIt->second.first;
+    Method *M = FinalizeIt->second.second;
+    auto Callee = Module.getOrInsertFunction(runtimeSymbol(Owner, strings::Finalize),
+                                             methodType(Owner, M));
+    Finalizer = llvm::cast<llvm::Constant>(Callee.getCallee());
+  }
+
   auto *RTTIInit = llvm::ConstantStruct::get(
       RTTITy, {CI->NameGlobal, llvm::ConstantInt::get(I32, Size), ParentRTTI,
-               Interfaces, llvm::ConstantArray::get(VTableTy, Slots)});
+               Interfaces, Finalizer,
+               llvm::ConstantArray::get(VTableTy, Slots)});
   CI->RTTI = new llvm::GlobalVariable(Module, RTTITy, /*isConstant=*/false,
                                       llvm::GlobalValue::ExternalLinkage,
                                       RTTIInit, "R" + symbolName(Name));
@@ -2328,7 +2346,10 @@ llvm::Value *IRGenerator::emitCall(ClassInfo *RecvClass,
 
   auto *SlotAddr = Builder.CreateGEP(
       Runtime.rttiType(), RTTI,
-      {Builder.getInt32(0), Builder.getInt32(4), SlotIndex},
+      // Index 5, not 4: the record gained a finalizer between `interfaces`
+      // and the table. runtime.c and this GEP have to agree, and nothing
+      // would say so if they did not.
+      {Builder.getInt32(0), Builder.getInt32(5), SlotIndex},
       MethodName + ".slot");
   auto *Fn = Builder.CreateLoad(Ptr, SlotAddr, MethodName + ".fn");
   auto *Call = Builder.CreateCall(FT, Fn, CallArgs);

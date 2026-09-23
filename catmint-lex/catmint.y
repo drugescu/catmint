@@ -731,6 +731,15 @@ return_expression
     // Create a new AST node type of type returnexpression
     $$ = new catmint::ReturnExpression(@1.first_line, Expression($2));
   }
+  // A bare `return`, with no value, is deliberately absent. The AST node and
+  // the generator both support one -- only the grammar has no rule -- and
+  // adding `| KW_RETURN` took the conflict count from 10 shift/reduce to 23,
+  // because after the keyword every token that could begin an expression
+  // becomes a decision. They all resolve by shifting, which is the same rule
+  // the rest of the grammar follows, but thirteen new places where a future
+  // rule can silently change the parse is a poor trade for an early exit that
+  // `if`/`else` already expresses. Measured, not assumed:
+  //   bison -Wcounterexamples catmint-lex/catmint.y
   ;
   
 value_expression
@@ -1461,6 +1470,19 @@ struct UsingDirective {
 
 /// The alias named by `using namespace <alias>`, or empty when the line is
 /// something else.
+/// `link "name"` names a library this program needs. It is a directive for
+/// the driver, not for the compiler: catmintc greps the sources for it and
+/// turns each one into a -l on the link line. Here it is simply removed, so
+/// the grammar needs no rule and the AST no node. The blank line keeps every
+/// later line number where it was.
+bool isLinkDirective(const std::string &line) {
+  // \x22 rather than a literal quote: bison scans this action for C code and
+  // counts quotes as it goes, so one inside a raw string ends the rule early.
+  static const std::regex linkLine(
+      R"(^[ \t]*link[ \t]+\x22[^\x22]*\x22[ \t\r]*$)");
+  return std::regex_match(line, linkLine);
+}
+
 std::string openNamespaceOn(const std::string &line) {
   static const std::regex openLine(
       R"(^[ \t]*using[ \t]+namespace[ \t]+([A-Za-z_][A-Za-z_0-9]*)[ \t\r]*$)");
@@ -1706,6 +1728,11 @@ bool expandFile(const std::string &path, std::ostringstream &out,
   int lineNumber = 0;
   while (std::getline(in, line)) {
     ++lineNumber;
+
+    if (isLinkDirective(line)) {
+      out << "\n";
+      continue;
+    }
 
     const std::string opened = openNamespaceOn(line);
     if (!opened.empty()) {

@@ -1,0 +1,9 @@
+in scope
+finalize 2
+finalize 1
+after scope
+in subclass scope
+finalize 7
+after subclass
+leaked 0
+done

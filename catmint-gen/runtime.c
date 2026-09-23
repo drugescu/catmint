@@ -48,6 +48,8 @@ struct __catmint_rtti {
   int size;                     /* bytes to allocate for an instance    */
   struct __catmint_rtti *parent;/* null for Object                      */
   void *interfaces;             /* __cm_iface[], ending in a null entry */
+  void *finalize;               /* run before the memory goes back, or  */
+                                /* null; see M6_Object_release          */
   void *vtable[];               /* parent's slots first, then new ones  */
 };
 
@@ -176,6 +178,7 @@ struct TWorker {
     int size;                                                                  \
     struct __catmint_rtti *parent;                                             \
     void *interfaces;                                                          \
+    void *finalize;                                                            \
     void *vtable[slots];                                                       \
   } name
 
@@ -349,12 +352,12 @@ struct TString NFloats  = { RTTI(RString), 0, 6, "Floats" };
       (void *)M6_Object_release, (void *)M6_Object_refs
 
 catmint_rtti6_object RObject = {
-  &NObject, sizeof(struct TObject), NULL, NULL,
+  &NObject, sizeof(struct TObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS }
 };
 
 catmint_rtti20_string RString = {
-  &NString, sizeof(struct TString), RTTI(RObject), NULL,
+  &NString, sizeof(struct TString), RTTI(RObject), NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M6_String_length, (void *)M6_String_toInt,
     (void *)M6_String_substring, (void *)M6_String_concat,
@@ -369,7 +372,7 @@ catmint_rtti20_string RString = {
 /* The two new slots go on the end. Inserting anywhere else would renumber
  * `in` and `out` and silently break every already-compiled caller. */
 catmint_rtti20_io RIO = {
-  &NIO, sizeof(struct TIO), RTTI(RObject), NULL,
+  &NIO, sizeof(struct TIO), RTTI(RObject), NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M2_IO_in, (void *)M2_IO_out,
     (void *)M2_IO_readLine, (void *)M2_IO_eof, (void *)M2_IO_entropy,
@@ -380,7 +383,7 @@ catmint_rtti20_io RIO = {
 };
 
 catmint_rtti15_file RFile = {
-  &NFile, sizeof(struct TFile), RTTI(RObject), NULL,
+  &NFile, sizeof(struct TFile), RTTI(RObject), NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M4_File_open, (void *)M4_File_readLine, (void *)M4_File_readAll,
     (void *)M4_File_write, (void *)M4_File_eof, (void *)M4_File_close,
@@ -391,17 +394,17 @@ catmint_rtti15_file RFile = {
 /* Every Math method is static, so the class contributes no slots of its own
  * and its table is Object's. The class exists only to name the functions. */
 catmint_rtti6_object RMath = {
-  &NMath, sizeof(struct TMath), RTTI(RObject), NULL,
+  &NMath, sizeof(struct TMath), RTTI(RObject), NULL, NULL,
   { CATMINT_OBJECT_SLOTS }
 };
 
 catmint_rtti6_object RWorker = {
-  &NWorker, sizeof(struct TWorker), RTTI(RObject), NULL,
+  &NWorker, sizeof(struct TWorker), RTTI(RObject), NULL, NULL,
   { CATMINT_OBJECT_SLOTS }
 };
 
 catmint_rtti12_bytes RBytes = {
-  &NBytes, sizeof(struct TBytes), RTTI(RObject), NULL,
+  &NBytes, sizeof(struct TBytes), RTTI(RObject), NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M5_Bytes_len, (void *)M5_Bytes_get, (void *)M5_Bytes_set,
     (void *)M5_Bytes_fill,
@@ -409,21 +412,21 @@ catmint_rtti12_bytes RBytes = {
 };
 
 catmint_rtti10_array RInts = {
-  &NInts, sizeof(struct TInts), RTTI(RObject), NULL,
+  &NInts, sizeof(struct TInts), RTTI(RObject), NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M4_Ints_len, (void *)M4_Ints_get, (void *)M4_Ints_set,
     (void *)M4_Ints_fill }
 };
 
 catmint_rtti10_array RFloats = {
-  &NFloats, sizeof(struct TFloats), RTTI(RObject), NULL,
+  &NFloats, sizeof(struct TFloats), RTTI(RObject), NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M6_Floats_len, (void *)M6_Floats_get, (void *)M6_Floats_set,
     (void *)M6_Floats_fill }
 };
 
 catmint_rtti11_process RProcess = {
-  &NProcess, sizeof(struct TProcess), RTTI(RObject), NULL,
+  &NProcess, sizeof(struct TProcess), RTTI(RObject), NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M7_Process_open, (void *)M7_Process_readLine,
     (void *)M7_Process_write, (void *)M7_Process_eof,
@@ -431,14 +434,14 @@ catmint_rtti11_process RProcess = {
 };
 
 catmint_rtti11_list RList = {
-  &NList, sizeof(struct TList), RTTI(RObject), NULL,
+  &NList, sizeof(struct TList), RTTI(RObject), NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M4_List_len, (void *)M4_List_get, (void *)M4_List_set,
     (void *)M4_List_append, (void *)M4_List_slice }
 };
 
 catmint_rtti8_integer RInteger = {
-  &NInteger, sizeof(struct TInteger), RTTI(RObject), NULL,
+  &NInteger, sizeof(struct TInteger), RTTI(RObject), NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M7_Integer_get, (void *)M7_Integer_getLong }
 };
@@ -702,6 +705,19 @@ static void release_owned_buffers(struct TObject *self) {
 static void object_free(struct TObject *self) {
   if (self == NULL || self->refs == 0) {
     return;
+  }
+  /* The class's own last word, before anything is taken apart. A field in the
+   * type information rather than a virtual table slot: a slot would have had
+   * to go into Object, which shifts every other built-in's numbering, and
+   * this renumbers nothing.
+   *
+   * The count is set to 1 for the duration so that a retain and release
+   * inside the finalizer -- an interpolated string, a method call -- cannot
+   * re-enter this function and free the object twice. */
+  if (self->rtti != NULL && self->rtti->finalize != NULL) {
+    void (*finalize)(void *) = (void (*)(void *))self->rtti->finalize;
+    self->refs = 1;
+    finalize(self);
   }
   release_owned_buffers(self);
   self->refs = 0;

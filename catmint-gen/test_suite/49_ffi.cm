@@ -10,6 +10,12 @@
 # objects are still null-checked, arrays still bounds-checked, references
 # still counted. That is what makes `grep -rn unsafe` an audit.
 
+# A program names the libraries it needs, so that plain `catmintc app.cm`
+# works. The compiler never sees this line -- the preprocessor removes it --
+# and catmintc turns it into -lm. (libm is linked anyway, so this exercises
+# the directive rather than depending on it.)
+link "m"
+
 extern class Libc
   def Int strlen(String s)
   def Int abs(Int n)

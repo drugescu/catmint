@@ -33,18 +33,18 @@ source_filename = "runtime.c"
 @NInts = global %struct.TString { ptr @RString, i32 0, i32 4, ptr @.str.10 }, align 8
 @.str.11 = private unnamed_addr constant [7 x i8] c"Floats\00", align 1
 @NFloats = global %struct.TString { ptr @RString, i32 0, i32 6, ptr @.str.11 }, align 8
-@RObject = global { ptr, i32, [4 x i8], ptr, ptr, [6 x ptr] } { ptr @NObject, i32 16, [4 x i8] zeroinitializer, ptr null, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
-@RString = global { ptr, i32, [4 x i8], ptr, ptr, [20 x ptr] } { ptr @NString, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [20 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M6_String_length, ptr @M6_String_toInt, ptr @M6_String_substring, ptr @M6_String_concat, ptr @M6_String_equal, ptr @M6_String_at, ptr @M6_String_indexOf, ptr @M6_String_trim, ptr @M6_String_upper, ptr @M6_String_lower, ptr @M6_String_split, ptr @M6_String_replace, ptr @M6_String_toFloat, ptr @M6_String_toBytes] }, align 8
-@RIO = local_unnamed_addr global { ptr, i32, [4 x i8], ptr, ptr, [20 x ptr] } { ptr @NIO, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [20 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M2_IO_in, ptr @M2_IO_out, ptr @M2_IO_readLine, ptr @M2_IO_eof, ptr @M2_IO_entropy, ptr @M2_IO_ticks, ptr @M2_IO_epoch, ptr @M2_IO_localOffset, ptr @M2_IO_sleep, ptr @M2_IO_args, ptr @M2_IO_arg, ptr @M2_IO_err, ptr @M2_IO_exit, ptr @M2_IO_allocated] }, align 8
-@RFile = global { ptr, i32, [4 x i8], ptr, ptr, [15 x ptr] } { ptr @NFile, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [15 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_File_open, ptr @M4_File_readLine, ptr @M4_File_readAll, ptr @M4_File_write, ptr @M4_File_eof, ptr @M4_File_close, ptr @M4_File_isOpen, ptr @M4_File_readBytes, ptr @M4_File_writeBytes] }, align 8
-@RMath = local_unnamed_addr global { ptr, i32, [4 x i8], ptr, ptr, [6 x ptr] } { ptr @NMath, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
-@RWorker = local_unnamed_addr global { ptr, i32, [4 x i8], ptr, ptr, [6 x ptr] } { ptr @NWorker, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
-@RBytes = global { ptr, i32, [4 x i8], ptr, ptr, [12 x ptr] } { ptr @NBytes, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [12 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M5_Bytes_len, ptr @M5_Bytes_get, ptr @M5_Bytes_set, ptr @M5_Bytes_fill, ptr @M5_Bytes_toString, ptr @M5_Bytes_slice] }, align 8
-@RInts = global { ptr, i32, [4 x i8], ptr, ptr, [10 x ptr] } { ptr @NInts, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [10 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_Ints_len, ptr @M4_Ints_get, ptr @M4_Ints_set, ptr @M4_Ints_fill] }, align 8
-@RFloats = global { ptr, i32, [4 x i8], ptr, ptr, [10 x ptr] } { ptr @NFloats, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [10 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M6_Floats_len, ptr @M6_Floats_get, ptr @M6_Floats_set, ptr @M6_Floats_fill] }, align 8
-@RProcess = global { ptr, i32, [4 x i8], ptr, ptr, [11 x ptr] } { ptr @NProcess, i32 32, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [11 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Process_open, ptr @M7_Process_readLine, ptr @M7_Process_write, ptr @M7_Process_eof, ptr @M7_Process_finish] }, align 8
-@RList = global { ptr, i32, [4 x i8], ptr, ptr, [11 x ptr] } { ptr @NList, i32 32, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [11 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_List_len, ptr @M4_List_get, ptr @M4_List_set, ptr @M4_List_append, ptr @M4_List_slice] }, align 8
-@RInteger = global { ptr, i32, [4 x i8], ptr, ptr, [8 x ptr] } { ptr @NInteger, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [8 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Integer_get, ptr @M7_Integer_getLong] }, align 8
+@RObject = global { ptr, i32, [4 x i8], ptr, ptr, ptr, [6 x ptr] } { ptr @NObject, i32 16, [4 x i8] zeroinitializer, ptr null, ptr null, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
+@RString = global { ptr, i32, [4 x i8], ptr, ptr, ptr, [20 x ptr] } { ptr @NString, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, ptr null, [20 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M6_String_length, ptr @M6_String_toInt, ptr @M6_String_substring, ptr @M6_String_concat, ptr @M6_String_equal, ptr @M6_String_at, ptr @M6_String_indexOf, ptr @M6_String_trim, ptr @M6_String_upper, ptr @M6_String_lower, ptr @M6_String_split, ptr @M6_String_replace, ptr @M6_String_toFloat, ptr @M6_String_toBytes] }, align 8
+@RIO = local_unnamed_addr global { ptr, i32, [4 x i8], ptr, ptr, ptr, [20 x ptr] } { ptr @NIO, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, ptr null, [20 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M2_IO_in, ptr @M2_IO_out, ptr @M2_IO_readLine, ptr @M2_IO_eof, ptr @M2_IO_entropy, ptr @M2_IO_ticks, ptr @M2_IO_epoch, ptr @M2_IO_localOffset, ptr @M2_IO_sleep, ptr @M2_IO_args, ptr @M2_IO_arg, ptr @M2_IO_err, ptr @M2_IO_exit, ptr @M2_IO_allocated] }, align 8
+@RFile = global { ptr, i32, [4 x i8], ptr, ptr, ptr, [15 x ptr] } { ptr @NFile, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, ptr null, [15 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_File_open, ptr @M4_File_readLine, ptr @M4_File_readAll, ptr @M4_File_write, ptr @M4_File_eof, ptr @M4_File_close, ptr @M4_File_isOpen, ptr @M4_File_readBytes, ptr @M4_File_writeBytes] }, align 8
+@RMath = local_unnamed_addr global { ptr, i32, [4 x i8], ptr, ptr, ptr, [6 x ptr] } { ptr @NMath, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
+@RWorker = local_unnamed_addr global { ptr, i32, [4 x i8], ptr, ptr, ptr, [6 x ptr] } { ptr @NWorker, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
+@RBytes = global { ptr, i32, [4 x i8], ptr, ptr, ptr, [12 x ptr] } { ptr @NBytes, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, ptr null, [12 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M5_Bytes_len, ptr @M5_Bytes_get, ptr @M5_Bytes_set, ptr @M5_Bytes_fill, ptr @M5_Bytes_toString, ptr @M5_Bytes_slice] }, align 8
+@RInts = global { ptr, i32, [4 x i8], ptr, ptr, ptr, [10 x ptr] } { ptr @NInts, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, ptr null, [10 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_Ints_len, ptr @M4_Ints_get, ptr @M4_Ints_set, ptr @M4_Ints_fill] }, align 8
+@RFloats = global { ptr, i32, [4 x i8], ptr, ptr, ptr, [10 x ptr] } { ptr @NFloats, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, ptr null, [10 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M6_Floats_len, ptr @M6_Floats_get, ptr @M6_Floats_set, ptr @M6_Floats_fill] }, align 8
+@RProcess = global { ptr, i32, [4 x i8], ptr, ptr, ptr, [11 x ptr] } { ptr @NProcess, i32 32, [4 x i8] zeroinitializer, ptr @RObject, ptr null, ptr null, [11 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Process_open, ptr @M7_Process_readLine, ptr @M7_Process_write, ptr @M7_Process_eof, ptr @M7_Process_finish] }, align 8
+@RList = global { ptr, i32, [4 x i8], ptr, ptr, ptr, [11 x ptr] } { ptr @NList, i32 32, [4 x i8] zeroinitializer, ptr @RObject, ptr null, ptr null, [11 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_List_len, ptr @M4_List_get, ptr @M4_List_set, ptr @M4_List_append, ptr @M4_List_slice] }, align 8
+@RInteger = global { ptr, i32, [4 x i8], ptr, ptr, ptr, [8 x ptr] } { ptr @NInteger, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, ptr null, [8 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Integer_get, ptr @M7_Integer_getLong] }, align 8
 @gLiveObjects = internal unnamed_addr global i32 0, align 4
 @gEmptyChars = internal global [1 x i8] zeroinitializer, align 1
 @.str.13 = private unnamed_addr constant [33 x i8] c"Substring indices out of bounds.\00", align 1
@@ -450,7 +450,7 @@ define noundef ptr @M6_Object_retain(ptr noundef returned captures(address_is_nu
 }
 
 ; Function Attrs: nounwind ssp uwtable(sync)
-define void @M6_Object_release(ptr noundef captures(address) %0) #2 {
+define void @M6_Object_release(ptr noundef %0) #2 {
   %2 = icmp eq ptr %0, null
   br i1 %2, label %11, label %3
 
@@ -2943,7 +2943,7 @@ define void @__cm_retain(ptr noundef captures(address_is_null) %0) local_unnamed
 }
 
 ; Function Attrs: nounwind ssp uwtable(sync)
-define void @__cm_release(ptr noundef captures(address) %0) local_unnamed_addr #2 {
+define void @__cm_release(ptr noundef %0) local_unnamed_addr #2 {
   %2 = icmp eq ptr %0, null
   br i1 %2, label %11, label %3
 
@@ -2969,136 +2969,154 @@ define void @__cm_release(ptr noundef captures(address) %0) local_unnamed_addr #
 }
 
 ; Function Attrs: nounwind ssp uwtable(sync)
-define internal fastcc void @object_free(ptr noundef nonnull captures(address) %0) unnamed_addr #2 {
+define internal fastcc void @object_free(ptr noundef nonnull %0) unnamed_addr #2 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 8
   %3 = load i32, ptr %2, align 8, !tbaa !16
   %4 = icmp eq i32 %3, 0
-  br i1 %4, label %78, label %5
+  br i1 %4, label %88, label %5
 
 5:                                                ; preds = %1
   %6 = load ptr, ptr %0, align 8, !tbaa !10
-  %7 = icmp eq ptr %6, @RString
-  br i1 %7, label %8, label %18
+  %7 = icmp eq ptr %6, null
+  br i1 %7, label %75, label %8
 
 8:                                                ; preds = %5
-  %9 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %10 = load ptr, ptr %9, align 8, !tbaa !17
+  %9 = getelementptr inbounds nuw i8, ptr %6, i64 32
+  %10 = load ptr, ptr %9, align 8, !tbaa !26
   %11 = icmp eq ptr %10, null
-  %12 = icmp eq ptr %10, @gEmptyChars
-  %13 = or i1 %11, %12
-  %14 = getelementptr inbounds nuw i8, ptr %0, i64 24
-  %15 = icmp eq ptr %10, %14
-  %16 = select i1 %13, i1 true, i1 %15
-  br i1 %16, label %75, label %17
+  br i1 %11, label %14, label %12
 
-17:                                               ; preds = %8
-  tail call void @free(ptr noundef nonnull %10)
-  br label %75
+12:                                               ; preds = %8
+  store i32 1, ptr %2, align 8, !tbaa !16
+  tail call void %10(ptr noundef nonnull %0) #40
+  %13 = load ptr, ptr %0, align 8, !tbaa !10
+  br label %14
 
-18:                                               ; preds = %5
-  %19 = icmp eq ptr %6, @RList
-  br i1 %19, label %20, label %50
+14:                                               ; preds = %12, %8
+  %15 = phi ptr [ %13, %12 ], [ %6, %8 ]
+  %16 = icmp eq ptr %15, @RString
+  br i1 %16, label %17, label %27
 
-20:                                               ; preds = %18
-  %21 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  %22 = load i32, ptr %21, align 4, !tbaa !25
-  %23 = icmp sgt i32 %22, 0
-  br i1 %23, label %24, label %47
+17:                                               ; preds = %14
+  %18 = getelementptr inbounds nuw i8, ptr %0, i64 16
+  %19 = load ptr, ptr %18, align 8, !tbaa !17
+  %20 = icmp eq ptr %19, null
+  %21 = icmp eq ptr %19, @gEmptyChars
+  %22 = or i1 %20, %21
+  %23 = getelementptr inbounds nuw i8, ptr %0, i64 24
+  %24 = icmp eq ptr %19, %23
+  %25 = select i1 %22, i1 true, i1 %24
+  br i1 %25, label %85, label %26
 
-24:                                               ; preds = %20
-  %25 = getelementptr inbounds nuw i8, ptr %0, i64 24
-  br label %26
+26:                                               ; preds = %17
+  tail call void @free(ptr noundef nonnull %19)
+  br label %85
 
-26:                                               ; preds = %24, %42
-  %27 = phi i32 [ %22, %24 ], [ %43, %42 ]
-  %28 = phi i64 [ 0, %24 ], [ %44, %42 ]
-  %29 = load ptr, ptr %25, align 8, !tbaa !24
-  %30 = getelementptr inbounds nuw ptr, ptr %29, i64 %28
-  %31 = load ptr, ptr %30, align 8, !tbaa !26
-  %32 = icmp eq ptr %31, null
-  br i1 %32, label %42, label %33
+27:                                               ; preds = %14
+  %28 = icmp eq ptr %15, @RList
+  br i1 %28, label %29, label %59
 
-33:                                               ; preds = %26
-  %34 = getelementptr inbounds nuw i8, ptr %31, i64 8
-  %35 = load i32, ptr %34, align 8, !tbaa !16
-  %36 = icmp eq i32 %35, 0
-  br i1 %36, label %42, label %37
+29:                                               ; preds = %27
+  %30 = getelementptr inbounds nuw i8, ptr %0, i64 12
+  %31 = load i32, ptr %30, align 4, !tbaa !25
+  %32 = icmp sgt i32 %31, 0
+  br i1 %32, label %33, label %56
 
-37:                                               ; preds = %33
-  %38 = add nsw i32 %35, -1
-  store i32 %38, ptr %34, align 8, !tbaa !16
-  %39 = icmp eq i32 %38, 0
-  br i1 %39, label %40, label %42
+33:                                               ; preds = %29
+  %34 = getelementptr inbounds nuw i8, ptr %0, i64 24
+  br label %35
 
-40:                                               ; preds = %37
-  store i32 1, ptr %34, align 8, !tbaa !16
-  tail call fastcc void @object_free(ptr noundef %31)
-  %41 = load i32, ptr %21, align 4, !tbaa !25
-  br label %42
+35:                                               ; preds = %33, %51
+  %36 = phi i32 [ %31, %33 ], [ %52, %51 ]
+  %37 = phi i64 [ 0, %33 ], [ %53, %51 ]
+  %38 = load ptr, ptr %34, align 8, !tbaa !24
+  %39 = getelementptr inbounds nuw ptr, ptr %38, i64 %37
+  %40 = load ptr, ptr %39, align 8, !tbaa !26
+  %41 = icmp eq ptr %40, null
+  br i1 %41, label %51, label %42
 
-42:                                               ; preds = %26, %33, %37, %40
-  %43 = phi i32 [ %27, %26 ], [ %27, %33 ], [ %27, %37 ], [ %41, %40 ]
-  %44 = add nuw nsw i64 %28, 1
-  %45 = sext i32 %43 to i64
-  %46 = icmp slt i64 %44, %45
-  br i1 %46, label %26, label %47, !llvm.loop !83
+42:                                               ; preds = %35
+  %43 = getelementptr inbounds nuw i8, ptr %40, i64 8
+  %44 = load i32, ptr %43, align 8, !tbaa !16
+  %45 = icmp eq i32 %44, 0
+  br i1 %45, label %51, label %46
 
-47:                                               ; preds = %42, %20
-  %48 = getelementptr inbounds nuw i8, ptr %0, i64 24
-  %49 = load ptr, ptr %48, align 8, !tbaa !24
-  tail call void @free(ptr noundef %49)
-  br label %75
+46:                                               ; preds = %42
+  %47 = add nsw i32 %44, -1
+  store i32 %47, ptr %43, align 8, !tbaa !16
+  %48 = icmp eq i32 %47, 0
+  br i1 %48, label %49, label %51
 
-50:                                               ; preds = %18
-  %51 = icmp eq ptr %6, @RFile
-  br i1 %51, label %52, label %58
+49:                                               ; preds = %46
+  store i32 1, ptr %43, align 8, !tbaa !16
+  tail call fastcc void @object_free(ptr noundef %40)
+  %50 = load i32, ptr %30, align 4, !tbaa !25
+  br label %51
 
-52:                                               ; preds = %50
-  %53 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %54 = load ptr, ptr %53, align 8, !tbaa !29
-  %55 = icmp eq ptr %54, null
-  br i1 %55, label %75, label %56
+51:                                               ; preds = %35, %42, %46, %49
+  %52 = phi i32 [ %36, %35 ], [ %36, %42 ], [ %36, %46 ], [ %50, %49 ]
+  %53 = add nuw nsw i64 %37, 1
+  %54 = sext i32 %52 to i64
+  %55 = icmp slt i64 %53, %54
+  br i1 %55, label %35, label %56, !llvm.loop !83
 
-56:                                               ; preds = %52
-  %57 = tail call i32 @fclose(ptr noundef nonnull %54)
-  br label %75
+56:                                               ; preds = %51, %29
+  %57 = getelementptr inbounds nuw i8, ptr %0, i64 24
+  %58 = load ptr, ptr %57, align 8, !tbaa !24
+  tail call void @free(ptr noundef %58)
+  br label %85
 
-58:                                               ; preds = %50
-  %59 = icmp eq ptr %6, @RProcess
-  br i1 %59, label %60, label %66
+59:                                               ; preds = %27
+  %60 = icmp eq ptr %15, @RFile
+  br i1 %60, label %61, label %67
 
-60:                                               ; preds = %58
-  %61 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %62 = load ptr, ptr %61, align 8, !tbaa !32
-  %63 = icmp eq ptr %62, null
-  br i1 %63, label %75, label %64
+61:                                               ; preds = %59
+  %62 = getelementptr inbounds nuw i8, ptr %0, i64 16
+  %63 = load ptr, ptr %62, align 8, !tbaa !29
+  %64 = icmp eq ptr %63, null
+  br i1 %64, label %85, label %65
 
-64:                                               ; preds = %60
-  %65 = tail call i32 @pclose(ptr noundef nonnull %62)
-  br label %75
+65:                                               ; preds = %61
+  %66 = tail call i32 @fclose(ptr noundef nonnull %63)
+  br label %85
 
-66:                                               ; preds = %58
-  %67 = icmp eq ptr %6, @RBytes
-  %68 = icmp eq ptr %6, @RInts
-  %69 = or i1 %67, %68
-  %70 = icmp eq ptr %6, @RFloats
-  %71 = or i1 %70, %69
-  br i1 %71, label %72, label %75
+67:                                               ; preds = %59
+  %68 = icmp eq ptr %15, @RProcess
+  br i1 %68, label %69, label %75
 
-72:                                               ; preds = %66
-  %73 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %74 = load ptr, ptr %73, align 8, !tbaa !34
-  tail call void @free(ptr noundef %74)
-  br label %75
+69:                                               ; preds = %67
+  %70 = getelementptr inbounds nuw i8, ptr %0, i64 16
+  %71 = load ptr, ptr %70, align 8, !tbaa !32
+  %72 = icmp eq ptr %71, null
+  br i1 %72, label %85, label %73
 
-75:                                               ; preds = %8, %17, %47, %52, %56, %60, %64, %66, %72
-  %76 = load i32, ptr @gLiveObjects, align 4, !tbaa !6
-  %77 = add nsw i32 %76, -1
-  store i32 %77, ptr @gLiveObjects, align 4, !tbaa !6
+73:                                               ; preds = %69
+  %74 = tail call i32 @pclose(ptr noundef nonnull %71)
+  br label %85
+
+75:                                               ; preds = %5, %67
+  %76 = phi ptr [ %15, %67 ], [ null, %5 ]
+  %77 = icmp eq ptr %76, @RBytes
+  %78 = icmp eq ptr %76, @RInts
+  %79 = or i1 %77, %78
+  %80 = icmp eq ptr %76, @RFloats
+  %81 = or i1 %80, %79
+  br i1 %81, label %82, label %85
+
+82:                                               ; preds = %75
+  %83 = getelementptr inbounds nuw i8, ptr %0, i64 16
+  %84 = load ptr, ptr %83, align 8, !tbaa !34
+  tail call void @free(ptr noundef %84)
+  br label %85
+
+85:                                               ; preds = %17, %26, %56, %61, %65, %69, %73, %75, %82
+  %86 = load i32, ptr @gLiveObjects, align 4, !tbaa !6
+  %87 = add nsw i32 %86, -1
+  store i32 %87, ptr @gLiveObjects, align 4, !tbaa !6
   tail call void @free(ptr noundef nonnull %0)
-  br label %78
+  br label %88
 
-78:                                               ; preds = %1, %75
+88:                                               ; preds = %1, %85
   ret void
 }
 

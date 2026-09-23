@@ -54,6 +54,10 @@ const auto Bytes = "Bytes";
 /// A value, not an object -- no run-time type information, no reference
 /// count, nothing for the memory machinery to see.
 const auto Ptr = "Ptr";
+/// The method a class may write to say what happens when its last reference
+/// goes. Named in the run-time type information rather than given a virtual
+/// table slot, so adding it renumbered nothing.
+const auto Finalize = "finalize";
 const auto Ints = "Ints";
 const auto Floats = "Floats";
 const auto Fill = "fill";

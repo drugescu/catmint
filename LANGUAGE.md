@@ -271,6 +271,54 @@ allocations. Three concrete classes rather than one generic one, because
 there are no generics. Out of bounds is a catchable error.
 → `43_arrays.cm`, `48_bytes.cm`
 
+## Calling C
+
+```
+link "m"
+
+extern class Libc
+  def Int strlen(String s)
+  def Ptr malloc(Int size)
+  def Void free(Ptr block)
+end
+
+unsafe:
+  out("${Libc.strlen("hello")}\n")
+end
+```
+
+Declaring is safe; **calling needs `unsafe`**, because the declaration
+asserts a match with a function the compiler cannot see. `unsafe def` makes a
+whole method body one. Inside an unsafe region exactly two extra things are
+possible -- calling out, and going through a `Ptr` -- and nothing else is
+turned off.
+
+`Ptr` is an opaque machine pointer: a value, not an object, so nothing counts
+it and nothing frees it. It compares with `null` and converts to nothing.
+Only numbers, `Ptr`, `String` and the three arrays may cross; what a C
+function receives for the last two is the address of the contents.
+
+`link "name"` adds `-lname`, and `catmintc -l name -L dir` does the same from
+the command line.
+→ `49_ffi.cm`
+
+## finalize
+
+```
+class Buffer
+  Ptr handle
+  def Void finalize:
+    unsafe: Libc.free(handle) end
+  end
+end
+```
+
+Runs when the last reference to an object goes. This is what lets a class own
+something outside the language -- a C allocation, a handle -- and give it back
+without anyone remembering to: the unsafe part stays inside the class and
+nothing downstream writes `unsafe` at all. A subclass without one inherits it.
+→ `50_finalize.cm`
+
 ## The standard library
 
 Written in catmint, in `lib/`: `Vector`, `Dict` (a real hash table),

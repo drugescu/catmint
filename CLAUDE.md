@@ -366,8 +366,9 @@ subclass repeats its parent's runs rather than sharing them, so a method it
 overrides is the one the interface reaches -- that is what test 40's `Cube`
 checks.
 
-Because the RTTI grew a field, **the virtual table is now at index 4, not 3**,
-in both `runtime.c` and the GEP in `emitCall`. Metadata is emitted in three
+Because the RTTI grew a field, **the virtual table is now at index 5**, in
+both `runtime.c` and the GEP in `emitCall`. It has moved twice: to 4 when
+`interfaces` was added, and to 5 when `finalize` was. Metadata is emitted in three
 passes -- built-ins, then interfaces, then classes -- because a class's
 interface table points at the interfaces' metadata and an interface's points
 at Object's, while `ClassOrder` only promises parents before children.
@@ -478,6 +479,59 @@ error asking for `def <type>`. Inference does not cross a recursive call,
 whose own type is not known while its body is being visited, and it needs no
 help for separate compilation: the module's `.ast` carries the bodies, and
 the importing unit runs the same analysis over them.
+
+## The foreign function interface
+
+`extern class Libc ... end` declares C functions: signatures only, the same
+body-less form an interface uses, and every one is made static by the parser
+because a C function has no receiver. The symbol is the method's own name --
+mangling it would name something that does not exist. Nothing is emitted for
+an extern class at all: no metadata, no initialiser, no bodies.
+
+**Declaring is safe; calling needs `unsafe`.** That is Rust's split, and the
+reason is the same: a declaration asserts a match with a function this
+compiler cannot see. `unsafe: ... end` is an ordinary `Block` carrying a flag
+rather than a node of its own, and `unsafe def` makes a whole body one. The
+semantic pass counts the depth and refuses an extern call at zero.
+
+What `unsafe` enables is **exactly two things**: calling an extern function,
+and going through a `Ptr`. Everything else stays on inside it -- objects are
+still null-checked, arrays still bounds-checked, references still counted.
+That property is the point: it makes `grep -rn unsafe` an audit rather than a
+gesture. This is Rust's *marking* without Rust's *proofs*, and it should not
+be oversold: a `Ptr` outliving what it points at is undetectable here.
+
+`Ptr` is a primitive, registered in the type table **with no Class behind
+it**, which is what makes `isReferenceType` answer no -- nothing counts it,
+nothing frees it, it never reaches the temporary pool. It meets `null` and
+nothing else: no conversion to or from `Int` in either direction, because a
+pointer reachable by arithmetic is one nobody can reason about.
+
+Only what has an unambiguous machine representation may cross: the integers
+and `Float` by value, `Ptr` as itself, `String` and the three arrays as the
+address of their contents. `marshalToC` does that last part -- all four put
+that pointer at the same offset, so one struct shape serves -- and keeps the
+null check, because handing C a null where it wants a buffer is a fault with
+no message. An `Object`, a `List` or a user class in an extern signature is a
+compile error, since what would cross is the catmint object, type information
+and reference count and all.
+
+`link "SDL2"` names a library. The preprocessor removes the line, so there is
+no grammar rule and no AST node; `catmintc` greps the sources for it, as it
+already does for `using`, and turns each into a `-l`. `-l` and `-L` on the
+command line work too, and `-lm` now starts that list rather than being
+hardcoded, so `link "m"` does not make the linker warn.
+
+**`finalize` is what makes the safe-wrapper pattern possible**, and the
+wrapper is the reason the marking is worth having: a thin unsafe core inside
+an ordinary class, so nothing downstream writes `unsafe`. Without it every
+handle would leak or need releasing by hand. It is a **field in the RTTI, not
+a virtual table slot** -- a slot would have had to go into `Object`, which
+shifts every other built-in's numbering. The pointer is taken from the
+finished virtual table, so inheritance and overriding are already worked out.
+`object_free` calls it before anything is taken apart, with the count set to 1
+for the duration so that a retain and release inside it -- an interpolated
+string, a method call -- cannot re-enter and free twice.
 
 `abstract def Int area` declares a method with no body that a subclass must
 supply. It reuses the `interface_method` grammar rules, since a signature
