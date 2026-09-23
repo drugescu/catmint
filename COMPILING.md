@@ -150,11 +150,18 @@ Things worth knowing, because they are not obvious:
   method taking a `Shape` then accepts any class that does one, related or
   not. `is` knows about interfaces, and assigning something that does not do
   the interface is caught when it happens rather than silently.
+- **`spawn` runs a static method on a thread.** `Int h = spawn Sum.chunk(3)`
+  starts it, `Worker.wait(h)` gives back what it returned, `Worker.count()`
+  says how many cores you have. A worker may only do arithmetic: the method
+  has to be static, take one number and return one, and everything it calls
+  has to be the same. The compiler checks and says exactly what stopped it.
+  That restriction is what makes threads free for everyone else -- a worker
+  cannot touch the memory the rest of the program is counting.
 - **`Process` runs another program, which is how catmint does concurrency.**
   `Process.run("make")` waits for one and gives its exit status;
-  `Process.spawn` starts one without waiting and `Process.wait` collects it,
+  `Process.start` begins one without waiting and `Process.wait` collects it,
   so several can run at once; an instance opens a pipe with
-  `start(command, "r")` or `"w"` and then `readLine`, `write`, `eof` and
+  `open(command, "r")` or `"w"` and then `readLine`, `write`, `eof` and
   `finish`. There are no threads, on purpose: separate processes share no
   memory, so nothing in the language has to change to make them safe.
 - **`defer <expression>` moves cleanup to the end of the block.** Write

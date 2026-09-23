@@ -20,6 +20,7 @@
 #include "NewObject.h"
 #include "NullConstant.h"
 #include "Program.h"
+#include "SpawnStatement.h"
 #include "StaticDispatch.h"
 #include "StringConstant.h"
 #include "Substring.h"

@@ -63,6 +63,7 @@ public:
   bool visit(TryStatement *Try) override;
   bool visit(ThrowStatement *Throw) override;
   bool visit(DeferStatement *Defer) override;
+  bool visit(SpawnStatement *Spawn) override;
   bool visit(IfStatement *If) override;
   bool visit(WhileStatement *While) override;
   bool visit(ForStatement *For) override; // Pay attention here, new one
@@ -195,6 +196,7 @@ private:
   std::unique_ptr<TryStatement> parseTryStatement(rapidjson::Value &tree);
   std::unique_ptr<ThrowStatement> parseThrowStatement(rapidjson::Value &tree);
   std::unique_ptr<DeferStatement> parseDeferStatement(rapidjson::Value &tree);
+  std::unique_ptr<SpawnStatement> parseSpawnStatement(rapidjson::Value &tree);
   std::unique_ptr<IfStatement> parseIfStatement(rapidjson::Value &tree);
   std::unique_ptr<WhileStatement> parseWhileStatement(rapidjson::Value &tree);
   std::unique_ptr<ForStatement> parseForStatement(rapidjson::Value &tree); // Pay attention here in deserialization

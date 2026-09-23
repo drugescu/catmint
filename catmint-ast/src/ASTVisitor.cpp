@@ -100,6 +100,8 @@ bool ASTVisitor::visit(Expression *E) {
     return visit(Throw);
   } else if (auto Defer = dynamic_cast<DeferStatement *>(E)) {
     return visit(Defer);
+  } else if (auto Spawn = dynamic_cast<SpawnStatement *>(E)) {
+    return visit(Spawn);
   } else if (auto If = dynamic_cast<IfStatement *>(E)) {
     return visit(If);
   } else if (auto While = dynamic_cast<WhileStatement *>(E)) {
@@ -194,6 +196,10 @@ bool ASTVisitor::visit(ThrowStatement *Throw) {
 
 bool ASTVisitor::visit(DeferStatement *Defer) {
   return visit(Defer->getAction());
+}
+
+bool ASTVisitor::visit(SpawnStatement *Spawn) {
+  return visit(Spawn->getCall());
 }
 
 bool ASTVisitor::visit(FieldAccess *FA) {

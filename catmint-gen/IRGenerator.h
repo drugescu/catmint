@@ -305,6 +305,7 @@ private:
   llvm::Value *emitTry(TryStatement *T);
   llvm::Value *emitThrow(ThrowStatement *T);
   llvm::Value *emitDefer(DeferStatement *D);
+  llvm::Value *emitSpawn(SpawnStatement *S);
   /// Emit the deferred expressions of the innermost \p Count scopes, newest
   /// scope first and, within a scope, last registered first. Run before the
   /// scope's locals are released, because a deferred call almost always uses

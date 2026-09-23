@@ -62,6 +62,7 @@
 		       name == "Null" || name == "Object" || name == "String" ||
 		       name == "IO" || name == "List" || name == "Integer" ||
 		       name == "File" || name == "Math" || name == "Process" ||
+		       name == "Worker" ||
 		       name == "auto" || name.rfind("_uuid_generic_", 0) == 0;
 	}
 
@@ -155,7 +156,7 @@
 %token KW_USING KW_IS
 %token KW_CONSTRUCTOR KW_NEW
 %token KW_IF KW_THEN KW_ELSE KW_LOOP
-%token KW_TRY KW_CATCH KW_THROW KW_DEFER
+%token KW_TRY KW_CATCH KW_THROW KW_DEFER KW_SPAWN
 
 %token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE OP_NOT OP_AND OP_OR OP_XOR OP_LSHIFT OP_RSHIFT
 %token OP_ANDALSO OP_ORELSE
@@ -193,6 +194,7 @@ expression
                   negative_expression
                   field_access
                   new_expression
+                  spawn_expression
                   if_expression
     conditional_expression
     dispatch_expression
@@ -850,6 +852,7 @@ unary_expression
 
 basic_expression
   : identifier_expression
+	| spawn_expression
 	| new_expression
 	| field_access
 	| negative_expression
@@ -897,6 +900,25 @@ new_expression
 	| KW_NEW type_name {
 		$$ = new catmint::NewObject(@1.first_line, *$2);
 		delete $2;
+	}
+	;
+
+// `spawn Class.method(argument)` runs a static method on a thread and gives
+// back a handle to wait for. It is an expression so that the handle can be
+// kept; the call inside is an ordinary dispatch, so the usual machinery
+// works out which static method is meant.
+// Spelled out rather than taking any dispatch, because `spawn a.b().c()`
+// would otherwise be ambiguous about which call is the one being spawned.
+// This is also exactly the form that is allowed: a static method on a
+// named class.
+spawn_expression
+	: KW_SPAWN IDENTIFIER '.' IDENTIFIER OP_OPAREN dispatch_arguments OP_CPAREN {
+		auto object = new catmint::Symbol(@2.first_line, *$2);
+		auto call = new catmint::Dispatch(@1.first_line, *$4,
+		                                  Expression(object), *$6);
+		$$ = new catmint::SpawnStatement(@1.first_line, Expression(call));
+
+		delete $2; delete $4; delete $6;
 	}
 	;
 

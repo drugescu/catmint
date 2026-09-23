@@ -68,6 +68,7 @@ const auto FieldAccessNodeType = "FieldAccess";
 const auto TryStatementNodeType = "TryStatement";
 const auto ThrowStatementNodeType = "ThrowStatement";
 const auto DeferStatementNodeType = "DeferStatement";
+const auto SpawnStatementNodeType = "SpawnStatement";
 const auto Handler = "Handler";
 const auto IfStatementNodeType = "IfStatement";
 const auto WhileStatementNodeType = "WhileStatement";
@@ -705,6 +706,19 @@ bool ASTSerializer::visit(DeferStatement *Defer) {
   return visit(action);
 }
 
+bool ASTSerializer::visit(SpawnStatement *Spawn) {
+  assert(isValid() && "Invalid serializer");
+  assert(Spawn && "Expected non-null spawn statement");
+
+  CreateJSONObject spawnObject(*this, keys::SpawnStatementNodeType, Spawn);
+  writePair(keys::LineNumber, Spawn->getLineNumber());
+
+  writer->Key(keys::Object);
+  auto call = Spawn->getCall();
+  assert(call && "Spawn without a call");
+  return visit(call);
+}
+
 bool ASTSerializer::visit(ReturnExpression *R) {
   assert(isValid() && "Invalid serializer");
   assert(R && "Expected non-null return expression");
@@ -1138,6 +1152,8 @@ ASTDeserializer::parseExpression(rapidjson::Value &tree) {
     return parseThrowStatement(tree);
   } else if (nodeType == keys::DeferStatementNodeType) {
     return parseDeferStatement(tree);
+  } else if (nodeType == keys::SpawnStatementNodeType) {
+    return parseSpawnStatement(tree);
   } else if (nodeType == keys::IfStatementNodeType) {
     return parseIfStatement(tree);
   } else if (nodeType == keys::WhileStatementNodeType) {
@@ -1600,6 +1616,20 @@ ASTDeserializer::parseDeferStatement(rapidjson::Value &tree) {
 
   return createNode<DeferStatement>(tree, parseLineNumber(tree),
                                     std::move(action));
+}
+
+std::unique_ptr<SpawnStatement>
+ASTDeserializer::parseSpawnStatement(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::SpawnStatementNodeType &&
+         "Expected spawn statement object");
+
+  assert(tree.HasMember(keys::Object) && "Spawn without a call");
+  auto call = parseExpression(tree[keys::Object]);
+  assert(call && "Expected non-null expression node");
+
+  return createNode<SpawnStatement>(tree, parseLineNumber(tree),
+                                    std::move(call));
 }
 
 std::unique_ptr<IfStatement>

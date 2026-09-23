@@ -25,6 +25,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <setjmp.h>
+#include <pthread.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -120,6 +121,13 @@ struct TProcess {
   int pid;
 };
 
+/* Worker has no state: it exists to name the two static methods that wait
+ * for a thread and report how many cores there are. */
+struct TWorker {
+  struct __catmint_rtti *rtti;
+  int refs;
+};
+
 /* A flexible array member cannot be initialised, so each class's RTTI gets a
  * named struct with its vtable sized exactly, and is cast where it is used.
  * The layout up to the vtable is identical in all of them, which is what makes
@@ -194,16 +202,19 @@ int M4_File_isOpen(struct TFile *self);
 int M4_File_exists(struct TString *path);
 int M4_File_remove(struct TString *path);
 
-int M7_Process_start(struct TProcess *self, struct TString *command,
+int M7_Process_open(struct TProcess *self, struct TString *command,
                      struct TString *mode);
 struct TString *M7_Process_readLine(struct TProcess *self);
 struct TProcess *M7_Process_write(struct TProcess *self, struct TString *text);
 int M7_Process_eof(struct TProcess *self);
 int M7_Process_finish(struct TProcess *self);
 int M7_Process_run(struct TString *command);
-int M7_Process_spawn(struct TString *command);
+int M7_Process_start(struct TString *command);
 int M7_Process_wait(int pid);
 int M7_Process_pid(void);
+
+long long M6_Worker_wait(int handle);
+int M6_Worker_count(void);
 
 double M4_Math_sqrt(double x);
 double M4_Math_pow(double x, double y);
@@ -257,6 +268,7 @@ struct TString NInteger = { RTTI(RString), 0, 7, "Integer" };
 struct TString NFile    = { RTTI(RString), 0, 4, "File" };
 struct TString NMath    = { RTTI(RString), 0, 4, "Math" };
 struct TString NProcess = { RTTI(RString), 0, 7, "Process" };
+struct TString NWorker  = { RTTI(RString), 0, 6, "Worker" };
 
 #define CATMINT_OBJECT_SLOTS                                                   \
   (void *)M6_Object_abort, (void *)M6_Object_typeName,                         \
@@ -308,10 +320,15 @@ catmint_rtti6_object RMath = {
   { CATMINT_OBJECT_SLOTS }
 };
 
+catmint_rtti6_object RWorker = {
+  &NWorker, sizeof(struct TWorker), RTTI(RObject), NULL,
+  { CATMINT_OBJECT_SLOTS }
+};
+
 catmint_rtti11_process RProcess = {
   &NProcess, sizeof(struct TProcess), RTTI(RObject), NULL,
   { CATMINT_OBJECT_SLOTS,
-    (void *)M7_Process_start, (void *)M7_Process_readLine,
+    (void *)M7_Process_open, (void *)M7_Process_readLine,
     (void *)M7_Process_write, (void *)M7_Process_eof,
     (void *)M7_Process_finish }
 };
@@ -396,6 +413,10 @@ void Math_init(struct TMath *self) {
 void Process_init(struct TProcess *self) {
   self->pipe = NULL;
   self->pid = 0;
+}
+
+void Worker_init(struct TWorker *self) {
+  (void)self;
 }
 
 /* Build a catmint String from a NUL-terminated buffer. */
@@ -1644,8 +1665,8 @@ void __cm_poolUnwind(int depth) {
  * about a race with. Processes share nothing, so none of that applies, and
  * the whole feature is the hundred lines below.
  *
- * run() is one command, waited for. spawn() and wait() are the pair that
- * gives real parallelism: start several, then collect them. start() opens a
+ * run() is one command, waited for. start() and wait() are the pair that
+ * gives real parallelism: begin several, then collect them. open() opens a
  * pipe, for when the answer has to come back.
  * ------------------------------------------------------------------------- */
 
@@ -1673,8 +1694,9 @@ int M7_Process_run(struct TString *command) {
 }
 
 /* Start a command without waiting, and give back its process id, or 0 when
- * it could not be started. Collect it with wait(). */
-int M7_Process_spawn(struct TString *command) {
+ * it could not be started. Collect it with wait(). Static: it is about
+ * starting a program, not about a pipe that is already open. */
+int M7_Process_start(struct TString *command) {
   pid_t child = fork();
 
   if (child < 0) {
@@ -1704,9 +1726,10 @@ int M7_Process_pid(void) {
   return (int)getpid();
 }
 
-/* Open a command as a pipe: mode "r" to read what it prints, "w" to write to
- * what it reads. 1 when it started, 0 when it did not. */
-int M7_Process_start(struct TProcess *self, struct TString *command,
+/* Open a command as a pipe, as File.open opens a file: mode "r" to read what
+ * it prints, "w" to write to what it reads. 1 when it started, 0 when it did
+ * not. */
+int M7_Process_open(struct TProcess *self, struct TString *command,
                      struct TString *mode) {
   if (self->pipe) {
     pclose(self->pipe);
@@ -1765,4 +1788,102 @@ int M7_Process_finish(struct TProcess *self) {
     return -1;
   }
   return exit_status(status);
+}
+
+/* -------------------------------------------------------------------------
+ * Worker
+ *
+ * A thread, through a door narrow enough that none of the rest of the
+ * runtime has to become thread-safe. A worker runs a *static* method taking
+ * one integer and returning one, and the compiler refuses to spawn anything
+ * that could allocate, throw, or touch an object. So a worker never reaches
+ * the reference counts, the temporary pool or the handler stack, and those
+ * stay exactly as cheap as they are for a single-threaded program.
+ *
+ * That is the whole bargain. Widening it -- letting a worker build a String,
+ * say -- would mean atomic reference counts on every assignment in every
+ * program, a per-thread pool and a per-thread handler stack. This way costs
+ * nothing and still parallelises the thing worth parallelising, which is a
+ * long arithmetic computation split into chunks.
+ * ------------------------------------------------------------------------- */
+
+#define CATMINT_MAX_WORKERS 256
+
+struct __cm_worker {
+  pthread_t thread;
+  long long (*entry)(long long);
+  long long argument;
+  long long result;
+  int running;
+};
+
+static struct __cm_worker gWorkers[CATMINT_MAX_WORKERS];
+static int gWorkerCount = 0;
+static int gWorkersCollected = 0;
+
+static void *worker_body(void *raw) {
+  struct __cm_worker *worker = (struct __cm_worker *)raw;
+  worker->result = worker->entry(worker->argument);
+  return NULL;
+}
+
+/* Start one and give back a handle, or 0 when it could not be started. */
+int __cm_workerStart(void *entry, long long argument) {
+  struct __cm_worker *worker;
+
+  if (gWorkerCount >= CATMINT_MAX_WORKERS) {
+    __cm_runtimeError("too many workers; wait for some before starting more.");
+  }
+
+  worker = &gWorkers[gWorkerCount];
+  worker->entry = (long long (*)(long long))entry;
+  worker->argument = argument;
+  worker->result = 0;
+  worker->running = 1;
+
+  if (pthread_create(&worker->thread, NULL, worker_body, worker) != 0) {
+    worker->running = 0;
+    return 0;
+  }
+  gWorkerCount += 1;
+  return gWorkerCount; /* handles are 1-based, so 0 can mean failure */
+}
+
+/* Wait for one and give back what its method returned. Each handle is
+ * waited for exactly once; asking twice, or for one that was never started,
+ * is a mistake and says so rather than quietly answering zero. */
+long long M6_Worker_wait(int handle) {
+  struct __cm_worker *worker;
+  long long result;
+
+  if (handle == 0) {
+    return 0; /* the spawn itself failed, and said so by giving back 0 */
+  }
+  if (handle < 1 || handle > gWorkerCount) {
+    __cm_runtimeError("no such worker; wait for each handle exactly once.");
+  }
+
+  worker = &gWorkers[handle - 1];
+  if (!worker->running) {
+    __cm_runtimeError("that worker has already been waited for.");
+  }
+
+  pthread_join(worker->thread, NULL);
+  worker->running = 0;
+  gWorkersCollected += 1;
+  result = worker->result;
+
+  /* Once every worker in the table has been collected the table is free
+   * again, so a program that spawns in a loop does not run out of handles. */
+  if (gWorkersCollected == gWorkerCount) {
+    gWorkerCount = 0;
+    gWorkersCollected = 0;
+  }
+  return result;
+}
+
+/* How many can usefully run at once. */
+int M6_Worker_count(void) {
+  long cores = sysconf(_SC_NPROCESSORS_ONLN);
+  return cores > 0 ? (int)cores : 1;
 }

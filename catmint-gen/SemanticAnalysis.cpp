@@ -977,6 +977,163 @@ bool SemanticAnalysis::visit(DeferStatement *d) {
   return true;
 }
 
+namespace {
+/// Finds the first thing in a method body that a worker must not do. A
+/// worker runs on a thread while the rest of the program runs on another,
+/// and nothing in the runtime is prepared for that except plain arithmetic:
+/// a reference count, the temporary pool and the handler stack are all
+/// shared and none is locked. So the rule is arithmetic and control flow
+/// only, checked here rather than trusted.
+class WorkerHazard : public ASTVisitor {
+public:
+  using ASTVisitor::visit;
+
+  std::string Why;
+  std::vector<Dispatch *> Calls; ///< to follow into, if everything else is fine
+
+  bool stop(const std::string &what) {
+    if (Why.empty()) {
+      Why = what;
+    }
+    return false;
+  }
+
+  bool visit(NewObject *n) override { return stop("makes an object"); }
+  bool visit(StringConstant *s) override { return stop("uses a string"); }
+  bool visit(FieldAccess *f) override { return stop("reads a field"); }
+  bool visit(StaticDispatch *d) override {
+    return stop(d->getName() == "is" ? "asks a type question"
+                                     : "calls a method on an object");
+  }
+  bool visit(TryStatement *t) override { return stop("uses try"); }
+  bool visit(ThrowStatement *t) override { return stop("throws"); }
+  bool visit(DeferStatement *d) override { return stop("uses defer"); }
+  bool visit(SpawnStatement *s) override { return stop("spawns"); }
+
+  bool visit(LocalDefinition *local) override {
+    const std::string &type = local->getType();
+    if (type != "auto" && !TypeTable::integerWidth(type) &&
+        type != strings::Float) {
+      return stop("declares '" + local->getName().front() + "' of type '" +
+                  type + "'");
+    }
+    return ASTVisitor::visit(local);
+  }
+
+  bool visit(Dispatch *d) override {
+    Calls.push_back(d);
+    return ASTVisitor::visit(d);
+  }
+};
+} // namespace
+
+bool SemanticAnalysis::workerSafe(Class *c, Method *m, std::set<Method *> &seen,
+                                  std::string &why) {
+  if (seen.count(m)) {
+    return true; // already being checked: recursion is fine
+  }
+  seen.insert(m);
+
+  if (!m->isStatic()) {
+    why = "'" + c->getName() + "." + m->getName() + "' is not static";
+    return false;
+  }
+  for (auto param : *m) {
+    if (!TypeTable::integerWidth(param->getType()) &&
+        param->getType() != strings::Float) {
+      why = "'" + c->getName() + "." + m->getName() + "' takes '" +
+            param->getType() + "', and a worker takes only numbers";
+      return false;
+    }
+  }
+  if (!TypeTable::integerWidth(m->getReturnType()) &&
+      m->getReturnType() != strings::Float) {
+    why = "'" + c->getName() + "." + m->getName() + "' returns '" +
+          m->getReturnType() + "', and a worker returns only a number";
+    return false;
+  }
+
+  WorkerHazard hazard;
+  if (m->getBody()) {
+    hazard.visit(m->getBody());
+  }
+  if (!hazard.Why.empty()) {
+    why = "'" + c->getName() + "." + m->getName() + "' " + hazard.Why;
+    return false;
+  }
+
+  // Every call it makes has to be safe too, or the restriction would be one
+  // level deep and mean nothing.
+  for (auto call : hazard.Calls) {
+    Class *target = c;
+    if (auto named = staticReceiverClass(call)) {
+      target = named;
+    } else if (call->getObject()) {
+      why = "'" + c->getName() + "." + m->getName() +
+            "' calls a method on an object";
+      return false;
+    }
+
+    auto callee = typeTable.getMethod(target, call->getName());
+    if (!callee) {
+      why = "'" + c->getName() + "." + m->getName() + "' calls '" +
+            call->getName() + "', which is not there";
+      return false;
+    }
+    if (!workerSafe(target, callee, seen, why)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/// `spawn Class.method(argument)`: the call is not made, its address and its
+/// argument are handed to a thread. The method has to be one a thread can
+/// safely run, and that is checked here, where it can be explained.
+bool SemanticAnalysis::visit(SpawnStatement *s) {
+  auto call = dynamic_cast<Dispatch *>(s->getCall());
+  if (!call) {
+    throw SemanticException("'spawn' needs a call to a static method");
+  }
+
+  auto target = staticReceiverClass(call);
+  if (!target) {
+    throw SemanticException("'spawn' needs a static method named on its "
+                            "class, as in 'spawn Work.chunk(i)'");
+  }
+
+  auto method = typeTable.getMethod(target, call->getName());
+  if (!method) {
+    throw MethodNotFoundException(call->getName(), target);
+  }
+
+  auto parameters = std::distance(method->begin(), method->end());
+  if (parameters != 1) {
+    throw SemanticException("a worker takes exactly one number, and '" +
+                            target->getName() + "." + method->getName() +
+                            "' takes " + std::to_string(parameters));
+  }
+
+  std::set<Method *> seen;
+  std::string why;
+  if (!workerSafe(target, method, seen, why)) {
+    throw SemanticException(
+        "a worker may only do arithmetic, because it runs beside the rest of "
+        "the program and nothing else in the runtime is shared safely: " +
+        why);
+  }
+
+  if (!checkDispatchArgs(call, method)) {
+    return false;
+  }
+
+  // The value is a handle to wait for.
+  typeTable.setType(call, typeTable.getType(method->getReturnType()));
+  typeTable.setType(s, typeTable.getIntType());
+  return true;
+}
+
 bool SemanticAnalysis::visit(ReturnExpression *r) {
   // A return carries the type of the expression it returns, so that the
   // enclosing block -- and through it the method's return-type check -- sees

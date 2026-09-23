@@ -48,6 +48,7 @@ const auto List = "List";
 const auto File = "File";
 const auto Math = "Math";
 const auto Process = "Process";
+const auto Worker = "Worker";
 const auto Integer = "Integer";
 const auto Get = "get";
 const auto GetLong = "getLong";

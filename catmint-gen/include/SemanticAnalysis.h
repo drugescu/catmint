@@ -2,6 +2,7 @@
 #define SEMANTIC_ANALYSIS_H
 
 #include <map>
+#include <set>
 #include <ASTVisitor.h>
 #include <Program.h>
 #include <SymbolTable.h>
@@ -52,6 +53,13 @@ private:
   bool visit(TryStatement *t) override;
   bool visit(ThrowStatement *t) override;
   bool visit(DeferStatement *d) override;
+  bool visit(SpawnStatement *s) override;
+
+  /// Whether \p m may run on a worker: it must do arithmetic and nothing
+  /// else, so that it cannot touch a reference count, the temporary pool or
+  /// the handler stack from another thread. \p why says what stopped it.
+  bool workerSafe(Class *c, Method *m, std::set<Method *> &seen,
+                  std::string &why);
 
   /// The class named by a static call's receiver, or null for a normal call.
   Class *staticReceiverClass(Dispatch *d);

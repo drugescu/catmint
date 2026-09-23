@@ -139,7 +139,8 @@ OBJECTS="$OBJECTS $WORK/$BASE.ast.ll"
 "$LLVM_LINK" $OBJECTS "$WORK/runtime.host.ll" -o "$WORK/$BASE.bc"
 
 # Bitcode -> native executable. -lm for the Math class; on macOS libm is part
-# of libSystem and the flag is a no-op, on Linux it is not.
+# of libSystem and the flag is a no-op, on Linux it is not. -pthread is
+# there for Worker.
 if [ -n "$DEBUG" ]; then
   # Two steps, because macOS does not put DWARF in the executable: it leaves
   # it in the object file and records a debug map pointing there, which
@@ -147,13 +148,13 @@ if [ -n "$DEBUG" ]; then
   # would delete the object before dsymutil could read it, which is why
   # `clang -g one.c -o one` gives an executable a debugger cannot read either.
   "$CLANG" -Wno-override-module "$OPT" -g -c "$WORK/$BASE.bc" -o "$WORK/$BASE.o"
-  "$CLANG" "$OPT" -g "$WORK/$BASE.o" -o "$OUT" -lm
+  "$CLANG" "$OPT" -g -pthread "$WORK/$BASE.o" -o "$OUT" -lm
   if [ "$(uname)" = "Darwin" ] && command -v dsymutil >/dev/null 2>&1; then
     dsymutil "$OUT" >/dev/null 2>&1 || \
       echo "catmintc: warning: dsymutil could not collect debug information" >&2
   fi
 else
-  "$CLANG" -Wno-override-module "$OPT" "$WORK/$BASE.bc" -o "$OUT" -lm
+  "$CLANG" -Wno-override-module "$OPT" -pthread "$WORK/$BASE.bc" -o "$OUT" -lm
 fi
 echo "catmintc: wrote $OUT"
 

@@ -87,6 +87,7 @@ static int gColumnNumber = 1;
 "catch"       { countColumns(); return KW_CATCH; }
 "throw"       { countColumns(); return KW_THROW; }
 "defer"       { countColumns(); return KW_DEFER; }
+"spawn"       { countColumns(); return KW_SPAWN; }
 "then"		    { countColumns(); return KW_THEN; }
 "else"		    { countColumns(); return KW_ELSE; }
 "end"		      { countColumns(); return KW_END; }

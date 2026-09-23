@@ -328,7 +328,8 @@ bool IRGenerator::collectClasses() {
     CI.Builtin = (Name == strings::Object || Name == strings::Io ||
                   Name == strings::String || Name == strings::List ||
                   Name == strings::Integer || Name == strings::File ||
-                  Name == strings::Math || Name == strings::Process);
+                  Name == strings::Math || Name == strings::Process ||
+                  Name == strings::Worker);
     // Two definitions of one name used to overwrite each other here, so a
     // program importing two modules that both define a Point silently got
     // whichever came last. Until there are namespaces, say so instead.
@@ -419,6 +420,10 @@ bool IRGenerator::layoutClass(ClassInfo *CI) {
       // { rtti, int refs, FILE *pipe, int pid }
       CI->Elements = {Ptr, I32, Ptr, I32};
       CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TProcess");
+    } else if (Name == strings::Worker) {
+      // { rtti, int refs } -- Worker has no state of its own.
+      CI->Elements = {Ptr, I32};
+      CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TWorker");
     } else if (Name == strings::Integer) {
       // { rtti, int refs, long long value }
       CI->Elements = {Ptr, I32, llvm::Type::getInt64Ty(Context)};
@@ -1253,6 +1258,7 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
   if (dynamic_cast<TryStatement *>(E))          return strings::Void;
   if (dynamic_cast<ThrowStatement *>(E))        return strings::Void;
   if (dynamic_cast<DeferStatement *>(E))        return strings::Void;
+  if (dynamic_cast<SpawnStatement *>(E))        return strings::Int;
 
   if (auto *D = dynamic_cast<Dispatch *>(E)) {
     if (ClassInfo *Target = staticReceiver(D)) {
@@ -1400,6 +1406,7 @@ llvm::Value *IRGenerator::emit(Expression *E) {
   if (auto *N = dynamic_cast<TryStatement *>(E))     return emitTry(N);
   if (auto *N = dynamic_cast<ThrowStatement *>(E))   return emitThrow(N);
   if (auto *N = dynamic_cast<DeferStatement *>(E))   return emitDefer(N);
+  if (auto *N = dynamic_cast<SpawnStatement *>(E))   return emitSpawn(N);
   if (auto *N = dynamic_cast<Cast *>(E))             return emitCast(N);
   if (auto *N = dynamic_cast<Substring *>(E))        return emitSubstring(N);
   if (auto *N = dynamic_cast<Symbol *>(E))           return emitSymbol(N);
@@ -2483,6 +2490,53 @@ void IRGenerator::runDeferred(unsigned Count) {
       (void)emit(*Action);
     }
   }
+}
+
+/// `spawn Class.method(argument)`: hand the method's address and the
+/// argument to a thread rather than calling it. The semantic pass has
+/// already made sure the method is one a thread can safely run -- static,
+/// numbers in and out, and nothing in it that touches an object -- so there
+/// is nothing to check here beyond finding it.
+llvm::Value *IRGenerator::emitSpawn(SpawnStatement *S) {
+  auto *Call = dynamic_cast<Dispatch *>(S->getCall());
+  if (!Call)
+    fail(S->getLineNumber(), "'spawn' needs a call to a static method");
+
+  ClassInfo *Target = staticReceiver(Call);
+  if (!Target)
+    fail(S->getLineNumber(), "'spawn' needs a static method named on its class");
+
+  auto Found = Target->StaticImpl.find(Call->getName());
+  if (Found == Target->StaticImpl.end())
+    fail(S->getLineNumber(), "class '" + Target->AST->getName() +
+                                 "' has no static method '" + Call->getName() +
+                                 "'");
+
+  ClassInfo *Owner = Found->second.first;
+  Method *M = Found->second.second;
+
+  // The thread's entry point is long long (*)(long long), so the method's
+  // own widths are adapted here rather than in the runtime.
+  auto *I64 = llvm::Type::getInt64Ty(Context);
+  auto Ptr = llvm::PointerType::getUnqual(Context);
+  auto Entry = Module.getOrInsertFunction(runtimeSymbol(Owner, M->getName()),
+                                          methodType(Owner, M));
+
+  auto ArgIt = Call->begin();
+  if (ArgIt == Call->end())
+    fail(S->getLineNumber(), "a worker takes exactly one number");
+  llvm::Value *Argument = emit(*ArgIt);
+  if (!Argument)
+    fail(S->getLineNumber(), "the argument to 'spawn' produced no value");
+  Argument = coerce(Argument, staticTypeOf(*ArgIt), strings::Int64,
+                    S->getLineNumber());
+
+  auto Start = Module.getOrInsertFunction(
+      "__cm_workerStart",
+      llvm::FunctionType::get(llvm::Type::getInt32Ty(Context), {Ptr, I64},
+                              false));
+  return Builder.CreateCall(
+      Start, {Entry.getCallee(), Argument}, "worker");
 }
 
 llvm::Value *IRGenerator::emitThrow(ThrowStatement *T) {

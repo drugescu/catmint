@@ -510,7 +510,7 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethodsParams.push_back(new Attribute(0, "command", strings::String));
   builtinMethodsParams.push_back(new Attribute(0, "mode", strings::String));
   builtinMethods.push_back(
-      new Method(0, "start", strings::Int, nullptr, builtinMethodsParams));
+      new Method(0, "open", strings::Int, nullptr, builtinMethodsParams));
 
   builtinMethodsParams.clear();
   builtinMethods.push_back(new Method(0, strings::ReadLine, strings::String,
@@ -538,7 +538,7 @@ void TypeTable::addBuiltinClasses(Program *p) {
   builtinMethodsParams.clear();
   builtinMethodsParams.push_back(new Attribute(0, "command", strings::String));
   builtinMethods.push_back(
-      new Method(0, "spawn", strings::Int, nullptr, builtinMethodsParams));
+      new Method(0, "start", strings::Int, nullptr, builtinMethodsParams));
   asStatic(builtinMethods);
 
   builtinMethodsParams.clear();
@@ -556,6 +556,31 @@ void TypeTable::addBuiltinClasses(Program *p) {
       new Class(0, strings::Process, strings::Object, builtinMethods));
   (void)createNewType(processClass.get());
   p->addClass(std::move(processClass));
+
+  builtinMethods.clear();
+  builtinMethodsParams.clear();
+
+  // ---------------------------------------------------------------------------
+  // Add built-in class - 'Worker'
+  //
+  // A thread, reached only through `spawn`. Both methods are static, so the
+  // class takes no virtual table slots of its own.
+  // ---------------------------------------------------------------------------
+
+  builtinMethodsParams.push_back(new Attribute(0, "handle", strings::Int));
+  builtinMethods.push_back(
+      new Method(0, "wait", strings::Int64, nullptr, builtinMethodsParams));
+  asStatic(builtinMethods);
+
+  builtinMethodsParams.clear();
+  builtinMethods.push_back(
+      new Method(0, "count", strings::Int, nullptr, builtinMethodsParams));
+  asStatic(builtinMethods);
+
+  std::unique_ptr<Class> workerClass(
+      new Class(0, strings::Worker, strings::Object, builtinMethods));
+  (void)createNewType(workerClass.get());
+  p->addClass(std::move(workerClass));
 }
 
 bool TypeTable::isBuiltinClass(Class *c) const {
@@ -568,7 +593,8 @@ bool TypeTable::isBuiltinClass(Class *c) const {
   return name == strings::Object || name == strings::String ||
          name == strings::Io || name == strings::List ||
          name == strings::Integer || name == strings::File ||
-         name == strings::Math || name == strings::Process;
+         name == strings::Math || name == strings::Process ||
+         name == strings::Worker;
 }
 
 Type *TypeTable::getType(const std::string &name) const {

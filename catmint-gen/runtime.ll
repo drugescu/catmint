@@ -3,6 +3,7 @@ source_filename = "runtime.c"
 
 %struct.TString = type { ptr, i32, i32, ptr }
 %struct.timespec = type { i64, i64 }
+%struct.__cm_worker = type { ptr, ptr, i64, i64, i32 }
 %struct.TObject = type { ptr, i32 }
 %struct.__catmint_rtti = type { ptr, i32, ptr, ptr, [0 x ptr] }
 %struct.TList = type { ptr, i32, i32, i32, ptr }
@@ -29,58 +30,67 @@ source_filename = "runtime.c"
 @NMath = global %struct.TString { ptr @RString, i32 0, i32 4, ptr @.str.6 }, align 8
 @.str.7 = private unnamed_addr constant [8 x i8] c"Process\00", align 1
 @NProcess = global %struct.TString { ptr @RString, i32 0, i32 7, ptr @.str.7 }, align 8
+@.str.8 = private unnamed_addr constant [7 x i8] c"Worker\00", align 1
+@NWorker = global %struct.TString { ptr @RString, i32 0, i32 6, ptr @.str.8 }, align 8
 @RObject = global { ptr, i32, [4 x i8], ptr, ptr, [6 x ptr] } { ptr @NObject, i32 16, [4 x i8] zeroinitializer, ptr null, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
 @RString = global { ptr, i32, [4 x i8], ptr, ptr, [19 x ptr] } { ptr @NString, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [19 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M6_String_length, ptr @M6_String_toInt, ptr @M6_String_substring, ptr @M6_String_concat, ptr @M6_String_equal, ptr @M6_String_at, ptr @M6_String_indexOf, ptr @M6_String_trim, ptr @M6_String_upper, ptr @M6_String_lower, ptr @M6_String_split, ptr @M6_String_replace, ptr @M6_String_toFloat] }, align 8
 @RIO = global { ptr, i32, [4 x i8], ptr, ptr, [20 x ptr] } { ptr @NIO, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [20 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M2_IO_in, ptr @M2_IO_out, ptr @M2_IO_readLine, ptr @M2_IO_eof, ptr @M2_IO_entropy, ptr @M2_IO_ticks, ptr @M2_IO_epoch, ptr @M2_IO_localOffset, ptr @M2_IO_sleep, ptr @M2_IO_args, ptr @M2_IO_arg, ptr @M2_IO_err, ptr @M2_IO_exit, ptr @M2_IO_allocated] }, align 8
 @RFile = global { ptr, i32, [4 x i8], ptr, ptr, [13 x ptr] } { ptr @NFile, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [13 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_File_open, ptr @M4_File_readLine, ptr @M4_File_readAll, ptr @M4_File_write, ptr @M4_File_eof, ptr @M4_File_close, ptr @M4_File_isOpen] }, align 8
 @RMath = global { ptr, i32, [4 x i8], ptr, ptr, [6 x ptr] } { ptr @NMath, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
-@RProcess = global { ptr, i32, [4 x i8], ptr, ptr, [11 x ptr] } { ptr @NProcess, i32 32, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [11 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Process_start, ptr @M7_Process_readLine, ptr @M7_Process_write, ptr @M7_Process_eof, ptr @M7_Process_finish] }, align 8
+@RWorker = global { ptr, i32, [4 x i8], ptr, ptr, [6 x ptr] } { ptr @NWorker, i32 16, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [6 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs] }, align 8
+@RProcess = global { ptr, i32, [4 x i8], ptr, ptr, [11 x ptr] } { ptr @NProcess, i32 32, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [11 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Process_open, ptr @M7_Process_readLine, ptr @M7_Process_write, ptr @M7_Process_eof, ptr @M7_Process_finish] }, align 8
 @RList = global { ptr, i32, [4 x i8], ptr, ptr, [11 x ptr] } { ptr @NList, i32 32, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [11 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M4_List_len, ptr @M4_List_get, ptr @M4_List_set, ptr @M4_List_append, ptr @M4_List_slice] }, align 8
 @RInteger = global { ptr, i32, [4 x i8], ptr, ptr, [9 x ptr] } { ptr @NInteger, i32 24, [4 x i8] zeroinitializer, ptr @RObject, ptr null, [9 x ptr] [ptr @M6_Object_abort, ptr @M6_Object_typeName, ptr @M6_Object_copy, ptr @M6_Object_retain, ptr @M6_Object_release, ptr @M6_Object_refs, ptr @M7_Integer_get, ptr @M7_Integer_set, ptr @M7_Integer_getLong] }, align 8
 @gLiveObjects = internal global i32 0, align 4
 @gEmptyChars = internal global [1 x i8] zeroinitializer, align 1
-@.str.9 = private unnamed_addr constant [33 x i8] c"Substring indices out of bounds.\00", align 1
-@.str.10 = private unnamed_addr constant [28 x i8] c"String index out of bounds.\00", align 1
-@.str.11 = private unnamed_addr constant [6 x i8] c"%255s\00", align 1
+@.str.10 = private unnamed_addr constant [33 x i8] c"Substring indices out of bounds.\00", align 1
+@.str.11 = private unnamed_addr constant [28 x i8] c"String index out of bounds.\00", align 1
+@.str.12 = private unnamed_addr constant [6 x i8] c"%255s\00", align 1
 @__stdinp = external global ptr, align 8
-@.str.12 = private unnamed_addr constant [1 x i8] zeroinitializer, align 1
-@.str.13 = private unnamed_addr constant [13 x i8] c"/dev/urandom\00", align 1
-@.str.14 = private unnamed_addr constant [3 x i8] c"rb\00", align 1
+@.str.13 = private unnamed_addr constant [1 x i8] zeroinitializer, align 1
+@.str.14 = private unnamed_addr constant [13 x i8] c"/dev/urandom\00", align 1
+@.str.15 = private unnamed_addr constant [3 x i8] c"rb\00", align 1
 @M2_IO_ticks.started = internal global i32 0, align 4
 @M2_IO_ticks.origin = internal global %struct.timespec zeroinitializer, align 8
-@.str.15 = private unnamed_addr constant [3 x i8] c"%s\00", align 1
-@.str.16 = private unnamed_addr constant [30 x i8] c"Out of memory growing a List.\00", align 1
-@.str.17 = private unnamed_addr constant [34 x i8] c"List slice indices out of bounds.\00", align 1
-@.str.18 = private unnamed_addr constant [35 x i8] c"Calling a method of a void object.\00", align 1
-@.str.19 = private unnamed_addr constant [19 x i8] c"%s does not do %s.\00", align 1
-@.str.20 = private unnamed_addr constant [30 x i8] c"Unable to convert %s into %s.\00", align 1
-@.str.21 = private unnamed_addr constant [31 x i8] c"Expected an Integer, found %s.\00", align 1
-@.str.22 = private unnamed_addr constant [3 x i8] c"%g\00", align 1
-@.str.23 = private unnamed_addr constant [3 x i8] c"%d\00", align 1
-@.str.24 = private unnamed_addr constant [5 x i8] c"%lld\00", align 1
+@.str.16 = private unnamed_addr constant [3 x i8] c"%s\00", align 1
+@.str.17 = private unnamed_addr constant [30 x i8] c"Out of memory growing a List.\00", align 1
+@.str.18 = private unnamed_addr constant [34 x i8] c"List slice indices out of bounds.\00", align 1
+@.str.19 = private unnamed_addr constant [35 x i8] c"Calling a method of a void object.\00", align 1
+@.str.20 = private unnamed_addr constant [19 x i8] c"%s does not do %s.\00", align 1
+@.str.21 = private unnamed_addr constant [30 x i8] c"Unable to convert %s into %s.\00", align 1
+@.str.22 = private unnamed_addr constant [31 x i8] c"Expected an Integer, found %s.\00", align 1
+@.str.23 = private unnamed_addr constant [3 x i8] c"%g\00", align 1
+@.str.24 = private unnamed_addr constant [3 x i8] c"%d\00", align 1
+@.str.25 = private unnamed_addr constant [5 x i8] c"%lld\00", align 1
 @gArgCount = internal global i32 0, align 4
 @gArgValues = internal global ptr null, align 8
 @__stderrp = external global ptr, align 8
-@.str.25 = private unnamed_addr constant [30 x i8] c"Out of memory reading a file.\00", align 1
-@.str.26 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory entering a try.\0A\00", align 1
+@.str.26 = private unnamed_addr constant [30 x i8] c"Out of memory reading a file.\00", align 1
+@.str.27 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory entering a try.\0A\00", align 1
 @gHandlers = internal global ptr null, align 8
 @gThrown = internal global ptr null, align 8
-@.str.27 = private unnamed_addr constant [14 x i8] c"Uncaught: %s\0A\00", align 1
-@.str.28 = private unnamed_addr constant [32 x i8] c"Uncaught: an object of type %s\0A\00", align 1
-@.str.29 = private unnamed_addr constant [16 x i8] c"Uncaught: null\0A\00", align 1
-@.str.30 = private unnamed_addr constant [20 x i8] c"Runtime error : %s\0A\00", align 1
+@.str.28 = private unnamed_addr constant [14 x i8] c"Uncaught: %s\0A\00", align 1
+@.str.29 = private unnamed_addr constant [32 x i8] c"Uncaught: an object of type %s\0A\00", align 1
+@.str.30 = private unnamed_addr constant [16 x i8] c"Uncaught: null\0A\00", align 1
+@.str.31 = private unnamed_addr constant [20 x i8] c"Runtime error : %s\0A\00", align 1
 @gPoolDepth = internal global i32 0, align 4
 @gPoolMarkCapacity = internal global i32 0, align 4
 @gPoolMarks = internal global ptr null, align 8
-@.str.31 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory opening a pool.\0A\00", align 1
+@.str.32 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory opening a pool.\0A\00", align 1
 @gPoolCount = internal global i32 0, align 4
 @gPoolCapacity = internal global i32 0, align 4
 @gPoolItems = internal global ptr null, align 8
-@.str.32 = private unnamed_addr constant [54 x i8] c"Runtime error : out of memory recording a temporary.\0A\00", align 1
-@.str.33 = private unnamed_addr constant [8 x i8] c"/bin/sh\00", align 1
-@.str.34 = private unnamed_addr constant [3 x i8] c"sh\00", align 1
-@.str.35 = private unnamed_addr constant [3 x i8] c"-c\00", align 1
-@.str.36 = private unnamed_addr constant [26 x i8] c"List index out of bounds.\00", align 1
+@.str.33 = private unnamed_addr constant [54 x i8] c"Runtime error : out of memory recording a temporary.\0A\00", align 1
+@.str.34 = private unnamed_addr constant [8 x i8] c"/bin/sh\00", align 1
+@.str.35 = private unnamed_addr constant [3 x i8] c"sh\00", align 1
+@.str.36 = private unnamed_addr constant [3 x i8] c"-c\00", align 1
+@gWorkerCount = internal global i32 0, align 4
+@.str.37 = private unnamed_addr constant [54 x i8] c"too many workers; wait for some before starting more.\00", align 1
+@gWorkers = internal global [256 x %struct.__cm_worker] zeroinitializer, align 8
+@.str.38 = private unnamed_addr constant [51 x i8] c"no such worker; wait for each handle exactly once.\00", align 1
+@.str.39 = private unnamed_addr constant [41 x i8] c"that worker has already been waited for.\00", align 1
+@gWorkersCollected = internal global i32 0, align 4
+@.str.40 = private unnamed_addr constant [26 x i8] c"List index out of bounds.\00", align 1
 
 ; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
 define void @M6_Object_abort(ptr noundef %0) #0 {
@@ -442,7 +452,7 @@ define ptr @M6_String_substring(ptr noundef %0, i32 noundef %1, i32 noundef %2) 
   br i1 %19, label %20, label %21
 
 20:                                               ; preds = %14, %10, %3
-  call void @__cm_runtimeError(ptr noundef @.str.9)
+  call void @__cm_runtimeError(ptr noundef @.str.10)
   br label %21
 
 21:                                               ; preds = %20, %14
@@ -634,7 +644,7 @@ define i32 @M6_String_at(ptr noundef %0, i32 noundef %1) #0 {
   br i1 %12, label %13, label %14
 
 13:                                               ; preds = %7, %2
-  call void @__cm_runtimeError(ptr noundef @.str.10)
+  call void @__cm_runtimeError(ptr noundef @.str.11)
   br label %14
 
 14:                                               ; preds = %13, %7
@@ -1227,7 +1237,7 @@ define ptr @M2_IO_in(ptr noundef %0) #0 {
   %5 = getelementptr inbounds [256 x i8], ptr %3, i64 0, i64 0
   store i8 0, ptr %5, align 1
   %6 = getelementptr inbounds [256 x i8], ptr %3, i64 0, i64 0
-  %7 = call i32 (ptr, ...) @scanf(ptr noundef @.str.11, ptr noundef %6)
+  %7 = call i32 (ptr, ...) @scanf(ptr noundef @.str.12, ptr noundef %6)
   %8 = icmp ne i32 %7, 1
   br i1 %8, label %9, label %11
 
@@ -1251,7 +1261,7 @@ define ptr @M2_IO_out(ptr noundef %0, ptr noundef %1) #0 {
   %5 = load ptr, ptr %4, align 8
   %6 = getelementptr inbounds nuw %struct.TString, ptr %5, i32 0, i32 3
   %7 = load ptr, ptr %6, align 8
-  %8 = call i32 (ptr, ...) @printf(ptr noundef @.str.15, ptr noundef %7)
+  %8 = call i32 (ptr, ...) @printf(ptr noundef @.str.16, ptr noundef %7)
   %9 = load ptr, ptr %3, align 8
   ret ptr %9
 }
@@ -1271,7 +1281,7 @@ define ptr @M2_IO_readLine(ptr noundef %0) #0 {
   br i1 %10, label %13, label %11
 
 11:                                               ; preds = %1
-  %12 = call ptr @make_string(ptr noundef @.str.12)
+  %12 = call ptr @make_string(ptr noundef @.str.13)
   store ptr %12, ptr %2, align 8
   br label %32
 
@@ -1350,7 +1360,7 @@ define i32 @M2_IO_entropy(ptr noundef %0) #0 {
   store ptr %0, ptr %3, align 8
   store i32 0, ptr %4, align 4
   %7 = load ptr, ptr %3, align 8
-  %8 = call ptr @"\01_fopen"(ptr noundef @.str.13, ptr noundef @.str.14)
+  %8 = call ptr @"\01_fopen"(ptr noundef @.str.14, ptr noundef @.str.15)
   store ptr %8, ptr %5, align 8
   %9 = load ptr, ptr %5, align 8
   %10 = icmp ne ptr %9, null
@@ -1620,7 +1630,7 @@ define ptr @M2_IO_arg(ptr noundef %0, i32 noundef %1) #0 {
   br i1 %15, label %16, label %18
 
 16:                                               ; preds = %13, %9, %2
-  %17 = call ptr @make_string(ptr noundef @.str.12)
+  %17 = call ptr @make_string(ptr noundef @.str.13)
   store ptr %17, ptr %3, align 8
   br label %25
 
@@ -1741,7 +1751,7 @@ define ptr @M4_File_readLine(ptr noundef %0) #0 {
   br i1 %16, label %19, label %17
 
 17:                                               ; preds = %10, %1
-  %18 = call ptr @make_string(ptr noundef @.str.12)
+  %18 = call ptr @make_string(ptr noundef @.str.13)
   store ptr %18, ptr %2, align 8
   br label %38
 
@@ -1800,7 +1810,7 @@ define ptr @M4_File_readAll(ptr noundef %0) #0 {
   br i1 %12, label %15, label %13
 
 13:                                               ; preds = %1
-  %14 = call ptr @make_string(ptr noundef @.str.12)
+  %14 = call ptr @make_string(ptr noundef @.str.13)
   store ptr %14, ptr %2, align 8
   br label %72
 
@@ -1840,7 +1850,7 @@ define ptr @M4_File_readAll(ptr noundef %0) #0 {
   br i1 %35, label %37, label %36
 
 36:                                               ; preds = %29
-  call void @__cm_runtimeError(ptr noundef @.str.25)
+  call void @__cm_runtimeError(ptr noundef @.str.26)
   br label %37
 
 37:                                               ; preds = %36, %29
@@ -1875,7 +1885,7 @@ define ptr @M4_File_readAll(ptr noundef %0) #0 {
   br i1 %55, label %58, label %56
 
 56:                                               ; preds = %53
-  %57 = call ptr @make_string(ptr noundef @.str.12)
+  %57 = call ptr @make_string(ptr noundef @.str.13)
   store ptr %57, ptr %2, align 8
   br label %72
 
@@ -2019,7 +2029,7 @@ define i32 @M4_File_isOpen(ptr noundef %0) #0 {
 }
 
 ; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define i32 @M7_Process_start(ptr noundef %0, ptr noundef %1, ptr noundef %2) #0 {
+define i32 @M7_Process_open(ptr noundef %0, ptr noundef %1, ptr noundef %2) #0 {
   %4 = alloca ptr, align 8
   %5 = alloca ptr, align 8
   %6 = alloca ptr, align 8
@@ -2084,7 +2094,7 @@ define ptr @M7_Process_readLine(ptr noundef %0) #0 {
   br i1 %16, label %19, label %17
 
 17:                                               ; preds = %10, %1
-  %18 = call ptr @make_string(ptr noundef @.str.12)
+  %18 = call ptr @make_string(ptr noundef @.str.13)
   store ptr %18, ptr %2, align 8
   br label %38
 
@@ -2357,7 +2367,7 @@ define ptr @M4_List_append(ptr noundef %0, ptr noundef %1) #0 {
   br i1 %35, label %37, label %36
 
 36:                                               ; preds = %25
-  call void @__cm_runtimeError(ptr noundef @.str.16)
+  call void @__cm_runtimeError(ptr noundef @.str.17)
   br label %37
 
 37:                                               ; preds = %36, %25
@@ -2422,7 +2432,7 @@ define ptr @M4_List_slice(ptr noundef %0, i32 noundef %1, i32 noundef %2) #0 {
   br i1 %20, label %21, label %22
 
 21:                                               ; preds = %15, %11, %3
-  call void @__cm_runtimeError(ptr noundef @.str.17)
+  call void @__cm_runtimeError(ptr noundef @.str.18)
   br label %22
 
 22:                                               ; preds = %21, %15
@@ -2594,7 +2604,7 @@ define void @__cm_poolAdd(ptr noundef %0) #0 {
   br i1 %30, label %33, label %31
 
 31:                                               ; preds = %22
-  %32 = call i32 (ptr, ...) @printf(ptr noundef @.str.32)
+  %32 = call i32 (ptr, ...) @printf(ptr noundef @.str.33)
   call void @exit(i32 noundef 1) #12
   unreachable
 
@@ -2707,6 +2717,14 @@ define void @Process_init(ptr noundef %0) #0 {
   ret void
 }
 
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define void @Worker_init(ptr noundef %0) #0 {
+  %2 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %3 = load ptr, ptr %2, align 8
+  ret void
+}
+
 ; Function Attrs: noreturn
 declare void @exit(i32 noundef) #4
 
@@ -2808,7 +2826,7 @@ define void @__cm_runtimeError(ptr noundef %0) #0 {
 
 8:                                                ; preds = %5, %1
   %9 = load ptr, ptr %2, align 8
-  %10 = call i32 (ptr, ...) @printf(ptr noundef @.str.30, ptr noundef %9)
+  %10 = call i32 (ptr, ...) @printf(ptr noundef @.str.31, ptr noundef %9)
   call void @exit(i32 noundef 1) #12
   unreachable
 }
@@ -2912,7 +2930,7 @@ define internal void @list_bounds(ptr noundef %0, i32 noundef %1) #0 {
   br i1 %12, label %13, label %14
 
 13:                                               ; preds = %7, %2
-  call void @__cm_runtimeError(ptr noundef @.str.36)
+  call void @__cm_runtimeError(ptr noundef @.str.40)
   br label %14
 
 14:                                               ; preds = %13, %7
@@ -2931,7 +2949,7 @@ define void @__cm_checkNull(ptr noundef %0) #0 {
   br i1 %4, label %5, label %6
 
 5:                                                ; preds = %1
-  call void @__cm_runtimeError(ptr noundef @.str.18)
+  call void @__cm_runtimeError(ptr noundef @.str.19)
   br label %6
 
 6:                                                ; preds = %5, %1
@@ -3031,7 +3049,7 @@ define i32 @__cm_ifaceBase(ptr noundef %0, ptr noundef %1) #0 {
   %59 = load ptr, ptr %58, align 8
   %60 = getelementptr inbounds nuw %struct.TString, ptr %59, i32 0, i32 3
   %61 = load ptr, ptr %60, align 8
-  %62 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %49, i64 noundef 256, i32 noundef 0, i64 noundef 256, ptr noundef @.str.19, ptr noundef %56, ptr noundef %61)
+  %62 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %49, i64 noundef 256, i32 noundef 0, i64 noundef 256, ptr noundef @.str.20, ptr noundef %56, ptr noundef %61)
   %63 = getelementptr inbounds [256 x i8], ptr %8, i64 0, i64 0
   call void @__cm_runtimeError(ptr noundef %63)
   store i32 0, ptr %3, align 4
@@ -3260,7 +3278,7 @@ define ptr @__cm_cast(ptr noundef %0, ptr noundef %1) #0 {
   %47 = load ptr, ptr %46, align 8
   %48 = getelementptr inbounds nuw %struct.TString, ptr %47, i32 0, i32 3
   %49 = load ptr, ptr %48, align 8
-  %50 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %39, i64 noundef 256, i32 noundef 0, i64 noundef 256, ptr noundef @.str.20, ptr noundef %44, ptr noundef %49)
+  %50 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %39, i64 noundef 256, i32 noundef 0, i64 noundef 256, ptr noundef @.str.21, ptr noundef %44, ptr noundef %49)
   %51 = getelementptr inbounds [256 x i8], ptr %8, i64 0, i64 0
   call void @__cm_runtimeError(ptr noundef %51)
   store ptr null, ptr %3, align 8
@@ -3310,7 +3328,7 @@ define i64 @__cm_unboxLong(ptr noundef %0) #0 {
   %15 = load ptr, ptr %14, align 8
   %16 = getelementptr inbounds nuw %struct.TString, ptr %15, i32 0, i32 3
   %17 = load ptr, ptr %16, align 8
-  %18 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %10, i64 noundef 256, i32 noundef 0, i64 noundef 256, ptr noundef @.str.21, ptr noundef %17)
+  %18 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %10, i64 noundef 256, i32 noundef 0, i64 noundef 256, ptr noundef @.str.22, ptr noundef %17)
   %19 = getelementptr inbounds [256 x i8], ptr %3, i64 0, i64 0
   call void @__cm_runtimeError(ptr noundef %19)
   br label %20
@@ -3419,7 +3437,7 @@ define ptr @__cm_floatToString(double noundef %0) #0 {
   call void @llvm.memset.p0.i64(ptr align 1 %4, i8 0, i64 64, i1 false)
   %5 = getelementptr inbounds [64 x i8], ptr %3, i64 0, i64 0
   %6 = load double, ptr %2, align 8
-  %7 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %5, i64 noundef 64, i32 noundef 0, i64 noundef 64, ptr noundef @.str.22, double noundef %6)
+  %7 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %5, i64 noundef 64, i32 noundef 0, i64 noundef 64, ptr noundef @.str.23, double noundef %6)
   %8 = getelementptr inbounds [64 x i8], ptr %3, i64 0, i64 0
   %9 = call ptr @make_string(ptr noundef %8)
   ret ptr %9
@@ -3437,7 +3455,7 @@ define ptr @__cm_intToString(i32 noundef %0) #0 {
   call void @llvm.memset.p0.i64(ptr align 1 %4, i8 0, i64 32, i1 false)
   %5 = getelementptr inbounds [32 x i8], ptr %3, i64 0, i64 0
   %6 = load i32, ptr %2, align 4
-  %7 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %5, i64 noundef 32, i32 noundef 0, i64 noundef 32, ptr noundef @.str.23, i32 noundef %6)
+  %7 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %5, i64 noundef 32, i32 noundef 0, i64 noundef 32, ptr noundef @.str.24, i32 noundef %6)
   %8 = getelementptr inbounds [32 x i8], ptr %3, i64 0, i64 0
   %9 = call ptr @make_string(ptr noundef %8)
   ret ptr %9
@@ -3452,7 +3470,7 @@ define ptr @__cm_longToString(i64 noundef %0) #0 {
   call void @llvm.memset.p0.i64(ptr align 1 %4, i8 0, i64 32, i1 false)
   %5 = getelementptr inbounds [32 x i8], ptr %3, i64 0, i64 0
   %6 = load i64, ptr %2, align 8
-  %7 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %5, i64 noundef 32, i32 noundef 0, i64 noundef 32, ptr noundef @.str.24, i64 noundef %6)
+  %7 = call i32 (ptr, i64, i32, i64, ptr, ...) @__snprintf_chk(ptr noundef %5, i64 noundef 32, i32 noundef 0, i64 noundef 32, ptr noundef @.str.25, i64 noundef %6)
   %8 = getelementptr inbounds [32 x i8], ptr %3, i64 0, i64 0
   %9 = call ptr @make_string(ptr noundef %8)
   ret ptr %9
@@ -3582,7 +3600,7 @@ define i32 @M4_File_exists(ptr noundef %0) #0 {
   %5 = load ptr, ptr %3, align 8
   %6 = getelementptr inbounds nuw %struct.TString, ptr %5, i32 0, i32 3
   %7 = load ptr, ptr %6, align 8
-  %8 = call ptr @"\01_fopen"(ptr noundef %7, ptr noundef @.str.14)
+  %8 = call ptr @"\01_fopen"(ptr noundef %7, ptr noundef @.str.15)
   store ptr %8, ptr %4, align 8
   %9 = load ptr, ptr %4, align 8
   %10 = icmp ne ptr %9, null
@@ -3872,7 +3890,7 @@ define void @__cm_pushHandler(ptr noundef %0) #0 {
   br i1 %6, label %9, label %7
 
 7:                                                ; preds = %1
-  %8 = call i32 (ptr, ...) @printf(ptr noundef @.str.26)
+  %8 = call i32 (ptr, ...) @printf(ptr noundef @.str.27)
   call void @exit(i32 noundef 1) #12
   unreachable
 
@@ -3963,7 +3981,7 @@ define void @__cm_throw(ptr noundef %0) #0 {
   %18 = load ptr, ptr %2, align 8
   %19 = getelementptr inbounds nuw %struct.TString, ptr %18, i32 0, i32 3
   %20 = load ptr, ptr %19, align 8
-  %21 = call i32 (ptr, ...) @printf(ptr noundef @.str.27, ptr noundef %20)
+  %21 = call i32 (ptr, ...) @printf(ptr noundef @.str.28, ptr noundef %20)
   br label %37
 
 22:                                               ; preds = %12, %9
@@ -3979,11 +3997,11 @@ define void @__cm_throw(ptr noundef %0) #0 {
   %30 = load ptr, ptr %29, align 8
   %31 = getelementptr inbounds nuw %struct.TString, ptr %30, i32 0, i32 3
   %32 = load ptr, ptr %31, align 8
-  %33 = call i32 (ptr, ...) @printf(ptr noundef @.str.28, ptr noundef %32)
+  %33 = call i32 (ptr, ...) @printf(ptr noundef @.str.29, ptr noundef %32)
   br label %36
 
 34:                                               ; preds = %22
-  %35 = call i32 (ptr, ...) @printf(ptr noundef @.str.29)
+  %35 = call i32 (ptr, ...) @printf(ptr noundef @.str.30)
   br label %36
 
 36:                                               ; preds = %34, %25
@@ -4073,7 +4091,7 @@ define void @__cm_poolPush() #0 {
   br i1 %21, label %24, label %22
 
 22:                                               ; preds = %13
-  %23 = call i32 (ptr, ...) @printf(ptr noundef @.str.31)
+  %23 = call i32 (ptr, ...) @printf(ptr noundef @.str.32)
   call void @exit(i32 noundef 1) #12
   unreachable
 
@@ -4223,7 +4241,7 @@ define internal i32 @exit_status(i32 noundef %0) #0 {
 }
 
 ; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
-define i32 @M7_Process_spawn(ptr noundef %0) #0 {
+define i32 @M7_Process_start(ptr noundef %0) #0 {
   %2 = alloca i32, align 4
   %3 = alloca ptr, align 8
   %4 = alloca i32, align 4
@@ -4247,7 +4265,7 @@ define i32 @M7_Process_spawn(ptr noundef %0) #0 {
   %13 = load ptr, ptr %3, align 8
   %14 = getelementptr inbounds nuw %struct.TString, ptr %13, i32 0, i32 3
   %15 = load ptr, ptr %14, align 8
-  %16 = call i32 (ptr, ptr, ...) @execl(ptr noundef @.str.33, ptr noundef @.str.34, ptr noundef @.str.35, ptr noundef %15, ptr noundef null)
+  %16 = call i32 (ptr, ptr, ...) @execl(ptr noundef @.str.34, ptr noundef @.str.35, ptr noundef @.str.36, ptr noundef %15, ptr noundef null)
   call void @_exit(i32 noundef 127) #12
   unreachable
 
@@ -4317,6 +4335,197 @@ declare i32 @getpid() #6
 declare i32 @pclose(ptr noundef) #6
 
 declare ptr @"\01_popen"(ptr noundef, ptr noundef) #6
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define i32 @__cm_workerStart(ptr noundef %0, i64 noundef %1) #0 {
+  %3 = alloca i32, align 4
+  %4 = alloca ptr, align 8
+  %5 = alloca i64, align 8
+  %6 = alloca ptr, align 8
+  store ptr %0, ptr %4, align 8
+  store i64 %1, ptr %5, align 8
+  %7 = load i32, ptr @gWorkerCount, align 4
+  %8 = icmp sge i32 %7, 256
+  br i1 %8, label %9, label %10
+
+9:                                                ; preds = %2
+  call void @__cm_runtimeError(ptr noundef @.str.37)
+  br label %10
+
+10:                                               ; preds = %9, %2
+  %11 = load i32, ptr @gWorkerCount, align 4
+  %12 = sext i32 %11 to i64
+  %13 = getelementptr inbounds [256 x %struct.__cm_worker], ptr @gWorkers, i64 0, i64 %12
+  store ptr %13, ptr %6, align 8
+  %14 = load ptr, ptr %4, align 8
+  %15 = load ptr, ptr %6, align 8
+  %16 = getelementptr inbounds nuw %struct.__cm_worker, ptr %15, i32 0, i32 1
+  store ptr %14, ptr %16, align 8
+  %17 = load i64, ptr %5, align 8
+  %18 = load ptr, ptr %6, align 8
+  %19 = getelementptr inbounds nuw %struct.__cm_worker, ptr %18, i32 0, i32 2
+  store i64 %17, ptr %19, align 8
+  %20 = load ptr, ptr %6, align 8
+  %21 = getelementptr inbounds nuw %struct.__cm_worker, ptr %20, i32 0, i32 3
+  store i64 0, ptr %21, align 8
+  %22 = load ptr, ptr %6, align 8
+  %23 = getelementptr inbounds nuw %struct.__cm_worker, ptr %22, i32 0, i32 4
+  store i32 1, ptr %23, align 8
+  %24 = load ptr, ptr %6, align 8
+  %25 = getelementptr inbounds nuw %struct.__cm_worker, ptr %24, i32 0, i32 0
+  %26 = load ptr, ptr %6, align 8
+  %27 = call i32 @pthread_create(ptr noundef %25, ptr noundef null, ptr noundef @worker_body, ptr noundef %26)
+  %28 = icmp ne i32 %27, 0
+  br i1 %28, label %29, label %32
+
+29:                                               ; preds = %10
+  %30 = load ptr, ptr %6, align 8
+  %31 = getelementptr inbounds nuw %struct.__cm_worker, ptr %30, i32 0, i32 4
+  store i32 0, ptr %31, align 8
+  store i32 0, ptr %3, align 4
+  br label %36
+
+32:                                               ; preds = %10
+  %33 = load i32, ptr @gWorkerCount, align 4
+  %34 = add nsw i32 %33, 1
+  store i32 %34, ptr @gWorkerCount, align 4
+  %35 = load i32, ptr @gWorkerCount, align 4
+  store i32 %35, ptr %3, align 4
+  br label %36
+
+36:                                               ; preds = %32, %29
+  %37 = load i32, ptr %3, align 4
+  ret i32 %37
+}
+
+declare i32 @pthread_create(ptr noundef, ptr noundef, ptr noundef, ptr noundef) #6
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define internal ptr @worker_body(ptr noundef %0) #0 {
+  %2 = alloca ptr, align 8
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %4 = load ptr, ptr %2, align 8
+  store ptr %4, ptr %3, align 8
+  %5 = load ptr, ptr %3, align 8
+  %6 = getelementptr inbounds nuw %struct.__cm_worker, ptr %5, i32 0, i32 1
+  %7 = load ptr, ptr %6, align 8
+  %8 = load ptr, ptr %3, align 8
+  %9 = getelementptr inbounds nuw %struct.__cm_worker, ptr %8, i32 0, i32 2
+  %10 = load i64, ptr %9, align 8
+  %11 = call i64 %7(i64 noundef %10)
+  %12 = load ptr, ptr %3, align 8
+  %13 = getelementptr inbounds nuw %struct.__cm_worker, ptr %12, i32 0, i32 3
+  store i64 %11, ptr %13, align 8
+  ret ptr null
+}
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define i64 @M6_Worker_wait(i32 noundef %0) #0 {
+  %2 = alloca i64, align 8
+  %3 = alloca i32, align 4
+  %4 = alloca ptr, align 8
+  %5 = alloca i64, align 8
+  store i32 %0, ptr %3, align 4
+  %6 = load i32, ptr %3, align 4
+  %7 = icmp eq i32 %6, 0
+  br i1 %7, label %8, label %9
+
+8:                                                ; preds = %1
+  store i64 0, ptr %2, align 8
+  br label %45
+
+9:                                                ; preds = %1
+  %10 = load i32, ptr %3, align 4
+  %11 = icmp slt i32 %10, 1
+  br i1 %11, label %16, label %12
+
+12:                                               ; preds = %9
+  %13 = load i32, ptr %3, align 4
+  %14 = load i32, ptr @gWorkerCount, align 4
+  %15 = icmp sgt i32 %13, %14
+  br i1 %15, label %16, label %17
+
+16:                                               ; preds = %12, %9
+  call void @__cm_runtimeError(ptr noundef @.str.38)
+  br label %17
+
+17:                                               ; preds = %16, %12
+  %18 = load i32, ptr %3, align 4
+  %19 = sub nsw i32 %18, 1
+  %20 = sext i32 %19 to i64
+  %21 = getelementptr inbounds [256 x %struct.__cm_worker], ptr @gWorkers, i64 0, i64 %20
+  store ptr %21, ptr %4, align 8
+  %22 = load ptr, ptr %4, align 8
+  %23 = getelementptr inbounds nuw %struct.__cm_worker, ptr %22, i32 0, i32 4
+  %24 = load i32, ptr %23, align 8
+  %25 = icmp ne i32 %24, 0
+  br i1 %25, label %27, label %26
+
+26:                                               ; preds = %17
+  call void @__cm_runtimeError(ptr noundef @.str.39)
+  br label %27
+
+27:                                               ; preds = %26, %17
+  %28 = load ptr, ptr %4, align 8
+  %29 = getelementptr inbounds nuw %struct.__cm_worker, ptr %28, i32 0, i32 0
+  %30 = load ptr, ptr %29, align 8
+  %31 = call i32 @"\01_pthread_join"(ptr noundef %30, ptr noundef null)
+  %32 = load ptr, ptr %4, align 8
+  %33 = getelementptr inbounds nuw %struct.__cm_worker, ptr %32, i32 0, i32 4
+  store i32 0, ptr %33, align 8
+  %34 = load i32, ptr @gWorkersCollected, align 4
+  %35 = add nsw i32 %34, 1
+  store i32 %35, ptr @gWorkersCollected, align 4
+  %36 = load ptr, ptr %4, align 8
+  %37 = getelementptr inbounds nuw %struct.__cm_worker, ptr %36, i32 0, i32 3
+  %38 = load i64, ptr %37, align 8
+  store i64 %38, ptr %5, align 8
+  %39 = load i32, ptr @gWorkersCollected, align 4
+  %40 = load i32, ptr @gWorkerCount, align 4
+  %41 = icmp eq i32 %39, %40
+  br i1 %41, label %42, label %43
+
+42:                                               ; preds = %27
+  store i32 0, ptr @gWorkerCount, align 4
+  store i32 0, ptr @gWorkersCollected, align 4
+  br label %43
+
+43:                                               ; preds = %42, %27
+  %44 = load i64, ptr %5, align 8
+  store i64 %44, ptr %2, align 8
+  br label %45
+
+45:                                               ; preds = %43, %8
+  %46 = load i64, ptr %2, align 8
+  ret i64 %46
+}
+
+declare i32 @"\01_pthread_join"(ptr noundef, ptr noundef) #6
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define i32 @M6_Worker_count() #0 {
+  %1 = alloca i64, align 8
+  %2 = call i64 @sysconf(i32 noundef 58)
+  store i64 %2, ptr %1, align 8
+  %3 = load i64, ptr %1, align 8
+  %4 = icmp sgt i64 %3, 0
+  br i1 %4, label %5, label %8
+
+5:                                                ; preds = %0
+  %6 = load i64, ptr %1, align 8
+  %7 = trunc i64 %6 to i32
+  br label %9
+
+8:                                                ; preds = %0
+  br label %9
+
+9:                                                ; preds = %8, %5
+  %10 = phi i32 [ %7, %5 ], [ 1, %8 ]
+  ret i32 %10
+}
+
+declare i64 @sysconf(i32 noundef) #6
 
 ; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
 define internal void @release_owned_buffers(ptr noundef %0) #0 {

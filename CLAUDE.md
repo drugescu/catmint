@@ -412,10 +412,23 @@ declaration order in `TypeTable::addBuiltinClasses` is that slot order. A new
 built-in method must be appended, never inserted, or every already-compiled
 caller silently calls the wrong slot.
 
-`Process` is the whole of catmint's concurrency, and it is deliberately
-another program rather than another thread: `Process.run(command)` waits for
-one, `Process.spawn` and `Process.wait` start several and collect them, and
-an instance wraps a pipe with `start`, `readLine`, `write`, `eof` and
+`spawn Class.method(n)` runs a static method on a thread and gives back a
+handle; `Worker.wait(handle)` collects what it returned, and
+`Worker.count()` says how many cores there are. The door is deliberately
+narrow: the method must be static, take one number and return one, and the
+semantic pass walks its body -- and transitively everything it calls --
+refusing anything that makes an object, uses a string, reads a field,
+throws, defers or dispatches on an object. That is `WorkerHazard` in
+`SemanticAnalysis.cpp`, and it is what lets threads exist at all: a worker
+provably never reaches a reference count, the temporary pool or the handler
+stack, so none of those has to be locked and single-threaded programs pay
+nothing. Widening the door means atomic counts on every assignment
+everywhere; do not widen it casually.
+
+`Process` is the other half of concurrency, and it is deliberately another
+program rather than another thread: `Process.run(command)` waits for
+one, `Process.start` and `Process.wait` begin several and collect them, and
+an instance wraps a pipe with `open`, `readLine`, `write`, `eof` and
 `finish`. Threads were considered and refused -- they would make every
 reference count atomic, taxing every store in every program including the
 single-threaded ones, and would need the temporary pool and the handler stack

@@ -9,7 +9,7 @@ class Main from IO
 
     # Reading what a command prints, a line at a time.
     Process listing
-    listing.start("printf 'alpha\\nbeta\\ngamma\\n'", "r")
+    listing.open("printf 'alpha\\nbeta\\ngamma\\n'", "r")
     while listing.eof() == 0:
       out("line ${listing.readLine()}\n")
     end
@@ -19,7 +19,7 @@ class Main from IO
     # screen because a child shares this program's standard output but not
     # its buffering, so the two would interleave unpredictably.
     Process counter
-    counter.start("wc -l > /tmp/catmint_process_test.txt", "w")
+    counter.open("wc -l > /tmp/catmint_process_test.txt", "w")
     counter.write("one\ntwo\nthree\n")
     out("wc status ${counter.finish()}\n")
 
@@ -31,9 +31,9 @@ class Main from IO
 
     # Real parallelism: start several and collect them afterwards. Each runs
     # beside this program, with its own memory.
-    Int first = Process.spawn("exit 4")
-    Int second = Process.spawn("exit 5")
-    Int third = Process.spawn("exit 6")
+    Int first = Process.start("exit 4")
+    Int second = Process.start("exit 5")
+    Int third = Process.start("exit 6")
     out("first ${Process.wait(first)}\n")
     out("second ${Process.wait(second)}\n")
     out("third ${Process.wait(third)}\n")
