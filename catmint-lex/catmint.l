@@ -89,6 +89,12 @@ static int gColumnNumber = 1;
 "defer"       { countColumns(); return KW_DEFER; }
 "spawn"       { countColumns(); return KW_SPAWN; }
 "then"		    { countColumns(); return KW_THEN; }
+"elif"        { countColumns(); return KW_ELIF; }
+ /* `else if` on one line is the same token. flex takes the longest match, so
+    this wins over the "else" rule below it. `else` and `if` on separate
+    lines are still two tokens and still a nested if needing two ends, which
+    is what every program written before elif existed does. */
+"else"[ \t]+"if" { countColumns(); return KW_ELIF; }
 "else"		    { countColumns(); return KW_ELSE; }
 "end"		      { countColumns(); return KW_END; }
 "<"			      { countColumns(); return OP_LT;  }

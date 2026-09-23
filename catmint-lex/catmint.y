@@ -160,7 +160,7 @@
 %token KW_INTERFACE KW_DOES
 %token KW_USING KW_IS
 %token KW_CONSTRUCTOR KW_NEW
-%token KW_IF KW_THEN KW_ELSE KW_LOOP
+%token KW_IF KW_THEN KW_ELSE KW_ELIF KW_LOOP
 %token KW_TRY KW_CATCH KW_THROW KW_DEFER KW_SPAWN
 
 %token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE OP_NOT OP_AND OP_OR OP_XOR OP_LSHIFT OP_RSHIFT
@@ -200,6 +200,7 @@ expression
                   new_expression
                   spawn_expression
                   if_expression
+                  elif_chain
     conditional_expression
     dispatch_expression
 	void_expression
@@ -895,7 +896,53 @@ if_expression
 								   Expression(block_then),
 								   Expression(block_else));
     }
+	|
+	KW_IF value_expression OP_COLON block elif_chain {
+		auto cond	 	= $2;
+		auto block_then = ($4 != nullptr) ? $4 : new catmint::Block(@3.first_line);
+
+		// if WITH elif: the chain is already an IfStatement, and becomes this
+		// one's else branch. `elif` exists because an end-terminated language
+		// cannot spell `else if` the way C does -- the inner if would need an
+		// `end` of its own and the outer one another after it. Python, Ruby,
+		// Lua and sh all answer this with a dedicated keyword.
+		$$ = new catmint::IfStatement(@1.first_line,
+								   Expression(cond),
+								   Expression(block_then),
+								   Expression($5));
+    }
   ;
+
+// One `elif`, plus whatever follows it. Written as a right-recursive chain so
+// that each link is an ordinary if with the rest as its else branch, which is
+// exactly what the tree already knows how to represent -- no new AST node, no
+// change to the generator or the semantic pass.
+//
+// The three alternatives are told apart by the token after the block, which is
+// KW_END, KW_ELSE or KW_ELIF, so this introduces no conflict.
+elif_chain
+	: KW_ELIF value_expression OP_COLON block KW_END {
+		auto block_then = ($4 != nullptr) ? $4 : new catmint::Block(@3.first_line);
+		$$ = new catmint::IfStatement(@1.first_line,
+								   Expression($2),
+								   Expression(block_then));
+	}
+	| KW_ELIF value_expression OP_COLON block KW_ELSE block KW_END {
+		auto block_then = ($4 != nullptr) ? $4 : new catmint::Block(@3.first_line);
+		auto block_else = ($6 != nullptr) ? $6 : new catmint::Block(@3.first_line);
+		$$ = new catmint::IfStatement(@1.first_line,
+								   Expression($2),
+								   Expression(block_then),
+								   Expression(block_else));
+	}
+	| KW_ELIF value_expression OP_COLON block elif_chain {
+		auto block_then = ($4 != nullptr) ? $4 : new catmint::Block(@3.first_line);
+		$$ = new catmint::IfStatement(@1.first_line,
+								   Expression($2),
+								   Expression(block_then),
+								   Expression($5));
+	}
+	;
 
 // `new T(a, b)` allocates an object, runs its attribute initialisers and then
 // its constructor. `new T` does the first two. A constructor is an ordinary

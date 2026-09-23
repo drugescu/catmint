@@ -7,9 +7,9 @@
 #
 #   ./catmintc -I lib examples/mini.cm --run
 #
-# Two things it had to work around, both listed in ASSESSMENT.md: there is no
-# "else if", so the tokenizer nests, and there are no character literals, so
-# it compares against ASCII codes.
+# One thing it works around: there are no character literals, so it compares
+# against ASCII codes. `"0".at(0)` would read better and costs nothing -- it
+# folds to a constant at -O2 -- but the codes are clearer about intent here.
 
 using dict as d
 
@@ -57,26 +57,22 @@ class Lexer from Object
       Int c = src.at(pos)
       if c == 32 or c == 10 or c == 9:
         pos = pos + 1
-      else
-        if digit(c) == 1:
-          Int n = 0
-          while pos < src.len() and digit(src.at(pos)) == 1:
-            n = n * 10 + (src.at(pos) - 48)
-            pos = pos + 1
-          end
-          out.append(new Token(0, n, "num"))
-        else
-          if letter(c) == 1:
-            Int start = pos
-            while pos < src.len() and letter(src.at(pos)) == 1:
-              pos = pos + 1
-            end
-            out.append(new Token(1, 0, src.substr(start, pos)))
-          else
-            out.append(new Token(2, 0, src.substr(pos, pos + 1)))
-            pos = pos + 1
-          end
+      elif digit(c) == 1:
+        Int n = 0
+        while pos < src.len() and digit(src.at(pos)) == 1:
+          n = n * 10 + (src.at(pos) - 48)
+          pos = pos + 1
         end
+        out.append(new Token(0, n, "num"))
+      elif letter(c) == 1:
+        Int start = pos
+        while pos < src.len() and letter(src.at(pos)) == 1:
+          pos = pos + 1
+        end
+        out.append(new Token(1, 0, src.substr(start, pos)))
+      else
+        out.append(new Token(2, 0, src.substr(pos, pos + 1)))
+        pos = pos + 1
       end
     end
     out.append(new Token(3, 0, "eof"))
