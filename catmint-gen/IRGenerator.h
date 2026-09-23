@@ -331,10 +331,13 @@ private:
   /// variable, which is what makes `Math.sqrt(2.0)` a static call.
   ClassInfo *staticReceiver(Dispatch *D);
 
+  /// \p ReceiverKnown skips the null check: it is set where the receiver is
+  /// `self`, which the caller is holding for the duration of the call.
   llvm::Value *emitCall(ClassInfo *RecvClass, const std::string &MethodName,
                         llvm::Value *Receiver,
                         const std::vector<Expression *> &Args, int Line,
-                        bool Virtual, const std::string &StaticClass);
+                        bool Virtual, const std::string &StaticClass,
+                        bool ReceiverKnown = false);
 
   llvm::Value *makeStringLiteral(const std::string &Value);
   [[noreturn]] void fail(int Line, const std::string &Message);

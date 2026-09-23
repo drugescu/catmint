@@ -1590,7 +1590,9 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
       Builder.CreateStore(
           llvm::ConstantFP::get(llvm::Type::getDoubleTy(Context), 0.0), Slot);
     } else {
-      Builder.CreateStore(Builder.getInt32(0), Slot);
+      // The declared width, not Int's: an Int64 was being given a 32-bit
+      // zero and then immediately overwritten.
+      Builder.CreateStore(llvm::ConstantInt::get(Lowered, 0), Slot);
     }
     Scopes.back().Locals[Name] = {Slot, DeclaredType};
     Slots.push_back(Slot);
@@ -2079,7 +2081,8 @@ llvm::Value *IRGenerator::emitCall(ClassInfo *RecvClass,
                                    llvm::Value *Receiver,
                                    const std::vector<Expression *> &Args,
                                    int Line, bool Virtual,
-                                   const std::string &StaticClass) {
+                                   const std::string &StaticClass,
+                                   bool ReceiverKnown) {
   auto It = RecvClass->VTableImpl.find(MethodName);
   if (It == RecvClass->VTableImpl.end()) {
     if (RecvClass->StaticImpl.count(MethodName))
@@ -2112,7 +2115,12 @@ llvm::Value *IRGenerator::emitCall(ClassInfo *RecvClass,
   if (CallArgs.size() != FT->getNumParams())
     fail(Line, "wrong number of arguments to '" + MethodName + "'");
 
-  Builder.CreateCall(Runtime.checkNull(), {Receiver});
+  // Every call checks its receiver, except when it is `self`: a method is
+  // running, so the object it is running on exists. That is most calls in a
+  // recursive or self-dispatching program, and the check was costing a call
+  // and a branch each time.
+  if (!ReceiverKnown)
+    Builder.CreateCall(Runtime.checkNull(), {Receiver});
 
   // A method that returns a reference hands it to this frame's pool as it
   // leaves, so this frame needs one.
@@ -2244,6 +2252,12 @@ llvm::Value *IRGenerator::emitDispatch(Dispatch *D) {
   std::string RecvType;
   llvm::Value *Receiver = nullptr;
 
+  // A bare call, and a call written on `self`, both run on the object this
+  // method is already running on, so there is nothing to check.
+  auto *AsSymbol = dynamic_cast<Symbol *>(D->getObject());
+  const bool OnSelf =
+      !D->getObject() || (AsSymbol && AsSymbol->getName() == strings::Self);
+
   if (D->getObject()) {
     RecvType = staticTypeOf(D->getObject());
     Receiver = emit(D->getObject());
@@ -2262,7 +2276,7 @@ llvm::Value *IRGenerator::emitDispatch(Dispatch *D) {
     fail(D->getLineNumber(), "unknown class '" + RecvType + "' in dispatch");
 
   return emitCall(CI, D->getName(), Receiver, DispatchArgs, D->getLineNumber(),
-                  /*Virtual=*/true, "");
+                  /*Virtual=*/true, "", /*ReceiverKnown=*/OnSelf);
 }
 
 llvm::Value *IRGenerator::emitStaticDispatch(StaticDispatch *SD) {
@@ -2280,8 +2294,10 @@ llvm::Value *IRGenerator::emitStaticDispatch(StaticDispatch *SD) {
   std::vector<Expression *> Args;
   for (auto *A : *SD)
     Args.push_back(A);
+  auto *AsSymbol = dynamic_cast<Symbol *>(SD->getObject());
+  const bool OnSelf = AsSymbol && AsSymbol->getName() == strings::Self;
   return emitCall(CI, SD->getName(), Receiver, Args, SD->getLineNumber(),
-                  /*Virtual=*/false, SD->getType());
+                  /*Virtual=*/false, SD->getType(), /*ReceiverKnown=*/OnSelf);
 }
 
 /// Three steps: allocate, run the attribute initialisers, run the constructor.

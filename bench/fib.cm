@@ -1,0 +1,14 @@
+# Recursion and call overhead. In catmint every call here goes through the
+# virtual table, which is the cost this measures.
+class Main from IO
+  def Int fib(Int n):
+    if n < 2:
+      return n
+    end
+    return fib(n - 1) + fib(n - 2)
+  end
+
+  def main:
+    out("${fib(32)}\n")
+  end
+end

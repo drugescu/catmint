@@ -1,0 +1,27 @@
+# Counting primes by trial division: arithmetic with a data-dependent inner
+# loop, so branch prediction matters as much as instruction count.
+class Main from IO
+  def Int isPrime(Int n):
+    if n < 2:
+      return 0
+    end
+    Int d = 2
+    while d * d <= n:
+      if (n % d) == 0:
+        return 0
+      end
+      d = d + 1
+    end
+    return 1
+  end
+
+  def main:
+    Int count = 0
+    Int n = 0
+    while n < 400000:
+      count = count + isPrime(n)
+      n = n + 1
+    end
+    out("${count}\n")
+  end
+end

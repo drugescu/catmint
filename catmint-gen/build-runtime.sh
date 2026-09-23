@@ -23,8 +23,13 @@ CLANG="$LLVM_BIN/clang"
 # A module with no triple and no data layout takes the host's, which is what
 # makes one checked-in copy serve every machine. clang says so on every link,
 # hence -Wno-override-module in catmintc.
-# The module id and source filename are also normalised, so that the copy in
-# the repository does not carry whoever's absolute build path.
+#
+# Do not be tempted to pin a data layout here instead: its mangling field
+# decides whether symbols get a leading underscore, so a fixed one is wrong
+# on Mach-O and the JIT then cannot resolve anything.
+#
+# The module id and source filename are normalised so the committed copy does
+# not carry whoever's absolute build path.
 strip_target() {
   sed -e '/^target datalayout = /d' \
       -e '/^target triple = /d' \

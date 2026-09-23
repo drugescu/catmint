@@ -275,7 +275,11 @@ are seeded to match the order already fixed in `runtime.ll`, so `Object` holds
 slots 0-2 and `IO` adds `input` and `out` at 3 and 4.
 
 Dispatch loads the function pointer from the receiver's vtable, after a
-`__cm_checkNull`. Static dispatch calls the implementation directly.
+`__cm_checkNull` -- except when the receiver is `self`, which is not checked
+because a method is running, so the object it is running on exists. That
+covers a bare call and a call written on `self`, which is most calls in
+recursive code, and it took `fib(32)` from 0.018 s to 0.012 s. Static
+dispatch calls the implementation directly.
 
 `a.b` reads a field of any object and `a.b = v` writes one, both lowering to a
 single GEP into the object's struct. Inherited fields need no special case,
@@ -504,6 +508,11 @@ Each of these produced a crash or a silent miscompile during development.
   compiler could not read back. The vendored rapidjson's escape table had also
   lost its backslash entry and wrote one raw, which is fixed in
   `catmint-ast/include/rapidjson/writer.h`.
+- **A default initialiser must use the declared width.** `Int64 x` was
+  being zeroed with an `i32` zero and then immediately with an `i64` one, to
+  the same slot. Harmless for correctness, and it stopped LLVM vectorising a
+  loop over `Int64`: the benchmark ran three times slower than C until the
+  stray store went. Benchmarks find things tests cannot.
 - **`ASTVisitor` walks into optional children.** A bare call has no object, a
   built-in method has no body, a return may carry nothing. `visit(Expression
   *)` returns true for null rather than falling through to its "unknown
