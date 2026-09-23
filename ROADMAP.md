@@ -116,7 +116,33 @@ interpreter and the evidence that the language can carry a real program.
   optimised away entirely. This is a `LANGUAGE.md` note, not a language
   feature.
 
-## Phase 2 — the foreign function interface
+## Phase 2 — the foreign function interface — **done**
+
+All seven pieces, in `49_ffi.cm` and `50_finalize.cm`. What the design
+discussion below said would be built is what was built; three things are
+worth recording that it did not anticipate.
+
+**The RTTI gained a field and the virtual table moved from index 5.** As
+predicted, `finalize` is a field rather than a slot, so nothing renumbered --
+but the record's own layout changed, which `runtime.c` and the GEP in
+`emitCall` both had to follow. All 50 tests, the `-O` sweep, the differential
+tester and AddressSanitizer are what say it landed.
+
+**A bare `return` is still not in the grammar.** `finalize` wanted one for an
+early exit, and adding `| KW_RETURN` took the conflict count from 10
+shift/reduce to **23** -- after the keyword, every token that could begin an
+expression becomes a decision. They all resolve the same way, but thirteen
+new places where a future rule can silently change the parse is a poor trade
+for something `if`/`else` already expresses. The rule in `catmint.y` records
+the measurement.
+
+**A local declaration does not check its initialiser at all.** `Int n =
+"hello"` compiles, and so does `Int n = someFloat`. Found while writing the
+FFI's negative tests; older and wider than the FFI, so it is recorded in
+`ASSESSMENT.md` rather than fixed here. Arguments *are* checked, which is the
+boundary that matters for C.
+
+## Phase 2 — the foreign function interface, as designed
 
 The single thing that changes what the language can reach. Today nothing
 outside `runtime.c` is callable, there is no `extern` of any kind, and

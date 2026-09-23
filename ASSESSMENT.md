@@ -233,6 +233,15 @@ standing cost of counting rather than tracing.
 pools it skipped, so temporaries go back, but the scope-exit releases never
 run. Correct, and bounded by how much a failing operation had allocated.
 
+**7. A local declaration does not check its initialiser.** `Int n = "hello"`
+compiles, and fails at run time with "Expected an Integer, found String";
+`Int n = someFloat` truncates silently. Arguments to a call *are* checked
+against the parameter types, and so are the returns a method infers from, so
+this is specifically the declaration form. It is long-standing rather than
+new, and fixing it needs care: the language deliberately allows a checked
+downcast there, which is how `Shape sh = item` takes something out of an
+Object-typed container.
+
 ### Rough edges
 
 **7. `%` binds as loosely as `+` and `-`, and stays that way.** So
