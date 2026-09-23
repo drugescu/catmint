@@ -41,6 +41,21 @@ Mixing widths promotes to the wider; assigning across them sign-extends or
 truncates, as in C. A literal too large for an `Int` is an `Int64`.
 → `02_arith.cm`, `26_sized_ints.cm`, `14_io_float.cm`
 
+## Statements
+
+One per line by convention, but **a newline does not end a statement** --
+there is no separator, and an expression continues onto the next line for as
+long as it can. A line that starts with `-`, `(`, `[` or `.` joins the line
+above it:
+
+```
+Int c = a
+- b            # this is c = a - b, not a statement of its own
+```
+
+Break a long expression where it cannot continue, or parenthesise it.
+→ `bison -Wcounterexamples catmint-lex/catmint.y` prints every such case
+
 ## Variables
 
 `Int a = 1` declares. `a = 2` on a name that exists assigns; on a new name it

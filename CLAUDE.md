@@ -567,6 +567,19 @@ Each of these produced a crash or a silent miscompile during development.
   That is why the suite stayed green through the bug above: the harness
   repaired the environment the bug depended on. When something works under
   `./test.sh`, check it also works under a bare `./catmintc`.
+- **A newline does not end a statement, and an expression continues across
+  one.** `block : block expression | %empty` has no separator, so at every
+  statement boundary bison must decide whether the next token continues the
+  current expression or begins a new one, and it resolves every such case by
+  shifting -- the longest expression wins. `Int c = a` followed by `- b` on
+  the next line computes `a - b`; `twice` followed by `(x)` is a call. That
+  accounts for all ten shift/reduce conflicts, on `(`, `[`, `.`, `::`, `-`,
+  `:` and IDENTIFIER, and `bison -Wcounterexamples` prints the derivations.
+  Like the `%` precedence this is **settled, not open**: making newlines
+  significant would change what existing programs mean. The one remaining
+  reduce/reduce conflict is `type_name -> IDENTIFIER` against
+  `rvalue_identifier_expression -> IDENTIFIER`, the declaration-versus-
+  expression ambiguity, resolved in favour of the earlier rule.
 - **String escapes are decoded in the lexer**, not by the AST's JSON round
   trip. They used to be decoded by accident, because JSON spells `\n` and
   `\t` the same way; a quote or a backslash then produced an AST file the

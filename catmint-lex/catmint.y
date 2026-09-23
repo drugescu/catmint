@@ -191,7 +191,6 @@ expression
                 basic_expression
                   parenthesis_expression
 				  new_list
-				  new_dict
                   identifier_expression 
                     constant_expression
                     rvalue_identifier_expression
