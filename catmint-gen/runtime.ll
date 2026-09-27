@@ -100,11 +100,11 @@ source_filename = "runtime.c"
 @.str.47 = private unnamed_addr constant [28 x i8] c"%s cannot have %d elements.\00", align 1
 @.str.48 = private unnamed_addr constant [31 x i8] c"Out of memory making an array.\00", align 1
 @.str.49 = private unnamed_addr constant [32 x i8] c"%s index %d is outside 0 to %d.\00", align 1
-@str = private unnamed_addr constant [53 x i8] c"Runtime error : out of memory recording a temporary.\00", align 1
 @str.50 = private unnamed_addr constant [47 x i8] c"Runtime error : out of memory making a String.\00", align 1
 @str.51 = private unnamed_addr constant [46 x i8] c"Runtime error : out of memory entering a try.\00", align 1
 @str.52 = private unnamed_addr constant [15 x i8] c"Uncaught: null\00", align 1
 @str.53 = private unnamed_addr constant [46 x i8] c"Runtime error : out of memory opening a pool.\00", align 1
+@str.54 = private unnamed_addr constant [53 x i8] c"Runtime error : out of memory recording a temporary.\00", align 1
 
 ; Function Attrs: cold nofree noreturn nounwind ssp uwtable(sync)
 define void @M6_Object_abort(ptr readnone captures(none) %0) #0 {
@@ -2752,7 +2752,7 @@ define noundef ptr @__catmint_new(ptr noundef %0) local_unnamed_addr #2 {
   br i1 %23, label %24, label %26
 
 24:                                               ; preds = %16
-  %25 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str)
+  %25 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.54)
   tail call void @exit(i32 noundef 1) #39
   unreachable
 
@@ -2806,7 +2806,7 @@ define void @__cm_poolAdd(ptr noundef %0) local_unnamed_addr #2 {
   br i1 %18, label %19, label %21
 
 19:                                               ; preds = %11
-  %20 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str)
+  %20 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.54)
   tail call void @exit(i32 noundef 1) #39
   unreachable
 
@@ -3260,7 +3260,7 @@ define internal fastcc nonnull ptr @new_string(i32 noundef %0) unnamed_addr #2 {
   br i1 %30, label %31, label %33
 
 31:                                               ; preds = %23
-  %32 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str)
+  %32 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.54)
   tail call void @exit(i32 noundef 1) #39
   unreachable
 
@@ -4473,7 +4473,6 @@ define void @__cm_throw(ptr noundef %0) local_unnamed_addr #20 {
   %25 = getelementptr inbounds nuw i8, ptr %2, i64 8
   %26 = load i32, ptr %25, align 8, !tbaa !112
   tail call void @__cm_poolUnwind(i32 noundef %26)
-  tail call void @__cm_poolAdd(ptr noundef %0)
   tail call void @free(ptr noundef nonnull %2)
   tail call void @longjmp(ptr noundef %22, i32 noundef 1) #45
   unreachable
@@ -4483,12 +4482,12 @@ define void @__cm_throw(ptr noundef %0) local_unnamed_addr #20 {
 define void @__cm_poolUnwind(i32 noundef %0) local_unnamed_addr #2 {
   %2 = load i32, ptr @gPoolDepth, align 4, !tbaa !6
   %3 = icmp sgt i32 %2, %0
-  br i1 %3, label %4, label %44
+  br i1 %3, label %4, label %59
 
-4:                                                ; preds = %1, %41
-  %5 = phi i32 [ %42, %41 ], [ %2, %1 ]
+4:                                                ; preds = %1, %56
+  %5 = phi i32 [ %57, %56 ], [ %2, %1 ]
   %6 = icmp eq i32 %5, 0
-  br i1 %6, label %41, label %7
+  br i1 %6, label %56, label %7
 
 7:                                                ; preds = %4
   %8 = add nsw i32 %5, -1
@@ -4499,58 +4498,86 @@ define void @__cm_poolUnwind(i32 noundef %0) local_unnamed_addr #2 {
   %12 = load i32, ptr %11, align 4, !tbaa !6
   %13 = load i32, ptr @gPoolCount, align 4, !tbaa !6
   %14 = icmp sgt i32 %13, %12
-  br i1 %14, label %15, label %41
+  br i1 %14, label %15, label %56
 
-15:                                               ; preds = %7
-  %16 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
-  br label %17
+15:                                               ; preds = %7, %51
+  %16 = phi i32 [ %52, %51 ], [ %13, %7 ]
+  %17 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
+  %18 = add nsw i32 %16, -1
+  %19 = sext i32 %18 to i64
+  %20 = getelementptr inbounds ptr, ptr %17, i64 %19
+  %21 = load ptr, ptr %20, align 8, !tbaa !26
+  store i32 %18, ptr @gPoolCount, align 4, !tbaa !6
+  %22 = ptrtoint ptr %21 to i64
+  %23 = and i64 %22, 1
+  %24 = icmp eq i64 %23, 0
+  br i1 %24, label %38, label %25
 
-17:                                               ; preds = %35, %15
-  %18 = phi ptr [ %37, %35 ], [ %16, %15 ]
-  %19 = phi i32 [ %36, %35 ], [ %13, %15 ]
-  %20 = add nsw i32 %19, -1
-  %21 = sext i32 %20 to i64
-  %22 = getelementptr inbounds ptr, ptr %18, i64 %21
-  %23 = load ptr, ptr %22, align 8, !tbaa !26
-  store i32 %20, ptr @gPoolCount, align 4, !tbaa !6
-  %24 = icmp eq ptr %23, null
-  br i1 %24, label %35, label %25
+25:                                               ; preds = %15
+  %26 = and i64 %22, -2
+  %27 = inttoptr i64 %26 to ptr
+  %28 = load ptr, ptr %27, align 8, !tbaa !26
+  store ptr null, ptr %27, align 8, !tbaa !26
+  %29 = icmp eq ptr %28, null
+  br i1 %29, label %51, label %30, !llvm.loop !114
 
-25:                                               ; preds = %17
-  %26 = getelementptr inbounds nuw i8, ptr %23, i64 8
-  %27 = load i32, ptr %26, align 8, !tbaa !16
-  %28 = icmp eq i32 %27, 0
-  br i1 %28, label %35, label %29
+30:                                               ; preds = %25
+  %31 = getelementptr inbounds nuw i8, ptr %28, i64 8
+  %32 = load i32, ptr %31, align 8, !tbaa !16
+  %33 = icmp eq i32 %32, 0
+  br i1 %33, label %51, label %34, !llvm.loop !114
 
-29:                                               ; preds = %25
-  %30 = add nsw i32 %27, -1
-  store i32 %30, ptr %26, align 8, !tbaa !16
-  %31 = icmp eq i32 %30, 0
-  br i1 %31, label %32, label %35
+34:                                               ; preds = %30
+  %35 = add nsw i32 %32, -1
+  store i32 %35, ptr %31, align 8, !tbaa !16
+  %36 = icmp eq i32 %35, 0
+  br i1 %36, label %37, label %51, !llvm.loop !114
 
-32:                                               ; preds = %29
-  store i32 1, ptr %26, align 8, !tbaa !16
-  tail call fastcc void @object_free(ptr noundef %23)
-  %33 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
-  %34 = load i32, ptr @gPoolCount, align 4, !tbaa !6
-  br label %35
+37:                                               ; preds = %34
+  store i32 1, ptr %31, align 8, !tbaa !16
+  br label %48, !llvm.loop !114
 
-35:                                               ; preds = %32, %29, %25, %17
-  %36 = phi i32 [ %20, %17 ], [ %20, %25 ], [ %20, %29 ], [ %34, %32 ]
-  %37 = phi ptr [ %18, %17 ], [ %18, %25 ], [ %18, %29 ], [ %33, %32 ]
-  %38 = icmp sgt i32 %36, %12
-  br i1 %38, label %17, label %39, !llvm.loop !114
+38:                                               ; preds = %15
+  %39 = icmp eq ptr %21, null
+  br i1 %39, label %51, label %40
 
-39:                                               ; preds = %35
-  %40 = load i32, ptr @gPoolDepth, align 4, !tbaa !6
-  br label %41
+40:                                               ; preds = %38
+  %41 = getelementptr inbounds nuw i8, ptr %21, i64 8
+  %42 = load i32, ptr %41, align 8, !tbaa !16
+  %43 = icmp eq i32 %42, 0
+  br i1 %43, label %51, label %44
 
-41:                                               ; preds = %39, %4, %7
-  %42 = phi i32 [ %40, %39 ], [ 0, %4 ], [ %8, %7 ]
-  %43 = icmp sgt i32 %42, %0
-  br i1 %43, label %4, label %44, !llvm.loop !115
+44:                                               ; preds = %40
+  %45 = add nsw i32 %42, -1
+  store i32 %45, ptr %41, align 8, !tbaa !16
+  %46 = icmp eq i32 %45, 0
+  br i1 %46, label %47, label %51
 
-44:                                               ; preds = %41, %1
+47:                                               ; preds = %44
+  store i32 1, ptr %41, align 8, !tbaa !16
+  br label %48
+
+48:                                               ; preds = %47, %37
+  %49 = phi ptr [ %21, %47 ], [ %28, %37 ]
+  tail call fastcc void @object_free(ptr noundef %49)
+  %50 = load i32, ptr @gPoolCount, align 4, !tbaa !6
+  br label %51
+
+51:                                               ; preds = %48, %44, %40, %38, %34, %30, %25
+  %52 = phi i32 [ %50, %48 ], [ %18, %44 ], [ %18, %40 ], [ %18, %38 ], [ %18, %34 ], [ %18, %30 ], [ %18, %25 ]
+  %53 = icmp sgt i32 %52, %12
+  br i1 %53, label %15, label %54
+
+54:                                               ; preds = %51
+  %55 = load i32, ptr @gPoolDepth, align 4, !tbaa !6
+  br label %56
+
+56:                                               ; preds = %54, %4, %7
+  %57 = phi i32 [ %55, %54 ], [ 0, %4 ], [ %8, %7 ]
+  %58 = icmp sgt i32 %57, %0
+  br i1 %58, label %4, label %59, !llvm.loop !115
+
+59:                                               ; preds = %56, %1
   ret void
 }
 
@@ -4600,7 +4627,7 @@ define void @__cm_poolPush() local_unnamed_addr #2 {
 define void @__cm_poolPop() local_unnamed_addr #2 {
   %1 = load i32, ptr @gPoolDepth, align 4, !tbaa !6
   %2 = icmp eq i32 %1, 0
-  br i1 %2, label %35, label %3
+  br i1 %2, label %39, label %3
 
 3:                                                ; preds = %0
   %4 = add nsw i32 %1, -1
@@ -4611,49 +4638,104 @@ define void @__cm_poolPop() local_unnamed_addr #2 {
   %8 = load i32, ptr %7, align 4, !tbaa !6
   %9 = load i32, ptr @gPoolCount, align 4, !tbaa !6
   %10 = icmp sgt i32 %9, %8
-  br i1 %10, label %11, label %35
+  br i1 %10, label %11, label %39
 
 11:                                               ; preds = %3
   %12 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
   br label %13
 
-13:                                               ; preds = %11, %31
-  %14 = phi ptr [ %33, %31 ], [ %12, %11 ]
-  %15 = phi i32 [ %32, %31 ], [ %9, %11 ]
+13:                                               ; preds = %11, %35
+  %14 = phi ptr [ %37, %35 ], [ %12, %11 ]
+  %15 = phi i32 [ %36, %35 ], [ %9, %11 ]
   %16 = add nsw i32 %15, -1
   %17 = sext i32 %16 to i64
   %18 = getelementptr inbounds ptr, ptr %14, i64 %17
   %19 = load ptr, ptr %18, align 8, !tbaa !26
   store i32 %16, ptr @gPoolCount, align 4, !tbaa !6
-  %20 = icmp eq ptr %19, null
-  br i1 %20, label %31, label %21
+  %20 = ptrtoint ptr %19 to i64
+  %21 = and i64 %20, 1
+  %22 = icmp ne i64 %21, 0
+  %23 = icmp eq ptr %19, null
+  %24 = or i1 %23, %22
+  br i1 %24, label %35, label %25
 
-21:                                               ; preds = %13
-  %22 = getelementptr inbounds nuw i8, ptr %19, i64 8
-  %23 = load i32, ptr %22, align 8, !tbaa !16
-  %24 = icmp eq i32 %23, 0
-  br i1 %24, label %31, label %25
+25:                                               ; preds = %13
+  %26 = getelementptr inbounds nuw i8, ptr %19, i64 8
+  %27 = load i32, ptr %26, align 8, !tbaa !16
+  %28 = icmp eq i32 %27, 0
+  br i1 %28, label %35, label %29
 
-25:                                               ; preds = %21
-  %26 = add nsw i32 %23, -1
-  store i32 %26, ptr %22, align 8, !tbaa !16
-  %27 = icmp eq i32 %26, 0
-  br i1 %27, label %28, label %31
+29:                                               ; preds = %25
+  %30 = add nsw i32 %27, -1
+  store i32 %30, ptr %26, align 8, !tbaa !16
+  %31 = icmp eq i32 %30, 0
+  br i1 %31, label %32, label %35
 
-28:                                               ; preds = %25
-  store i32 1, ptr %22, align 8, !tbaa !16
+32:                                               ; preds = %29
+  store i32 1, ptr %26, align 8, !tbaa !16
   tail call fastcc void @object_free(ptr noundef %19)
-  %29 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
-  %30 = load i32, ptr @gPoolCount, align 4, !tbaa !6
-  br label %31
+  %33 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
+  %34 = load i32, ptr @gPoolCount, align 4, !tbaa !6
+  br label %35
 
-31:                                               ; preds = %13, %21, %25, %28
-  %32 = phi i32 [ %16, %13 ], [ %16, %21 ], [ %16, %25 ], [ %30, %28 ]
-  %33 = phi ptr [ %14, %13 ], [ %14, %21 ], [ %14, %25 ], [ %29, %28 ]
-  %34 = icmp sgt i32 %32, %8
-  br i1 %34, label %13, label %35, !llvm.loop !114
+35:                                               ; preds = %13, %32, %29, %25
+  %36 = phi i32 [ %16, %13 ], [ %34, %32 ], [ %16, %29 ], [ %16, %25 ]
+  %37 = phi ptr [ %14, %13 ], [ %33, %32 ], [ %14, %29 ], [ %14, %25 ]
+  %38 = icmp sgt i32 %36, %8
+  br i1 %38, label %13, label %39
 
-35:                                               ; preds = %31, %3, %0
+39:                                               ; preds = %35, %0, %3
+  ret void
+}
+
+; Function Attrs: nounwind ssp uwtable(sync)
+define void @__cm_poolAddSlot(ptr noundef %0) local_unnamed_addr #2 {
+  %2 = load i32, ptr @gPoolDepth, align 4, !tbaa !6
+  %3 = icmp eq i32 %2, 0
+  %4 = icmp eq ptr %0, null
+  %5 = or i1 %4, %3
+  br i1 %5, label %30, label %6
+
+6:                                                ; preds = %1
+  %7 = load i32, ptr @gPoolCount, align 4, !tbaa !6
+  %8 = load i32, ptr @gPoolCapacity, align 4, !tbaa !6
+  %9 = icmp eq i32 %7, %8
+  %10 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
+  br i1 %9, label %11, label %22
+
+11:                                               ; preds = %6
+  %12 = icmp eq i32 %7, 0
+  %13 = shl nsw i32 %7, 1
+  %14 = select i1 %12, i32 64, i32 %13
+  %15 = sext i32 %14 to i64
+  %16 = shl nsw i64 %15, 3
+  %17 = tail call ptr @realloc(ptr noundef %10, i64 noundef %16) #44
+  %18 = icmp eq ptr %17, null
+  br i1 %18, label %19, label %21
+
+19:                                               ; preds = %11
+  %20 = tail call i32 @puts(ptr nonnull dereferenceable(1) @str.54)
+  tail call void @exit(i32 noundef 1) #39
+  unreachable
+
+21:                                               ; preds = %11
+  store ptr %17, ptr @gPoolItems, align 8, !tbaa !81
+  store i32 %14, ptr @gPoolCapacity, align 4, !tbaa !6
+  br label %22
+
+22:                                               ; preds = %21, %6
+  %23 = phi ptr [ %17, %21 ], [ %10, %6 ]
+  %24 = ptrtoint ptr %0 to i64
+  %25 = or i64 %24, 1
+  %26 = inttoptr i64 %25 to ptr
+  %27 = sext i32 %7 to i64
+  %28 = getelementptr inbounds ptr, ptr %23, i64 %27
+  store ptr %26, ptr %28, align 8, !tbaa !26
+  %29 = add nsw i32 %7, 1
+  store i32 %29, ptr @gPoolCount, align 4, !tbaa !6
+  br label %30
+
+30:                                               ; preds = %1, %22
   ret void
 }
 

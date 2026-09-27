@@ -36,6 +36,7 @@
 #include <pthread.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -333,6 +334,7 @@ void __cm_poolAdd(void *object);
 int __cm_poolDepth(void);
 void __cm_poolUnwind(int depth);
 void __cm_poolPop(void);
+void __cm_poolAddSlot(void **slot);
 
 extern catmint_rtti20_string RString;
 
@@ -1798,9 +1800,13 @@ CATMINT_NORETURN void __cm_throw(void *object) {
   __cm_retain(object);
 
   /* The jump skips every poolPop between here and the handler, so close
-   * those pools now; their contents are temporaries of the abandoned work. */
+   * those pools now; their contents are temporaries of the abandoned work,
+   * and their slots hold what the abandoned frames had stored. */
   __cm_poolUnwind(handler->poolDepth);
-  __cm_poolAdd(object);
+  /* The retain above is given back by the handler, which opens a pool and
+   * puts the caught object in it. Doing it here instead would hand the
+   * object to the *catching method's* pool, which does not close until that
+   * method returns -- so a loop that threw would pile them up. */
   free(handler);
   longjmp(*buffer, 1);
 }
@@ -1896,7 +1902,27 @@ void __cm_poolAdd(void *object) {
   gPoolCount += 1;
 }
 
-void __cm_poolPop(void) {
+/* A pool holds two kinds of entry, told apart by the low bit of the pointer,
+ * which is always zero in a real one because every allocation here is at
+ * least pointer-aligned.
+ *
+ *   an object  -- a temporary nothing named. Released when the pool closes.
+ *   a slot     -- the address of a variable holding a reference. Released
+ *                 only when the pool is *unwound* by a throw.
+ *
+ * The second kind exists because a throw skips the scope-exit releases of
+ * every frame between it and the handler, so whatever those frames had
+ * *stored* was orphaned -- their temporaries went back, but the reference a
+ * local was holding did not. Registering the slot costs one array entry; on
+ * the ordinary path it is simply dropped, so nothing about normal execution
+ * changes. */
+#define POOL_SLOT_TAG ((uintptr_t)1)
+
+static int pool_is_slot(void *entry) {
+  return ((uintptr_t)entry & POOL_SLOT_TAG) != 0;
+}
+
+static void pool_close(int unwinding) {
   int mark;
 
   if (gPoolDepth == 0) {
@@ -1909,10 +1935,50 @@ void __cm_poolPop(void) {
    * a release -- freeing a List releases its items -- lands in the pool
    * below rather than in the one being emptied. */
   while (gPoolCount > mark) {
-    void *object = gPoolItems[gPoolCount - 1];
+    void *entry = gPoolItems[gPoolCount - 1];
     gPoolCount -= 1;
-    __cm_release(object);
+
+    if (pool_is_slot(entry)) {
+      void **slot;
+      void *held;
+
+      if (!unwinding) {
+        continue; /* its scope will release it, as it always has */
+      }
+      slot = (void **)((uintptr_t)entry & ~POOL_SLOT_TAG);
+      held = *slot;
+      /* Nulled first: the same slot can be registered more than once -- a
+       * declaration inside a loop body runs every iteration -- and the
+       * second release must find nothing left to give back. */
+      *slot = NULL;
+      __cm_release(held);
+      continue;
+    }
+
+    __cm_release(entry);
   }
+}
+
+void __cm_poolPop(void) { pool_close(/*unwinding=*/0); }
+
+/* The address of a variable that holds a reference, so that a throw passing
+ * through this frame can give back what the variable was holding. */
+void __cm_poolAddSlot(void **slot) {
+  if (gPoolDepth == 0 || slot == NULL) {
+    return;
+  }
+  if (gPoolCount == gPoolCapacity) {
+    int capacity = gPoolCapacity == 0 ? 64 : gPoolCapacity * 2;
+    void **items = realloc(gPoolItems, (size_t)capacity * sizeof(void *));
+    if (!items) {
+      printf("Runtime error : out of memory recording a temporary.\n");
+      exit(1);
+    }
+    gPoolItems = items;
+    gPoolCapacity = capacity;
+  }
+  gPoolItems[gPoolCount] = (void *)((uintptr_t)slot | POOL_SLOT_TAG);
+  gPoolCount += 1;
 }
 
 int __cm_poolDepth(void) {
@@ -1925,7 +1991,7 @@ int __cm_poolDepth(void) {
  * its own and survives. */
 void __cm_poolUnwind(int depth) {
   while (gPoolDepth > depth) {
-    __cm_poolPop();
+    pool_close(/*unwinding=*/1);
   }
 }
 

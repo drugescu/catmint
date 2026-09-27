@@ -192,6 +192,11 @@ private:
   struct Local {
     llvm::Value *Addr;
     std::string TypeName;
+    /// False for a reference this scope does not own: an unassigned parameter,
+    /// which the caller holds for the whole call, and `self`. Such a slot is
+    /// not released when the scope ends and is not registered with the pool,
+    /// because there is no reference of its own to give back.
+    bool Counted = true;
   };
   /// One scope: the names it declares, and the expressions a `defer` in it
   /// asked to run where it ends.
@@ -338,6 +343,11 @@ private:
   /// contents, not the catmint object in front of them.
   llvm::Value *marshalToC(llvm::Value *V, const std::string &TypeName,
                           int Line);
+
+  /// Tell the open pool where a reference-holding variable lives, so that a
+  /// throw passing through this frame can give back what it holds. The
+  /// scope-exit release is unchanged; this is only for the path that skips it.
+  void registerReferenceSlot(llvm::Value *Slot, const std::string &TypeName);
   /// Emit the deferred expressions of the innermost \p Count scopes, newest
   /// scope first and, within a scope, last registered first. Run before the
   /// scope's locals are released, because a deferred call almost always uses

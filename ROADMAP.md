@@ -351,6 +351,24 @@ is only worth it if Windows becomes a first-class target.
   compiler's standard error was kept in a log and printed only when the build
   failed, so a diagnostic from a successful compile was invisible.
 
+## What is left
+
+Nothing on any of these lists. The last item -- a throw leaking what the
+abandoned frame had stored -- is fixed: the pool now holds the *addresses* of
+reference-holding variables as well as objects, and releases them when a
+throw unwinds it. The ordinary path is untouched, because a slot entry is
+dropped rather than released when a pool closes normally.
+
+It cost less than the shadow stack this was going to need, and it made things
+faster rather than slower, because it forced the question of why a **borrowed
+reference was being counted at all**: a parameter is held by the caller for
+the whole call, so the callee only needs its own reference if it assigns to
+the parameter. Almost none do. A method taking a String and returning its
+length now runs about twice as fast as before any of this work.
+
+All 54 tests are clean under AddressSanitizer and LeakSanitizer on Linux,
+with nothing excused in CI.
+
 ## What to cut if this is too much
 
 The parser fuzzer, which finds crashes on input nobody will write, and the

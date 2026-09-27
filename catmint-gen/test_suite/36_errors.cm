@@ -141,7 +141,54 @@ class Main from IO
     end
     out("repeated " + total + "\n")
 
+    # A throw gives back what the frames it abandoned were holding. The jump
+    # skips their scope-exit releases, so the pool has to do it: every
+    # reference-holding variable registers its slot, and unwinding releases
+    # what the slot holds. Counted here because nothing else can see it --
+    # the program is correct either way, it just used to lose memory on every
+    # throw, which for a loop is unbounded.
+    Int before = allocated()
+    Int k = 0
+    while k < 300:
+      try:
+        throughTwoFrames(k)
+      catch e:
+        String message = e
+      end
+      k = k + 1
+    end
+    out("leaked over 300 throws " + (allocated() - before) + "\n")
+
+    # Including what the catching frame's own try block was holding, which
+    # lives in a different pool from the frames below it.
+    before = allocated()
+    k = 0
+    while k < 300:
+      try:
+        Bytes inTry = new Bytes(32)
+        String alsoInTry = "in the try " + k
+        throw "out"
+      catch e:
+        String message = e
+      end
+      k = k + 1
+    end
+    out("leaked from the try block " + (allocated() - before) + "\n")
+
     out("done\n")
+  end
+
+  # Two frames between the throw and the handler, each holding something.
+  def Void throughTwoFrames(Int n):
+    String note = "outer " + n
+    Bytes buffer = new Bytes(64)
+    innerFrame(n)
+  end
+
+  def Void innerFrame(Int n):
+    String label = "inner " + n
+    Bytes more = new Bytes(16)
+    throw "abandoning " + n
   end
 
   def Void raiseComputed(Int n):

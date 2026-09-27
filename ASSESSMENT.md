@@ -247,18 +247,34 @@ Reference cycles are still never collected, which is the standing cost of
 counting rather than tracing, and a structure can still be taken apart by
 assigning over its fields.
 
-**6. A throw leaks what the abandoned work had stored.** The jump closes the
-pools it skipped, so temporaries go back, but the scope-exit releases never
-run. Correct, and bounded by how much a failing operation had allocated.
+**6. ~~A throw leaks what the abandoned work had stored.~~ Fixed.** The jump
+skips the scope-exit releases of every frame between it and the handler, so
+what those frames had *stored* was orphaned -- their temporaries went back
+with the pool, but the reference a local was holding did not. A throw in a
+loop leaked once per throw, so it was not bounded by anything.
 
-**7. A local declaration does not check its initialiser.** `Int n = "hello"`
-compiles, and fails at run time with "Expected an Integer, found String";
-`Int n = someFloat` truncates silently. Arguments to a call *are* checked
-against the parameter types, and so are the returns a method infers from, so
-this is specifically the declaration form. It is long-standing rather than
-new, and fixing it needs care: the language deliberately allows a checked
-downcast there, which is how `Shape sh = item` takes something out of an
-Object-typed container.
+The pool now holds two kinds of entry: an object, released when the pool
+closes as before, and the *address of a variable*, released only when a throw
+unwinds the pool. The ordinary path is unchanged -- a slot entry is simply
+dropped -- so this costs a pool entry per reference-holding variable and
+nothing else. The try body and the handler each get a pool of their own, the
+first so that unwinding reaches the catching frame's own locals, the second
+so that the thrown object dies when the handler is done with it rather than
+when the catching method returns.
+
+Two things turned up while fixing it. **The handler's variable was never
+released at all** -- the catch scope was popped without releasing -- which
+had been invisible because the thrown object belonged to the catching
+method's pool and was freed when that method returned. And **a reference
+parameter is borrowed**: the caller holds it for the whole call, so the
+callee needs a reference of its own only if it assigns to the parameter.
+Retaining every one of them cost a retain, a release, a slot registration and
+a whole temporary pool in methods that allocate nothing; a method taking a
+String and returning its length now runs about twice as fast as it did before
+any of this work.
+
+All 54 tests are clean under AddressSanitizer and LeakSanitizer together on
+Linux, and CI gates on it with nothing excused.
 
 ### Rough edges
 

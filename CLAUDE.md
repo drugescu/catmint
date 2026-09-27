@@ -204,13 +204,34 @@ it at run time rather than being silently too small somewhere.
 
 `__cm_throw` pops the innermost handler before jumping, so a throw from
 inside a `catch` reaches the next handler out instead of looping back into
-itself. **It also retains what is being thrown, unwinds, and then hands it to
-the handler's pool.** Without that the thrown object was freed on its way
-out: `throw "a" + b` builds its String in the pool of the very frame the jump
-abandons, and so does `__cm_runtimeError` building its message, so the
-handler read memory that had gone. It survived by luck when throw and catch
-were in one method and corrupted the heap when they were not -- which `lli`
-reported as a crash inside malloc, the same way `Object.free` once did. The runtime's own checks go through `__cm_runtimeError`, which throws
+itself. **It also retains what is being thrown before unwinding**, because
+`throw "a" + b` builds its String in the pool of the very frame the jump
+abandons, as does `__cm_runtimeError` building its message -- so without the
+retain the handler read memory that had gone. It survived by luck when throw
+and catch were in one method and corrupted the heap when they were not, which
+`lli` reported as a crash inside malloc, the same way `Object.free` once did.
+That retain is given back by the **handler**, which opens a pool and puts the
+caught object in it; doing it in `__cm_throw` instead handed the object to the
+catching *method's* pool, which does not close until that method returns, so
+a loop that threw piled them up.
+
+**A throw gives back what the frames it abandoned were holding.** The jump
+skips their scope-exit releases, so the pool carries a second kind of entry
+alongside objects: the *address of a variable*. It is dropped when a pool
+closes normally -- the scope releases as it always has -- and released when a
+throw unwinds the pool. The try body and the handler each get a pool of their
+own: the first so unwinding reaches the catching frame's own locals, which
+live in a different pool from the frames below it, and the second so the
+thrown object dies with the handler.
+
+**A reference parameter is borrowed.** The caller holds it for the whole call,
+so the callee retains it only if it *assigns* to the parameter -- which
+`AssignedNames` works out from the body, since `x = expr` is a
+`LocalDefinition` with the type "auto". Counting them all unconditionally cost
+a retain, a release, a slot registration and, through that, a whole temporary
+pool in methods that allocate nothing: a method taking a String and returning
+its length ran three times slower for it. `Local::Counted` is what records
+this, and `releaseScopes` skips a slot that is not owned. The runtime's own checks go through `__cm_runtimeError`, which throws
 a String when a handler is installed and prints and exits when none is, so a
 null dispatch or an index out of bounds is catchable.
 

@@ -13,4 +13,6 @@ object 70
 computed computed 7
 runtime error caught across a frame
 repeated 2290
+leaked over 300 throws 0
+leaked from the try block 0
 done

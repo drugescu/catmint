@@ -69,9 +69,11 @@ jobs:
       # LeakSanitizer runs alongside it here and is left on. It is the only
       # place leaks show up -- macOS does not run it -- and it has earned the
       # gate: it found that every program leaked its Main object, and the
-      # shallow freeing it then reported on 5 of the tests has since been
-      # fixed by releasing what a class's fields hold. All of them are clean,
-      # so a leak appearing here is a regression, not a known limitation.
+      # shallow freeing it then reported on five tests, both of which are
+      # fixed.
+      #
+      # Nothing is excused any more. Every test is clean, so any leak here is
+      # a regression.
       - name: AddressSanitizer and LeakSanitizer
         run: |
           fails=0

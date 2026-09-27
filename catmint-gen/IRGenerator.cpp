@@ -841,6 +841,26 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
 // ---------------------------------------------------------------------------
 
 namespace {
+/// Which names a body assigns to. `x = expr` parses as a LocalDefinition with
+/// the type "auto", so that is what an assignment looks like in the tree; a
+/// declaration with a written type is a different variable and does not count.
+/// Conservative on purpose: a name shadowed by an inner declaration of the
+/// same spelling is reported too, which only costs a retain that was not
+/// needed.
+class AssignedNames : public ASTVisitor {
+public:
+  using ASTVisitor::visit;
+
+  std::set<std::string> Names;
+  bool visit(LocalDefinition *LD) override {
+    if (LD->getType() == "auto") {
+      for (const auto &Name : LD->getName())
+        Names.insert(Name);
+    }
+    return ASTVisitor::visit(LD);
+  }
+};
+
 /// Whether a method body contains a try, which decides whether its locals
 /// have to be read and written volatilely.
 class TryFinder : public ASTVisitor {
@@ -900,18 +920,30 @@ bool IRGenerator::emitMethod(ClassInfo *CI, Method *M) {
     Idx = 1;
   }
 
+  // A reference parameter is *borrowed*: the caller holds it for the whole
+  // call, so the callee needs a reference of its own only if it assigns to
+  // the parameter -- otherwise the release-on-overwrite would give back
+  // something it never took. Retaining every one of them unconditionally
+  // cost a retain, a release, a slot registration and, through that, a whole
+  // temporary pool in methods that allocate nothing; a method taking a
+  // String and returning its length ran three times slower for it. Almost no
+  // method assigns to its parameters, so almost none pays any of that now.
+  AssignedNames Assigned;
+  if (M->getBody())
+    Assigned.visit(M->getBody());
+
   for (auto *P : *M) {
     auto *Slot = createEntryAlloca(lowerType(P->getType()), P->getName());
-    // A parameter is an ordinary local from here on, so it is counted like
-    // one: retained on the way in and released when the method ends. The
-    // caller's own reference keeps it alive across the call either way, but
-    // counting it means reassigning a parameter behaves like reassigning
-    // anything else.
-    if (isReferenceTypeName(P->getType()))
+    const bool Counted = isReferenceTypeName(P->getType()) &&
+                         Assigned.Names.count(P->getName()) != 0;
+    if (Counted) {
       storeReference(F->getArg(Idx), Slot, /*SlotIsLive=*/false);
-    else
+    } else {
       Builder.CreateStore(F->getArg(Idx), Slot);
-    Scopes.back().Locals[P->getName()] = {Slot, P->getType()};
+    }
+    Scopes.back().Locals[P->getName()] = {Slot, P->getType(), Counted};
+    if (Counted)
+      registerReferenceSlot(Slot, P->getType());
     ++Idx;
   }
 
@@ -1162,6 +1194,30 @@ void IRGenerator::emitRelease(llvm::Value *V) {
   Builder.CreateCall(Release, {V});
 }
 
+/// A throw skips the scope-exit releases of every frame between it and the
+/// handler, so whatever those frames had *stored* was orphaned -- their
+/// temporaries went back with the pool, but the reference a local was holding
+/// did not. Handing the pool the slot's address closes that: on the ordinary
+/// path the entry is dropped and the scope releases as it always has, and on
+/// the unwinding path the pool releases what the slot holds.
+///
+/// It counts as using the pool, so a method that holds a reference but
+/// allocates nothing keeps the pool it would otherwise have had erased. That
+/// is the price, and it is why this is a slot in the existing pool rather
+/// than a shadow stack maintained by every call.
+void IRGenerator::registerReferenceSlot(llvm::Value *Slot,
+                                        const std::string &TypeName) {
+  if (!Slot || !isReferenceTypeName(TypeName))
+    return;
+
+  noteAllocation();
+  auto AddSlot = Module.getOrInsertFunction(
+      "__cm_poolAddSlot",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context),
+                              {llvm::PointerType::getUnqual(Context)}, false));
+  Builder.CreateCall(AddSlot, {Slot});
+}
+
 void IRGenerator::storeReference(llvm::Value *V, llvm::Value *Slot,
                                  bool SlotIsLive) {
   emitRetain(V);
@@ -1179,6 +1235,10 @@ void IRGenerator::releaseScopes(unsigned Count) {
        ++It, ++Seen) {
     for (auto &Entry : It->Locals) {
       if (Entry.first == strings::Self)
+        continue;
+      // A borrowed reference -- an unassigned parameter -- has nothing of its
+      // own to give back.
+      if (!Entry.second.Counted)
         continue;
       if (!isReferenceTypeName(Entry.second.TypeName))
         continue;
@@ -1716,6 +1776,7 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
       Builder.CreateStore(llvm::ConstantInt::get(Lowered, 0), Slot);
     }
     Scopes.back().Locals[Name] = {Slot, DeclaredType};
+    registerReferenceSlot(Slot, DeclaredType);
     Slots.push_back(Slot);
   }
 
@@ -2174,6 +2235,7 @@ llvm::Value *IRGenerator::emitFor(ForStatement *F) {
                                             : strings::Int;
   auto *VarSlot = createEntryAlloca(lowerType(ElemType), IterSym->getName());
   Scopes.back().Locals[IterSym->getName()] = {VarSlot, ElemType};
+  registerReferenceSlot(VarSlot, ElemType);
   // Cleared before the loop, so the first iteration's store has something
   // defined to release and the last iteration's value is released at the end.
   if (isReferenceTypeName(ElemType))
@@ -2765,10 +2827,20 @@ llvm::Value *IRGenerator::emitTry(TryStatement *T) {
   Builder.SetInsertPoint(BodyBB);
   ++OpenHandlers;
   Scopes.emplace_back();
+  // A pool of its own around the try body, opened *after* the handler has
+  // recorded its depth, so that the unwinding a throw does reaches into this
+  // body and releases what its locals were holding. Without it the body's
+  // slots sit in the enclosing method's pool, which the unwind stops short
+  // of, and a try that declares anything leaks it on the throwing path.
+  // Speculative like every other pool, so a body that holds nothing pays
+  // nothing.
+  beginPool();
   (void)emit(T->getBody());
+  const bool BodyFallsThrough = !blockTerminated();
+  endPool(BodyFallsThrough);
   Scopes.pop_back();
   --OpenHandlers;
-  if (!blockTerminated()) {
+  if (BodyFallsThrough) {
     Builder.CreateCall(Pop, {});
     Builder.CreateBr(EndBB);
   }
@@ -2777,12 +2849,36 @@ llvm::Value *IRGenerator::emitTry(TryStatement *T) {
   // there is nothing to pop and the next throw goes further out.
   Builder.SetInsertPoint(CatchBB);
   Scopes.emplace_back();
-  storeReference(Builder.CreateCall(CaughtFn, {}, "caught"), CaughtSlot,
-                 /*SlotIsLive=*/true);
+  // And a pool around the handler, which owns the thrown object. __cm_throw
+  // retains what it throws so that unwinding cannot free it on the way out,
+  // and this is where that retain is given back: without it the thrown
+  // object would live until the *catching method* returned, so a loop that
+  // throws would pile them up. Opened before the caught value is read, so
+  // the value lands in it.
+  beginPool();
+  auto *Caught = Builder.CreateCall(CaughtFn, {}, "caught");
+  noteAllocation();
+  auto PoolAdd = Module.getOrInsertFunction(
+      "__cm_poolAdd", llvm::FunctionType::get(VoidTy, {Ptr}, false));
+  Builder.CreateCall(PoolAdd, {Caught});
+  storeReference(Caught, CaughtSlot, /*SlotIsLive=*/true);
   Scopes.back().Locals[T->getCatchName()] = {CaughtSlot, strings::Object};
+  registerReferenceSlot(CaughtSlot, strings::Object);
   (void)emit(T->getHandler());
+  const bool HandlerFallsThrough = !blockTerminated();
+  // The handler's own variable has to be let go of, like any other local.
+  // This scope was being popped without releasing, which went unnoticed
+  // while the thrown object belonged to the catching method's pool and was
+  // freed when that method returned -- it only showed up as a leak once the
+  // handler took ownership and the method's pool stopped covering for it.
+  // Before the pool closes, so the scope's release comes first.
+  if (HandlerFallsThrough) {
+    runDeferred(1);
+    releaseScopes(1);
+  }
+  endPool(HandlerFallsThrough);
   Scopes.pop_back();
-  if (!blockTerminated())
+  if (HandlerFallsThrough)
     Builder.CreateBr(EndBB);
 
   Builder.SetInsertPoint(EndBB);
