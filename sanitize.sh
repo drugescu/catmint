@@ -16,6 +16,12 @@
 # captured a program's output without `|| true`, so under `bash -e` the first
 # test that exited non-zero killed the whole step before anything could be
 # reported: the failure was an exit code with no output at all.
+#
+# One environment it cannot run in: qemu-user emulation. AddressSanitizer's
+# allocator fails a CHECK in sanitizer_allocator_primary32.h there, on every
+# program including one that only prints a string, so an emulated x86-64
+# container reports all of them and means none of it. Verify x86-64 on a real
+# x86-64 machine -- CI does.
 set -e
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
