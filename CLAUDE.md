@@ -737,6 +737,36 @@ away. Both are fixed, all 51 tests are clean under ASan and LSan together,
 and CI gates on it. **Run the suite on Linux after anything touching the
 memory model** -- it is the only place a leak is visible at all.
 
+## The sanitizer sweep
+
+`./sanitize.sh` compiles and runs every code generation test under
+AddressSanitizer, and on Linux under LeakSanitizer with it. Both CI jobs call
+it; nothing is excused.
+
+It is a script rather than a loop written out in the workflow, and that is the
+point. The first version existed only inside `.github/workflows/ci.yml`, where
+it could not be run locally, and it had two faults that only CI could show:
+
+- **It ran from the repository root**, so a test's `.args` -- which `ctest.sh`
+  reads relative to `catmint-gen` -- did not resolve. `33_wordcount` could not
+  find its input, printed its usage and exited early without doing any work.
+- **It captured a program's output without `|| true`.** An assignment from a
+  command substitution *is* a simple command, so under `bash -e` the first
+  test that exited non-zero ended the step. A test may exit non-zero on
+  purpose, and a sanitizer finding always does, so the step died before
+  anything could be reported: the failure was an exit code with no output.
+
+Tests run in glob order, so the abort at `33_wordcount` meant 34 onwards never
+ran at all -- the green tests above it were the only evidence there was.
+
+**The macOS job had no sanitizer step**, which is why it stayed green through
+a Linux failure. It has one now; LeakSanitizer does not exist on Darwin, so
+that half checks only use-after-free and overflow.
+
+**Check that this script can still fail.** Two `release()` calls on the same
+object is a use-after-free it should report; if it does not, it is not
+checking anything.
+
 ## Traps that have already cost time
 
 Each of these produced a crash or a silent miscompile during development.

@@ -64,39 +64,19 @@ jobs:
 
       # The check to repeat after anything touching reference counting: a
       # release too many is a use-after-free here and nothing at all
-      # otherwise.
+      # otherwise. LeakSanitizer runs alongside it on Linux and is left on --
+      # it is the only place leaks show up, macOS does not run it, and every
+      # test is clean, so a leak here is a regression.
       #
-      # LeakSanitizer runs alongside it here and is left on. It is the only
-      # place leaks show up -- macOS does not run it -- and it has earned the
-      # gate: it found that every program leaked its Main object, and the
-      # shallow freeing it then reported on five tests, both of which are
-      # fixed.
-      #
-      # Nothing is excused any more. Every test is clean, so any leak here is
-      # a regression.
+      # A script in the repository, not a loop written out in this file. That
+      # is the lesson from the first version: it existed only here, could not
+      # be run locally, and had two faults nobody could see -- it ran from the
+      # wrong directory, so a test's `.args` did not resolve, and it captured a
+      # program's output without `|| true`, so under `bash -e` the first test
+      # that exited non-zero killed the step before anything was reported. The
+      # failure was an exit code with no output at all.
       - name: AddressSanitizer and LeakSanitizer
-        run: |
-          fails=0
-          for source in catmint-gen/test_suite/*.cm; do
-            name=$(basename "$source" .cm)
-            ./catmintc --asan -I lib -I catmint-gen/test_suite/modules \
-              "$source" -o "/tmp/asan-$name" >/dev/null 2>&1 || continue
-            args=""
-            [ -f "catmint-gen/test_suite/$name.args" ] && \
-              args=$(cat "catmint-gen/test_suite/$name.args")
-            if [ -f "catmint-gen/test_suite/$name.stdin" ]; then
-              out=$("/tmp/asan-$name" $args < "catmint-gen/test_suite/$name.stdin" 2>&1)
-            else
-              out=$("/tmp/asan-$name" $args < /dev/null 2>&1)
-            fi
-            if printf '%s' "$out" | grep -q AddressSanitizer; then
-              echo "=== $name ==="
-              printf '%s\n' "$out" | grep -A5 'ERROR: AddressSanitizer' | head -12
-              fails=$((fails + 1))
-            fi
-          done
-          echo "sanitizer findings: $fails"
-          [ "$fails" -eq 0 ]
+        run: ./sanitize.sh
 
       # Not a gate: the numbers vary far too much on a shared runner to fail a
       # build over. It is here so a catastrophic regression is visible in the
@@ -123,3 +103,10 @@ jobs:
 
       - name: Portability
         run: ./portability.sh
+
+      # LeakSanitizer does not exist on Darwin, so this half of the matrix
+      # checks only for use-after-free and overflow -- but it checks, which it
+      # did not before: the step was in the Linux job alone, which is why the
+      # arm job stayed green through a Linux failure. It never ran this code.
+      - name: AddressSanitizer
+        run: ./sanitize.sh
