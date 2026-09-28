@@ -103,15 +103,32 @@ find_module() {
 # The modules a file imports, transitively, deepest first, each listed once.
 # Compiling in this order means a module is always built before whatever
 # imports it.
+#
+# A module is *recorded after* its own imports, not before: appending first
+# gave "A B" where A imports B, so --separate compiled A before B existed and
+# could not resolve it. Two lists are needed for that, because MODULE_ORDER
+# can no longer double as the visited set -- MODULE_SEEN is marked on the way
+# down, which is what stops a cycle, and MODULE_ORDER is appended on the way
+# back up, which is what gets the order right.
 MODULE_ORDER=""
+MODULE_SEEN=""
 collect_modules() {
   for name in $(sed -n 's/^[[:space:]]*using[[:space:]]\{1,\}\([A-Za-z_][A-Za-z_0-9]*\)[[:space:]]*$/\1/p' "$1"); do
-    case " $MODULE_ORDER " in *" $name "*) continue ;; esac
+    case " $MODULE_SEEN " in *" $name "*) continue ;; esac
+    MODULE_SEEN="$MODULE_SEEN $name"
     path=$(find_module "$name") || {
       echo "catmintc: cannot find module $name" >&2; exit 1; }
-    MODULE_ORDER="$MODULE_ORDER $name"
-    collect_modules "$path"
+    # Through a helper, because a shell variable is global and the recursion
+    # below would clobber $name before it could be recorded -- which it did,
+    # producing "shapes shapes" where "shapes square" was meant. Positional
+    # parameters are the one thing each invocation keeps to itself.
+    collect_after_its_imports "$name" "$path"
   done
+}
+
+collect_after_its_imports() {
+  collect_modules "$2"
+  MODULE_ORDER="$MODULE_ORDER $1"
 }
 
 # The libraries the sources ask for. Collected the same way the modules are,

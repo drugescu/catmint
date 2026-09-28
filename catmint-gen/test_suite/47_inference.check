@@ -65,4 +65,84 @@ end
   || fail "widening and a shared ancestor were rejected:
 $(cat "$work/oklog")"
 [ "$("$work/ok.bin")" = "1 woof" ] || fail "inferred the wrong types: got '$("$work/ok.bin")'"
+# Inference must not depend on declaration order. It used to: the ordinary
+# pass fills in "auto" while visiting a body, so a caller visited *earlier*
+# than its callee still saw "auto", which the type table maps to Void. Three
+# things broke on that -- an argument's type, an override's signature, and an
+# interface's conformance check -- and all three worked if the declarations
+# were simply reversed. A pre-pass now settles every inferred return type
+# before anything is checked.
+accepts() {
+  printf '%s' "$2" > "$work/order.cm"
+  ../catmintc "$work/order.cm" -o "$work/order.bin" >"$work/olog" 2>&1 \
+    || fail "$1 was rejected:
+$(cat "$work/olog")"
+  [ "$("$work/order.bin")" = "$3" ] \
+    || fail "$1 produced '$("$work/order.bin")', wanted '$3'"
+}
+
+accepts "a caller declared above its callee" 'class Main from IO
+  def main:
+    show(value())
+  end
+  def Void show(String s):
+    out(s + "\n")
+  end
+  def value:
+    return "ok"
+  end
+end
+' "ok"
+
+accepts "one inferred method returning another" 'class Main from IO
+  def main:
+    show(outer())
+  end
+  def Void show(String s):
+    out(s + "\n")
+  end
+  def outer:
+    return inner()
+  end
+  def inner:
+    return "ok"
+  end
+end
+' "ok"
+
+accepts "an override whose base declares the type" 'class Base
+  def Int describe:
+    return 1
+  end
+end
+class Derived from Base
+  def describe:
+    return 2
+  end
+end
+class Main from IO
+  def main:
+    Derived d
+    out("${d.describe()}\n")
+  end
+end
+' "2"
+
+accepts "an interface satisfied by an inferred method" 'interface Sized
+  def Int size
+end
+class Box does Sized
+  def size:
+    return 7
+  end
+end
+class Main from IO
+  def main:
+    Box b
+    Sized s = b
+    out("${s.size()}\n")
+  end
+end
+' "7"
+
 exit 0

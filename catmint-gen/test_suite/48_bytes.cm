@@ -45,6 +45,18 @@ class Main from IO
     Bytes again = asText.toBytes()
     out("binary ${again.len()} ${again.get(0)} ${again.get(1)} ${again.get(2)} ${again.get(3)}\n")
 
+    # A String carries its length, so comparison has to look at every byte.
+    # strncmp stopped at the first NUL, which made these two equal.
+    Bytes zeroOne = new Bytes(2)
+    zeroOne.set(0, 0)
+    zeroOne.set(1, 1)
+    Bytes zeroTwo = new Bytes(2)
+    zeroTwo.set(0, 0)
+    zeroTwo.set(1, 2)
+    out("differ after a NUL ${zeroOne.toString().equals(zeroTwo.toString())}\n")
+    Bytes sameAgain = zeroOne.copy()
+    out("same after a NUL ${zeroOne.toString().equals(sameAgain.toString())}\n")
+
     Int before = allocated()
     Int i = 0
     while i < 200:

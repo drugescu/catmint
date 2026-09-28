@@ -100,6 +100,28 @@ class Main from IO
       i = i + 1
     end
     out("reassigned ${allocated() - before}\n")
+
+    # A copy shares the original's reference fields, so each one gains a
+    # holder -- exactly as a List's items do. Freeing now follows those
+    # fields, so without the retain the copy and the original each released
+    # the same String and the second release read memory that had gone. It
+    # crashed in object_free.
+    before = allocated()
+    i = 0
+    while i < 200:
+      Node source = new Node("copied " + i)
+      Object twin = source.copy()
+      i = i + 1
+    end
+    out("copied ${allocated() - before}\n")
+
+    # And the copy really is usable after the original is gone.
+    Node original = new Node("survivor")
+    Object copyOf = original.copy()
+    Node twin = copyOf
+    original.label = "replaced"
+    out("copy kept ${twin.label}\n")
+
     out("done\n")
   end
 end

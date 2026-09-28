@@ -70,6 +70,12 @@ public:
   bool isInterface(const std::string &name) const;
   /// \brief True for a type held as an object reference rather than a value.
   bool isReferenceType(const std::string &name) const;
+
+  /// Whether \p name is registered, without throwing when it is not. For
+  /// asking before the pass that would report the error has run.
+  bool contains(const std::string &name) const {
+    return typeTable.count(name) != 0;
+  }
   bool isEqualOrImplicitlyConvertibleToStr(std::string from, std::string to);
 
   void setType(TreeNode *node, Type *type) { 

@@ -642,6 +642,21 @@ struct TObject *M6_Object_copy(struct TObject *self) {
       array->data = fresh;
     }
   }
+
+  /* A user class's reference fields are shared by the two objects now, so each
+   * one gains a holder -- exactly as a List's items do above. Without this the
+   * copy and the original each release the field when they are freed, and the
+   * second of them releases something already gone. It only became wrong when
+   * freeing started following these fields: before that nobody released them
+   * at all, so a shallow copy was harmless. */
+  if (self->rtti->fields != NULL) {
+    const int *offset;
+    for (offset = self->rtti->fields; *offset >= 0; ++offset) {
+      void **slot = (void **)((char *)copy + *offset);
+      __cm_retain(*slot);
+    }
+  }
+
   return copy;
 }
 
@@ -868,7 +883,12 @@ int M6_String_equal(struct TString *self, struct TString *other) {
   if (self->length != other->length) {
     return 0;
   }
-  return strncmp(self->string, other->string, self->length) == 0;
+  /* memcmp, not strncmp: a catmint String carries its length rather than
+   * ending at a NUL, so it may contain one -- Bytes.toString() and a binary
+   * file read both produce such strings. strncmp stopped at the first NUL,
+   * which made {0,1} and {0,2} compare equal. The lengths are known equal by
+   * the check above, so comparing the whole range is safe. */
+  return memcmp(self->string, other->string, (size_t)self->length) == 0;
 }
 
 /* The character code at an index. Catmint has no character type, so this

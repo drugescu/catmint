@@ -224,6 +224,43 @@ own: the first so unwinding reaches the catching frame's own locals, which
 live in a different pool from the frames below it, and the second so the
 thrown object dies with the handler.
 
+**`Object.copy` retains the copy's reference fields.** Two objects share them
+after the `memcpy`, so each needs a holder, exactly as a `List`'s items do.
+This only became necessary when freeing started following those fields:
+before that nobody released them, so a shallow copy was harmless. Without it
+the copy and the original each released the same object and the second read
+memory that had gone -- a hard crash in `object_free`.
+
+**String equality is `memcmp`, not `strncmp`.** A String carries its length
+rather than ending at a NUL, so it can contain one -- `Bytes.toString()` and a
+binary file read both produce such strings -- and `strncmp` stopped at the
+first, which made `{0,1}` and `{0,2}` compare equal through both
+`String.equals` and `==`.
+
+**Return types are inferred in a pre-pass, before anything is checked.**
+`inferReturnTypesEarly` runs to a fixed point over every method before the
+classes are visited. Filling `auto` in during the ordinary pass made three
+things depend on declaration order -- an argument's type, an override's
+signature, an interface's conformance -- because a caller visited earlier than
+its callee still saw `auto`, which the type table maps to Void; all three
+worked if the declarations were reversed. The pre-pass is structural and
+shallow: literals, `new`, arithmetic over those, and bare calls to methods
+that declare their type. It gives no answer for anything needing the symbol
+table, which is not an error -- the ordinary pass still settles those. It
+reconciles disagreeing returns with `commonReturnType`, the same strict rule
+the ordinary pass uses; using the general convertibility test there let a
+method returning an `Int` and a `String` infer `String` and skip the check
+entirely, which `47_inference.check` caught.
+
+**`catmintc` records a module after its own imports.** Appending before
+recursing gave `A B` where A imports B, so `--separate` compiled A before B
+existed to import; `13_separate` masked it by importing both and listing the
+dependency first. Two lists are needed: `MODULE_SEEN` marked on the way down
+stops a cycle, `MODULE_ORDER` appended on the way back up gets the order
+right. The append goes through a helper, because a shell variable is global
+and the recursion clobbered `$name` before it could be recorded -- positional
+parameters are the one thing each invocation keeps to itself.
+
 **A reference parameter is borrowed.** The caller holds it for the whole call,
 so the callee retains it only if it *assigns* to the parameter -- which
 `AssignedNames` works out from the body, since `x = expr` is a

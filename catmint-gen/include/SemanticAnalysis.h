@@ -75,6 +75,19 @@ private:
   bool workerSafe(Class *c, Method *m, std::set<Method *> &seen,
                   std::string &why);
 
+  /// Work out every method's inferred return type before anything is
+  /// checked, so that a caller declared above its callee sees the same type as
+  /// one declared below it. Run to a fixed point, because one inferred method
+  /// may return what another does.
+  void inferReturnTypesEarly();
+  /// \p c is the class \p m belongs to, for resolving a bare call.
+  std::string earlyReturnType(Class *c, Method *m);
+  /// The type of \p e worked out structurally, without the symbol table and
+  /// without analysing anything: a literal, a `new`, arithmetic on those, or a
+  /// call to a method that declares its type. Empty when it cannot tell, which
+  /// is not an error -- the ordinary pass settles those.
+  std::string earlyTypeOf(Class *c, Expression *e);
+
   /// The type a method returns when two of its `return`s disagree, or null
   /// when they cannot be reconciled and the programmer has to say. Stricter
   /// on purpose than isEqualOrImplicitlyConvertibleTo, which allows boxing in

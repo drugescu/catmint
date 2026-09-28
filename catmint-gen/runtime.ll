@@ -429,6 +429,44 @@ define noundef ptr @M6_Object_copy(ptr noundef readonly captures(none) %0) #2 {
   br i1 %192, label %193, label %177, !llvm.loop !37
 
 193:                                              ; preds = %172, %189, %33, %157, %161, %165, %151, %25, %29, %15, %11, %149, %145
+  %194 = load ptr, ptr %0, align 8, !tbaa !10
+  %195 = getelementptr inbounds nuw i8, ptr %194, i64 40
+  %196 = load ptr, ptr %195, align 8, !tbaa !39
+  %197 = icmp eq ptr %196, null
+  br i1 %197, label %218, label %198
+
+198:                                              ; preds = %193
+  %199 = load i32, ptr %196, align 4, !tbaa !6
+  %200 = icmp sgt i32 %199, -1
+  br i1 %200, label %201, label %218
+
+201:                                              ; preds = %198, %214
+  %202 = phi i32 [ %216, %214 ], [ %199, %198 ]
+  %203 = phi ptr [ %215, %214 ], [ %196, %198 ]
+  %204 = zext nneg i32 %202 to i64
+  %205 = getelementptr inbounds nuw i8, ptr %3, i64 %204
+  %206 = load ptr, ptr %205, align 8, !tbaa !26
+  %207 = icmp eq ptr %206, null
+  br i1 %207, label %214, label %208
+
+208:                                              ; preds = %201
+  %209 = getelementptr inbounds nuw i8, ptr %206, i64 8
+  %210 = load i32, ptr %209, align 8, !tbaa !16
+  %211 = icmp sgt i32 %210, 0
+  br i1 %211, label %212, label %214
+
+212:                                              ; preds = %208
+  %213 = add nuw nsw i32 %210, 1
+  store i32 %213, ptr %209, align 8, !tbaa !16
+  br label %214
+
+214:                                              ; preds = %201, %208, %212
+  %215 = getelementptr inbounds nuw i8, ptr %203, i64 4
+  %216 = load i32, ptr %215, align 4, !tbaa !6
+  %217 = icmp sgt i32 %216, -1
+  br i1 %217, label %201, label %218, !llvm.loop !41
+
+218:                                              ; preds = %214, %198, %193
   ret ptr %3
 }
 
@@ -507,8 +545,8 @@ define i32 @M6_String_toInt(ptr noundef readonly captures(none) %0) #5 {
   %3 = getelementptr inbounds nuw i8, ptr %0, i64 16
   %4 = load ptr, ptr %3, align 8, !tbaa !17
   %5 = call i64 @strtol(ptr noundef %4, ptr noundef nonnull %2, i32 noundef 10)
-  %6 = load ptr, ptr %2, align 8, !tbaa !39
-  %7 = load i8, ptr %6, align 1, !tbaa !40
+  %6 = load ptr, ptr %2, align 8, !tbaa !42
+  %7 = load i8, ptr %6, align 1, !tbaa !43
   %8 = icmp eq i8 %7, 0
   %9 = trunc i64 %5 to i32
   %10 = select i1 %8, i32 %9, i32 0
@@ -596,7 +634,7 @@ define range(i32 0, 2) i32 @M6_String_equal(ptr noundef readonly captures(addres
   %16 = getelementptr inbounds nuw i8, ptr %1, i64 16
   %17 = load ptr, ptr %16, align 8, !tbaa !17
   %18 = sext i32 %9 to i64
-  %19 = tail call i32 @strncmp(ptr noundef %15, ptr noundef %17, i64 noundef %18) #40
+  %19 = tail call i32 @memcmp(ptr noundef %15, ptr noundef %17, i64 noundef %18)
   %20 = icmp eq i32 %19, 0
   br label %21
 
@@ -626,7 +664,7 @@ define range(i32 0, 256) i32 @M6_String_at(ptr noundef readonly captures(none) %
   %11 = load ptr, ptr %10, align 8, !tbaa !17
   %12 = zext nneg i32 %1 to i64
   %13 = getelementptr inbounds nuw i8, ptr %11, i64 %12
-  %14 = load i8, ptr %13, align 1, !tbaa !40
+  %14 = load i8, ptr %13, align 1, !tbaa !43
   %15 = zext i8 %14 to i32
   ret i32 %15
 }
@@ -669,7 +707,7 @@ define i32 @M6_String_indexOf(ptr noundef readonly captures(none) %0, ptr nounde
 26:                                               ; preds = %21
   %27 = add nuw nsw i64 %22, 1
   %28 = icmp eq i64 %27, %20
-  br i1 %28, label %31, label %21, !llvm.loop !41
+  br i1 %28, label %31, label %21, !llvm.loop !44
 
 29:                                               ; preds = %21
   %30 = trunc nuw nsw i64 %22 to i32
@@ -696,7 +734,7 @@ define nonnull ptr @M6_String_trim(ptr noundef readonly captures(none) %0) #2 {
   %9 = phi i64 [ 0, %5 ], [ %26, %25 ]
   %10 = load ptr, ptr %6, align 8, !tbaa !17
   %11 = getelementptr inbounds nuw i8, ptr %10, i64 %9
-  %12 = load i8, ptr %11, align 1, !tbaa !40
+  %12 = load i8, ptr %11, align 1, !tbaa !43
   %13 = icmp sgt i8 %12, -1
   br i1 %13, label %14, label %19
 
@@ -720,7 +758,7 @@ define nonnull ptr @M6_String_trim(ptr noundef readonly captures(none) %0) #2 {
 25:                                               ; preds = %22
   %26 = add nuw nsw i64 %9, 1
   %27 = icmp eq i64 %26, %7
-  br i1 %27, label %63, label %8, !llvm.loop !42
+  br i1 %27, label %63, label %8, !llvm.loop !45
 
 28:                                               ; preds = %22
   %29 = trunc nuw nsw i64 %9 to i32
@@ -739,7 +777,7 @@ define nonnull ptr @M6_String_trim(ptr noundef readonly captures(none) %0) #2 {
   %38 = load ptr, ptr %32, align 8, !tbaa !17
   %39 = getelementptr i8, ptr %38, i64 %37
   %40 = getelementptr i8, ptr %39, i64 -1
-  %41 = load i8, ptr %40, align 1, !tbaa !40
+  %41 = load i8, ptr %40, align 1, !tbaa !43
   %42 = icmp sgt i8 %41, -1
   br i1 %42, label %43, label %48
 
@@ -763,7 +801,7 @@ define nonnull ptr @M6_String_trim(ptr noundef readonly captures(none) %0) #2 {
 54:                                               ; preds = %51
   %55 = add nsw i64 %37, -1
   %56 = icmp sgt i64 %55, %35
-  br i1 %56, label %36, label %63, !llvm.loop !43
+  br i1 %56, label %36, label %63, !llvm.loop !46
 
 57:                                               ; preds = %51
   %58 = trunc nsw i64 %37 to i32
@@ -828,18 +866,18 @@ define nonnull ptr @M6_String_upper(ptr noundef readonly captures(none) %0) #2 {
   %17 = phi i64 [ %26, %16 ], [ 0, %6 ]
   %18 = load ptr, ptr %8, align 8, !tbaa !17
   %19 = getelementptr inbounds nuw i8, ptr %18, i64 %17
-  %20 = load i8, ptr %19, align 1, !tbaa !40
+  %20 = load i8, ptr %19, align 1, !tbaa !43
   %21 = zext i8 %20 to i32
   %22 = tail call i32 @__toupper(i32 noundef %21) #40
   %23 = trunc i32 %22 to i8
   %24 = load ptr, ptr %8, align 8, !tbaa !17
   %25 = getelementptr inbounds nuw i8, ptr %24, i64 %17
-  store i8 %23, ptr %25, align 1, !tbaa !40
+  store i8 %23, ptr %25, align 1, !tbaa !43
   %26 = add nuw nsw i64 %17, 1
   %27 = load i32, ptr %13, align 4, !tbaa !20
   %28 = sext i32 %27 to i64
   %29 = icmp slt i64 %26, %28
-  br i1 %29, label %16, label %30, !llvm.loop !44
+  br i1 %29, label %16, label %30, !llvm.loop !47
 
 30:                                               ; preds = %16, %6
   ret ptr %7
@@ -873,18 +911,18 @@ define nonnull ptr @M6_String_lower(ptr noundef readonly captures(none) %0) #2 {
   %17 = phi i64 [ %26, %16 ], [ 0, %6 ]
   %18 = load ptr, ptr %8, align 8, !tbaa !17
   %19 = getelementptr inbounds nuw i8, ptr %18, i64 %17
-  %20 = load i8, ptr %19, align 1, !tbaa !40
+  %20 = load i8, ptr %19, align 1, !tbaa !43
   %21 = zext i8 %20 to i32
   %22 = tail call i32 @__tolower(i32 noundef %21) #40
   %23 = trunc i32 %22 to i8
   %24 = load ptr, ptr %8, align 8, !tbaa !17
   %25 = getelementptr inbounds nuw i8, ptr %24, i64 %17
-  store i8 %23, ptr %25, align 1, !tbaa !40
+  store i8 %23, ptr %25, align 1, !tbaa !43
   %26 = add nuw nsw i64 %17, 1
   %27 = load i32, ptr %13, align 4, !tbaa !20
   %28 = sext i32 %27 to i64
   %29 = icmp slt i64 %26, %28
-  br i1 %29, label %16, label %30, !llvm.loop !44
+  br i1 %29, label %16, label %30, !llvm.loop !47
 
 30:                                               ; preds = %16, %6
   ret ptr %7
@@ -1068,7 +1106,7 @@ define noundef ptr @M6_String_split(ptr noundef readonly captures(none) %0, ptr 
   %114 = phi i32 [ %106, %99 ], [ %109, %108 ]
   %115 = add nsw i32 %112, %114
   %116 = icmp sgt i32 %115, %111
-  br i1 %116, label %117, label %51, !llvm.loop !45
+  br i1 %116, label %117, label %51, !llvm.loop !48
 
 117:                                              ; preds = %110, %12
   %118 = phi i32 [ 0, %12 ], [ %113, %110 ]
@@ -1202,7 +1240,7 @@ define nonnull ptr @M6_String_replace(ptr noundef readonly captures(none) %0, pt
   %44 = add nuw nsw i32 %35, %43
   %45 = add nsw i32 %42, %7
   %46 = icmp sgt i32 %45, %13
-  br i1 %46, label %47, label %33, !llvm.loop !46
+  br i1 %46, label %47, label %33, !llvm.loop !49
 
 47:                                               ; preds = %33, %11
   %48 = phi i32 [ 0, %11 ], [ %44, %33 ]
@@ -1256,10 +1294,10 @@ define nonnull ptr @M6_String_replace(ptr noundef readonly captures(none) %0, pt
 
 86:                                               ; preds = %63, %72
   %87 = getelementptr inbounds i8, ptr %70, i64 %71
-  %88 = load i8, ptr %87, align 1, !tbaa !40
+  %88 = load i8, ptr %87, align 1, !tbaa !43
   %89 = sext i32 %66 to i64
   %90 = getelementptr inbounds i8, ptr %56, i64 %89
-  store i8 %88, ptr %90, align 1, !tbaa !40
+  store i8 %88, ptr %90, align 1, !tbaa !43
   br label %91
 
 91:                                               ; preds = %86, %78
@@ -1269,7 +1307,7 @@ define nonnull ptr @M6_String_replace(ptr noundef readonly captures(none) %0, pt
   %95 = add nsw i32 %92, %66
   %96 = load i32, ptr %12, align 4, !tbaa !20
   %97 = icmp slt i32 %94, %96
-  br i1 %97, label %63, label %98, !llvm.loop !47
+  br i1 %97, label %63, label %98, !llvm.loop !50
 
 98:                                               ; preds = %91, %47, %26
   %99 = phi ptr [ %27, %26 ], [ %54, %47 ], [ %54, %91 ]
@@ -1283,8 +1321,8 @@ define double @M6_String_toFloat(ptr noundef readonly captures(none) %0) #2 {
   %3 = getelementptr inbounds nuw i8, ptr %0, i64 16
   %4 = load ptr, ptr %3, align 8, !tbaa !17
   %5 = call double @"\01_strtod"(ptr noundef %4, ptr noundef nonnull %2) #40
-  %6 = load ptr, ptr %2, align 8, !tbaa !39
-  %7 = load i8, ptr %6, align 1, !tbaa !40
+  %6 = load ptr, ptr %2, align 8, !tbaa !42
+  %7 = load i8, ptr %6, align 1, !tbaa !43
   %8 = icmp eq i8 %7, 0
   %9 = select i1 %8, double %5, double 0.000000e+00
   call void @llvm.lifetime.end.p0(ptr nonnull %2) #40
@@ -1347,13 +1385,13 @@ define noundef ptr @M6_String_toBytes(ptr noundef readonly captures(none) %0) #2
 define nonnull ptr @M2_IO_in(ptr readnone captures(none) %0) #2 {
   %2 = alloca [256 x i8], align 1
   call void @llvm.lifetime.start.p0(ptr nonnull %2) #40
-  store i8 0, ptr %2, align 1, !tbaa !40
+  store i8 0, ptr %2, align 1, !tbaa !43
   %3 = call i32 (ptr, ...) @scanf(ptr noundef nonnull @.str.15, ptr noundef nonnull %2)
   %4 = icmp eq i32 %3, 1
   br i1 %4, label %6, label %5
 
 5:                                                ; preds = %1
-  store i8 0, ptr %2, align 1, !tbaa !40
+  store i8 0, ptr %2, align 1, !tbaa !43
   br label %6
 
 6:                                                ; preds = %5, %1
@@ -1379,7 +1417,7 @@ define noundef ptr @M2_IO_out(ptr noundef readnone returned captures(ret: addres
 define nonnull ptr @M2_IO_readLine(ptr readnone captures(none) %0) #2 {
   %2 = alloca [1024 x i8], align 1
   call void @llvm.lifetime.start.p0(ptr nonnull %2) #40
-  %3 = load ptr, ptr @__stdinp, align 8, !tbaa !48
+  %3 = load ptr, ptr @__stdinp, align 8, !tbaa !51
   %4 = call ptr @fgets(ptr noundef nonnull %2, i32 noundef 1024, ptr noundef %3)
   %5 = icmp eq ptr %4, null
   br i1 %5, label %6, label %8
@@ -1396,12 +1434,12 @@ define nonnull ptr @M2_IO_readLine(ptr readnone captures(none) %0) #2 {
 11:                                               ; preds = %8
   %12 = getelementptr i8, ptr %2, i64 %9
   %13 = getelementptr i8, ptr %12, i64 -1
-  %14 = load i8, ptr %13, align 1, !tbaa !40
+  %14 = load i8, ptr %13, align 1, !tbaa !43
   %15 = icmp eq i8 %14, 10
   br i1 %15, label %16, label %17
 
 16:                                               ; preds = %11
-  store i8 0, ptr %13, align 1, !tbaa !40
+  store i8 0, ptr %13, align 1, !tbaa !43
   br label %17
 
 17:                                               ; preds = %16, %11, %8
@@ -1421,13 +1459,13 @@ define nonnull ptr @M2_IO_readLine(ptr readnone captures(none) %0) #2 {
 
 ; Function Attrs: nofree nounwind ssp uwtable(sync)
 define range(i32 0, 2) i32 @M2_IO_eof(ptr readnone captures(none) %0) #8 {
-  %2 = load ptr, ptr @__stdinp, align 8, !tbaa !48
+  %2 = load ptr, ptr @__stdinp, align 8, !tbaa !51
   %3 = tail call i32 @fgetc(ptr noundef %2)
   %4 = icmp eq i32 %3, -1
   br i1 %4, label %8, label %5
 
 5:                                                ; preds = %1
-  %6 = load ptr, ptr @__stdinp, align 8, !tbaa !48
+  %6 = load ptr, ptr @__stdinp, align 8, !tbaa !51
   %7 = tail call i32 @ungetc(i32 noundef %3, ptr noundef %6)
   br label %8
 
@@ -1482,17 +1520,17 @@ define i32 @M2_IO_ticks(ptr readnone captures(none) %0) #2 {
   br i1 %6, label %8, label %7
 
 7:                                                ; preds = %5
-  call void @llvm.memcpy.p0.p0.i64(ptr noundef nonnull align 8 dereferenceable(16) @M2_IO_ticks.origin, ptr noundef nonnull align 8 dereferenceable(16) %2, i64 16, i1 false), !tbaa.struct !49
+  call void @llvm.memcpy.p0.p0.i64(ptr noundef nonnull align 8 dereferenceable(16) @M2_IO_ticks.origin, ptr noundef nonnull align 8 dereferenceable(16) %2, i64 16, i1 false), !tbaa.struct !52
   store i1 true, ptr @M2_IO_ticks.started, align 4
   br label %8
 
 8:                                                ; preds = %7, %5
-  %9 = load i64, ptr %2, align 8, !tbaa !52
-  %10 = load i64, ptr @M2_IO_ticks.origin, align 8, !tbaa !52
+  %9 = load i64, ptr %2, align 8, !tbaa !55
+  %10 = load i64, ptr @M2_IO_ticks.origin, align 8, !tbaa !55
   %11 = sub nsw i64 %9, %10
   %12 = getelementptr inbounds nuw i8, ptr %2, i64 8
-  %13 = load i64, ptr %12, align 8, !tbaa !54
-  %14 = load i64, ptr getelementptr inbounds nuw (i8, ptr @M2_IO_ticks.origin, i64 8), align 8, !tbaa !54
+  %13 = load i64, ptr %12, align 8, !tbaa !57
+  %14 = load i64, ptr getelementptr inbounds nuw (i8, ptr @M2_IO_ticks.origin, i64 8), align 8, !tbaa !57
   %15 = sub nsw i64 %13, %14
   %16 = sdiv i64 %15, 1000000
   %17 = mul nsw i64 %11, 1000
@@ -1521,7 +1559,7 @@ define i32 @M2_IO_localOffset(ptr readnone captures(none) %0) #2 {
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
   call void @llvm.lifetime.start.p0(ptr nonnull %4) #40
   %5 = tail call i64 @time(ptr noundef null) #40
-  store i64 %5, ptr %2, align 8, !tbaa !50
+  store i64 %5, ptr %2, align 8, !tbaa !53
   %6 = call ptr @localtime_r(ptr noundef nonnull %2, ptr noundef nonnull %3) #40
   %7 = icmp eq ptr %6, null
   br i1 %7, label %40, label %8
@@ -1533,19 +1571,19 @@ define i32 @M2_IO_localOffset(ptr readnone captures(none) %0) #2 {
 
 11:                                               ; preds = %8
   %12 = getelementptr inbounds nuw i8, ptr %3, i64 8
-  %13 = load i32, ptr %12, align 8, !tbaa !55
+  %13 = load i32, ptr %12, align 8, !tbaa !58
   %14 = getelementptr inbounds nuw i8, ptr %3, i64 4
-  %15 = load i32, ptr %14, align 4, !tbaa !57
-  %16 = load i32, ptr %3, align 8, !tbaa !58
+  %15 = load i32, ptr %14, align 4, !tbaa !60
+  %16 = load i32, ptr %3, align 8, !tbaa !61
   %17 = getelementptr inbounds nuw i8, ptr %4, i64 8
-  %18 = load i32, ptr %17, align 8, !tbaa !55
+  %18 = load i32, ptr %17, align 8, !tbaa !58
   %19 = getelementptr inbounds nuw i8, ptr %4, i64 4
-  %20 = load i32, ptr %19, align 4, !tbaa !57
-  %21 = load i32, ptr %4, align 8, !tbaa !58
+  %20 = load i32, ptr %19, align 4, !tbaa !60
+  %21 = load i32, ptr %4, align 8, !tbaa !61
   %22 = getelementptr inbounds nuw i8, ptr %3, i64 28
-  %23 = load i32, ptr %22, align 4, !tbaa !59
+  %23 = load i32, ptr %22, align 4, !tbaa !62
   %24 = getelementptr inbounds nuw i8, ptr %4, i64 28
-  %25 = load i32, ptr %24, align 4, !tbaa !59
+  %25 = load i32, ptr %24, align 4, !tbaa !62
   %26 = sub nsw i32 %23, %25
   %27 = icmp sgt i32 %26, 1
   %28 = icmp slt i32 %26, -1
@@ -1580,13 +1618,13 @@ define noundef ptr @M2_IO_sleep(ptr noundef readnone returned captures(ret: addr
 5:                                                ; preds = %2
   %6 = udiv i32 %1, 1000
   %7 = zext nneg i32 %6 to i64
-  store i64 %7, ptr %3, align 8, !tbaa !52
+  store i64 %7, ptr %3, align 8, !tbaa !55
   %8 = mul i32 %6, 1000
   %9 = sub i32 %1, %8
   %10 = mul nuw nsw i32 %9, 1000000
   %11 = zext nneg i32 %10 to i64
   %12 = getelementptr inbounds nuw i8, ptr %3, i64 8
-  store i64 %11, ptr %12, align 8, !tbaa !54
+  store i64 %11, ptr %12, align 8, !tbaa !57
   %13 = call i32 @"\01_nanosleep"(ptr noundef nonnull %3, ptr noundef null) #40
   br label %14
 
@@ -1621,7 +1659,7 @@ define nonnull ptr @M2_IO_arg(ptr readnone captures(none) %0, i32 noundef %1) #2
 12:                                               ; preds = %4
   %13 = zext nneg i32 %1 to i64
   %14 = getelementptr inbounds nuw ptr, ptr %7, i64 %13
-  %15 = load ptr, ptr %14, align 8, !tbaa !39
+  %15 = load ptr, ptr %14, align 8, !tbaa !42
   %16 = tail call i64 @strlen(ptr noundef nonnull readonly dereferenceable(1) %15) #40
   %17 = trunc i64 %16 to i32
   %18 = tail call fastcc ptr @new_string(i32 noundef %17)
@@ -1639,7 +1677,7 @@ define nonnull ptr @M2_IO_arg(ptr readnone captures(none) %0, i32 noundef %1) #2
 define noundef ptr @M2_IO_err(ptr noundef readnone returned captures(ret: address, provenance) %0, ptr noundef readonly captures(none) %1) #2 {
   %3 = getelementptr inbounds nuw i8, ptr %1, i64 16
   %4 = load ptr, ptr %3, align 8, !tbaa !17
-  %5 = load ptr, ptr @__stderrp, align 8, !tbaa !48
+  %5 = load ptr, ptr @__stderrp, align 8, !tbaa !51
   %6 = tail call i32 @"\01_fputs"(ptr noundef %4, ptr noundef %5) #40
   ret ptr %0
 }
@@ -1706,12 +1744,12 @@ define nonnull ptr @M4_File_readLine(ptr noundef readonly captures(none) %0) #2 
 14:                                               ; preds = %11
   %15 = getelementptr i8, ptr %2, i64 %12
   %16 = getelementptr i8, ptr %15, i64 -1
-  %17 = load i8, ptr %16, align 1, !tbaa !40
+  %17 = load i8, ptr %16, align 1, !tbaa !43
   %18 = icmp eq i8 %17, 10
   br i1 %18, label %19, label %20
 
 19:                                               ; preds = %14
-  store i8 0, ptr %16, align 1, !tbaa !40
+  store i8 0, ptr %16, align 1, !tbaa !43
   br label %20
 
 20:                                               ; preds = %19, %14, %11
@@ -1780,7 +1818,7 @@ define ptr @M4_File_readAll(ptr noundef readonly captures(none) %0) #2 {
 
 32:                                               ; preds = %28
   %33 = getelementptr inbounds nuw i8, ptr %21, i64 %26
-  store i8 0, ptr %33, align 1, !tbaa !40
+  store i8 0, ptr %33, align 1, !tbaa !43
   %34 = tail call ptr @__catmint_new(ptr noundef nonnull @RString)
   %35 = getelementptr inbounds nuw i8, ptr %34, i64 16
   %36 = getelementptr inbounds nuw i8, ptr %34, i64 12
@@ -1949,7 +1987,7 @@ define range(i32 0, 256) i32 @M5_Bytes_get(ptr noundef readonly captures(none) %
   %14 = load ptr, ptr %13, align 8, !tbaa !34
   %15 = zext nneg i32 %1 to i64
   %16 = getelementptr inbounds nuw i8, ptr %14, i64 %15
-  %17 = load i8, ptr %16, align 1, !tbaa !40
+  %17 = load i8, ptr %16, align 1, !tbaa !43
   %18 = zext i8 %17 to i32
   ret i32 %18
 }
@@ -1977,7 +2015,7 @@ define noundef i32 @M5_Bytes_set(ptr noundef readonly captures(none) %0, i32 nou
   %16 = load ptr, ptr %15, align 8, !tbaa !34
   %17 = zext nneg i32 %1 to i64
   %18 = getelementptr inbounds nuw i8, ptr %16, i64 %17
-  store i8 %14, ptr %18, align 1, !tbaa !40
+  store i8 %14, ptr %18, align 1, !tbaa !43
   ret i32 %2
 }
 
@@ -2086,7 +2124,7 @@ define noundef ptr @M5_Bytes_slice(ptr noundef readonly captures(none) %0, i32 n
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind ssp willreturn memory(argmem: read) uwtable(sync)
 define i32 @M4_Ints_len(ptr noundef readonly captures(none) %0) #4 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  %3 = load i32, ptr %2, align 4, !tbaa !60
+  %3 = load i32, ptr %2, align 4, !tbaa !63
   ret i32 %3
 }
 
@@ -2094,7 +2132,7 @@ define i32 @M4_Ints_len(ptr noundef readonly captures(none) %0) #4 {
 define i64 @M4_Ints_get(ptr noundef readonly captures(none) %0, i32 noundef %1) #2 {
   %3 = alloca [128 x i8], align 1
   %4 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  %5 = load i32, ptr %4, align 4, !tbaa !60
+  %5 = load i32, ptr %4, align 4, !tbaa !63
   %6 = icmp sgt i32 %1, -1
   %7 = icmp slt i32 %1, %5
   %8 = and i1 %6, %7
@@ -2109,10 +2147,10 @@ define i64 @M4_Ints_get(ptr noundef readonly captures(none) %0, i32 noundef %1) 
 
 12:                                               ; preds = %2
   %13 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %14 = load ptr, ptr %13, align 8, !tbaa !63
+  %14 = load ptr, ptr %13, align 8, !tbaa !66
   %15 = zext nneg i32 %1 to i64
   %16 = getelementptr inbounds nuw i64, ptr %14, i64 %15
-  %17 = load i64, ptr %16, align 8, !tbaa !64
+  %17 = load i64, ptr %16, align 8, !tbaa !67
   ret i64 %17
 }
 
@@ -2120,7 +2158,7 @@ define i64 @M4_Ints_get(ptr noundef readonly captures(none) %0, i32 noundef %1) 
 define noundef i64 @M4_Ints_set(ptr noundef readonly captures(none) %0, i32 noundef %1, i64 noundef returned %2) #2 {
   %4 = alloca [128 x i8], align 1
   %5 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  %6 = load i32, ptr %5, align 4, !tbaa !60
+  %6 = load i32, ptr %5, align 4, !tbaa !63
   %7 = icmp sgt i32 %1, -1
   %8 = icmp slt i32 %1, %6
   %9 = and i1 %7, %8
@@ -2135,23 +2173,23 @@ define noundef i64 @M4_Ints_set(ptr noundef readonly captures(none) %0, i32 noun
 
 13:                                               ; preds = %3
   %14 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %15 = load ptr, ptr %14, align 8, !tbaa !63
+  %15 = load ptr, ptr %14, align 8, !tbaa !66
   %16 = zext nneg i32 %1 to i64
   %17 = getelementptr inbounds nuw i64, ptr %15, i64 %16
-  store i64 %2, ptr %17, align 8, !tbaa !64
+  store i64 %2, ptr %17, align 8, !tbaa !67
   ret i64 %2
 }
 
 ; Function Attrs: nofree norecurse nosync nounwind ssp memory(write, argmem: readwrite, inaccessiblemem: none, target_mem0: none, target_mem1: none) uwtable(sync)
 define noundef ptr @M4_Ints_fill(ptr noundef readonly returned captures(ret: address, provenance) %0, i64 noundef %1) #12 {
   %3 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  %4 = load i32, ptr %3, align 4, !tbaa !60
+  %4 = load i32, ptr %3, align 4, !tbaa !63
   %5 = icmp sgt i32 %4, 0
   br i1 %5, label %6, label %32
 
 6:                                                ; preds = %2
   %7 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %8 = load ptr, ptr %7, align 8, !tbaa !63
+  %8 = load ptr, ptr %7, align 8, !tbaa !66
   %9 = zext nneg i32 %4 to i64
   %10 = icmp ult i32 %4, 8
   br i1 %10, label %25, label %11
@@ -2168,13 +2206,13 @@ define noundef ptr @M4_Ints_fill(ptr noundef readonly returned captures(ret: add
   %18 = getelementptr inbounds nuw i8, ptr %17, i64 16
   %19 = getelementptr inbounds nuw i8, ptr %17, i64 32
   %20 = getelementptr inbounds nuw i8, ptr %17, i64 48
-  store <2 x i64> %14, ptr %17, align 8, !tbaa !64
-  store <2 x i64> %14, ptr %18, align 8, !tbaa !64
-  store <2 x i64> %14, ptr %19, align 8, !tbaa !64
-  store <2 x i64> %14, ptr %20, align 8, !tbaa !64
+  store <2 x i64> %14, ptr %17, align 8, !tbaa !67
+  store <2 x i64> %14, ptr %18, align 8, !tbaa !67
+  store <2 x i64> %14, ptr %19, align 8, !tbaa !67
+  store <2 x i64> %14, ptr %20, align 8, !tbaa !67
   %21 = add nuw i64 %16, 8
   %22 = icmp eq i64 %21, %12
-  br i1 %22, label %23, label %15, !llvm.loop !66
+  br i1 %22, label %23, label %15, !llvm.loop !69
 
 23:                                               ; preds = %15
   %24 = icmp eq i64 %12, %9
@@ -2187,10 +2225,10 @@ define noundef ptr @M4_Ints_fill(ptr noundef readonly returned captures(ret: add
 27:                                               ; preds = %25, %27
   %28 = phi i64 [ %30, %27 ], [ %26, %25 ]
   %29 = getelementptr inbounds nuw i64, ptr %8, i64 %28
-  store i64 %1, ptr %29, align 8, !tbaa !64
+  store i64 %1, ptr %29, align 8, !tbaa !67
   %30 = add nuw nsw i64 %28, 1
   %31 = icmp eq i64 %30, %9
-  br i1 %31, label %32, label %27, !llvm.loop !69
+  br i1 %31, label %32, label %27, !llvm.loop !72
 
 32:                                               ; preds = %27, %23, %2
   ret ptr %0
@@ -2199,7 +2237,7 @@ define noundef ptr @M4_Ints_fill(ptr noundef readonly returned captures(ret: add
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind ssp willreturn memory(argmem: read) uwtable(sync)
 define i32 @M6_Floats_len(ptr noundef readonly captures(none) %0) #4 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  %3 = load i32, ptr %2, align 4, !tbaa !70
+  %3 = load i32, ptr %2, align 4, !tbaa !73
   ret i32 %3
 }
 
@@ -2207,7 +2245,7 @@ define i32 @M6_Floats_len(ptr noundef readonly captures(none) %0) #4 {
 define double @M6_Floats_get(ptr noundef readonly captures(none) %0, i32 noundef %1) #2 {
   %3 = alloca [128 x i8], align 1
   %4 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  %5 = load i32, ptr %4, align 4, !tbaa !70
+  %5 = load i32, ptr %4, align 4, !tbaa !73
   %6 = icmp sgt i32 %1, -1
   %7 = icmp slt i32 %1, %5
   %8 = and i1 %6, %7
@@ -2222,10 +2260,10 @@ define double @M6_Floats_get(ptr noundef readonly captures(none) %0, i32 noundef
 
 12:                                               ; preds = %2
   %13 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %14 = load ptr, ptr %13, align 8, !tbaa !73
+  %14 = load ptr, ptr %13, align 8, !tbaa !76
   %15 = zext nneg i32 %1 to i64
   %16 = getelementptr inbounds nuw double, ptr %14, i64 %15
-  %17 = load double, ptr %16, align 8, !tbaa !74
+  %17 = load double, ptr %16, align 8, !tbaa !77
   ret double %17
 }
 
@@ -2233,7 +2271,7 @@ define double @M6_Floats_get(ptr noundef readonly captures(none) %0, i32 noundef
 define noundef double @M6_Floats_set(ptr noundef readonly captures(none) %0, i32 noundef %1, double noundef returned %2) #2 {
   %4 = alloca [128 x i8], align 1
   %5 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  %6 = load i32, ptr %5, align 4, !tbaa !70
+  %6 = load i32, ptr %5, align 4, !tbaa !73
   %7 = icmp sgt i32 %1, -1
   %8 = icmp slt i32 %1, %6
   %9 = and i1 %7, %8
@@ -2248,23 +2286,23 @@ define noundef double @M6_Floats_set(ptr noundef readonly captures(none) %0, i32
 
 13:                                               ; preds = %3
   %14 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %15 = load ptr, ptr %14, align 8, !tbaa !73
+  %15 = load ptr, ptr %14, align 8, !tbaa !76
   %16 = zext nneg i32 %1 to i64
   %17 = getelementptr inbounds nuw double, ptr %15, i64 %16
-  store double %2, ptr %17, align 8, !tbaa !74
+  store double %2, ptr %17, align 8, !tbaa !77
   ret double %2
 }
 
 ; Function Attrs: nofree norecurse nosync nounwind ssp memory(write, argmem: readwrite, inaccessiblemem: none, target_mem0: none, target_mem1: none) uwtable(sync)
 define noundef ptr @M6_Floats_fill(ptr noundef readonly returned captures(ret: address, provenance) %0, double noundef %1) #12 {
   %3 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  %4 = load i32, ptr %3, align 4, !tbaa !70
+  %4 = load i32, ptr %3, align 4, !tbaa !73
   %5 = icmp sgt i32 %4, 0
   br i1 %5, label %6, label %32
 
 6:                                                ; preds = %2
   %7 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %8 = load ptr, ptr %7, align 8, !tbaa !73
+  %8 = load ptr, ptr %7, align 8, !tbaa !76
   %9 = zext nneg i32 %4 to i64
   %10 = icmp ult i32 %4, 8
   br i1 %10, label %25, label %11
@@ -2281,13 +2319,13 @@ define noundef ptr @M6_Floats_fill(ptr noundef readonly returned captures(ret: a
   %18 = getelementptr inbounds nuw i8, ptr %17, i64 16
   %19 = getelementptr inbounds nuw i8, ptr %17, i64 32
   %20 = getelementptr inbounds nuw i8, ptr %17, i64 48
-  store <2 x double> %14, ptr %17, align 8, !tbaa !74
-  store <2 x double> %14, ptr %18, align 8, !tbaa !74
-  store <2 x double> %14, ptr %19, align 8, !tbaa !74
-  store <2 x double> %14, ptr %20, align 8, !tbaa !74
+  store <2 x double> %14, ptr %17, align 8, !tbaa !77
+  store <2 x double> %14, ptr %18, align 8, !tbaa !77
+  store <2 x double> %14, ptr %19, align 8, !tbaa !77
+  store <2 x double> %14, ptr %20, align 8, !tbaa !77
   %21 = add nuw i64 %16, 8
   %22 = icmp eq i64 %21, %12
-  br i1 %22, label %23, label %15, !llvm.loop !76
+  br i1 %22, label %23, label %15, !llvm.loop !79
 
 23:                                               ; preds = %15
   %24 = icmp eq i64 %12, %9
@@ -2300,10 +2338,10 @@ define noundef ptr @M6_Floats_fill(ptr noundef readonly returned captures(ret: a
 27:                                               ; preds = %25, %27
   %28 = phi i64 [ %30, %27 ], [ %26, %25 ]
   %29 = getelementptr inbounds nuw double, ptr %8, i64 %28
-  store double %1, ptr %29, align 8, !tbaa !74
+  store double %1, ptr %29, align 8, !tbaa !77
   %30 = add nuw nsw i64 %28, 1
   %31 = icmp eq i64 %30, %9
-  br i1 %31, label %32, label %27, !llvm.loop !77
+  br i1 %31, label %32, label %27, !llvm.loop !80
 
 32:                                               ; preds = %27, %23, %2
   ret ptr %0
@@ -2359,12 +2397,12 @@ define nonnull ptr @M7_Process_readLine(ptr noundef readonly captures(none) %0) 
 14:                                               ; preds = %11
   %15 = getelementptr i8, ptr %2, i64 %12
   %16 = getelementptr i8, ptr %15, i64 -1
-  %17 = load i8, ptr %16, align 1, !tbaa !40
+  %17 = load i8, ptr %16, align 1, !tbaa !43
   %18 = icmp eq i8 %17, 10
   br i1 %18, label %19, label %20
 
 19:                                               ; preds = %14
-  store i8 0, ptr %16, align 1, !tbaa !40
+  store i8 0, ptr %16, align 1, !tbaa !43
   br label %20
 
 20:                                               ; preds = %19, %14, %11
@@ -2696,7 +2734,7 @@ define noundef ptr @M4_List_slice(ptr noundef readonly captures(none) %0, i32 no
   %55 = add nuw nsw i64 %24, 1
   %56 = trunc nuw i64 %55 to i32
   %57 = icmp sgt i32 %2, %56
-  br i1 %57, label %21, label %58, !llvm.loop !78
+  br i1 %57, label %21, label %58, !llvm.loop !81
 
 58:                                               ; preds = %49, %12
   ret ptr %13
@@ -2705,7 +2743,7 @@ define noundef ptr @M4_List_slice(ptr noundef readonly captures(none) %0, i32 no
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind ssp willreturn memory(argmem: read) uwtable(sync)
 define i32 @M7_Integer_get(ptr noundef readonly captures(none) %0) #4 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %3 = load i64, ptr %2, align 8, !tbaa !79
+  %3 = load i64, ptr %2, align 8, !tbaa !82
   %4 = trunc i64 %3 to i32
   ret i32 %4
 }
@@ -2713,7 +2751,7 @@ define i32 @M7_Integer_get(ptr noundef readonly captures(none) %0) #4 {
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind ssp willreturn memory(argmem: read) uwtable(sync)
 define i64 @M7_Integer_getLong(ptr noundef readonly captures(none) %0) #4 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %3 = load i64, ptr %2, align 8, !tbaa !79
+  %3 = load i64, ptr %2, align 8, !tbaa !82
   ret i64 %3
 }
 
@@ -2738,7 +2776,7 @@ define noundef ptr @__catmint_new(ptr noundef %0) local_unnamed_addr #2 {
   %12 = load i32, ptr @gPoolCount, align 4, !tbaa !6
   %13 = load i32, ptr @gPoolCapacity, align 4, !tbaa !6
   %14 = icmp eq i32 %12, %13
-  %15 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
+  %15 = load ptr, ptr @gPoolItems, align 8, !tbaa !84
   br i1 %14, label %16, label %27
 
 16:                                               ; preds = %11
@@ -2757,7 +2795,7 @@ define noundef ptr @__catmint_new(ptr noundef %0) local_unnamed_addr #2 {
   unreachable
 
 26:                                               ; preds = %16
-  store ptr %22, ptr @gPoolItems, align 8, !tbaa !81
+  store ptr %22, ptr @gPoolItems, align 8, !tbaa !84
   store i32 %19, ptr @gPoolCapacity, align 4, !tbaa !6
   br label %27
 
@@ -2792,7 +2830,7 @@ define void @__cm_poolAdd(ptr noundef %0) local_unnamed_addr #2 {
   %7 = load i32, ptr @gPoolCount, align 4, !tbaa !6
   %8 = load i32, ptr @gPoolCapacity, align 4, !tbaa !6
   %9 = icmp eq i32 %7, %8
-  %10 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
+  %10 = load ptr, ptr @gPoolItems, align 8, !tbaa !84
   br i1 %9, label %11, label %22
 
 11:                                               ; preds = %6
@@ -2811,7 +2849,7 @@ define void @__cm_poolAdd(ptr noundef %0) local_unnamed_addr #2 {
   unreachable
 
 21:                                               ; preds = %11
-  store ptr %17, ptr @gPoolItems, align 8, !tbaa !81
+  store ptr %17, ptr @gPoolItems, align 8, !tbaa !84
   store i32 %14, ptr @gPoolCapacity, align 4, !tbaa !6
   br label %22
 
@@ -2862,7 +2900,7 @@ define void @List_init(ptr noundef writeonly captures(none) initializes((12, 20)
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind ssp willreturn memory(argmem: write) uwtable(sync)
 define void @Integer_init(ptr noundef writeonly captures(none) initializes((16, 24)) %0) local_unnamed_addr #16 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  store i64 0, ptr %2, align 8, !tbaa !79
+  store i64 0, ptr %2, align 8, !tbaa !82
   ret void
 }
 
@@ -2883,7 +2921,7 @@ define void @Process_init(ptr noundef writeonly captures(none) initializes((16, 
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 16
   store ptr null, ptr %2, align 8, !tbaa !32
   %3 = getelementptr inbounds nuw i8, ptr %0, i64 24
-  store i32 0, ptr %3, align 8, !tbaa !82
+  store i32 0, ptr %3, align 8, !tbaa !85
   ret void
 }
 
@@ -2904,18 +2942,18 @@ define void @Bytes_init(ptr noundef writeonly captures(none) initializes((12, 24
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind ssp willreturn memory(argmem: write) uwtable(sync)
 define void @Ints_init(ptr noundef writeonly captures(none) initializes((12, 24)) %0) local_unnamed_addr #16 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  store i32 0, ptr %2, align 4, !tbaa !60
+  store i32 0, ptr %2, align 4, !tbaa !63
   %3 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  store ptr null, ptr %3, align 8, !tbaa !63
+  store ptr null, ptr %3, align 8, !tbaa !66
   ret void
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind ssp willreturn memory(argmem: write) uwtable(sync)
 define void @Floats_init(ptr noundef writeonly captures(none) initializes((12, 24)) %0) local_unnamed_addr #16 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  store i32 0, ptr %2, align 4, !tbaa !70
+  store i32 0, ptr %2, align 4, !tbaa !73
   %3 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  store ptr null, ptr %3, align 8, !tbaa !73
+  store ptr null, ptr %3, align 8, !tbaa !76
   ret void
 }
 
@@ -3004,7 +3042,7 @@ define internal fastcc void @object_free(ptr noundef nonnull %0) unnamed_addr #2
 16:                                               ; preds = %9, %13
   %17 = phi ptr [ %14, %13 ], [ %6, %9 ]
   %18 = getelementptr inbounds nuw i8, ptr %17, i64 40
-  %19 = load ptr, ptr %18, align 8, !tbaa !83
+  %19 = load ptr, ptr %18, align 8, !tbaa !39
   %20 = icmp eq ptr %19, null
   br i1 %20, label %45, label %21
 
@@ -3044,7 +3082,7 @@ define internal fastcc void @object_free(ptr noundef nonnull %0) unnamed_addr #2
   %40 = getelementptr inbounds nuw i8, ptr %26, i64 4
   %41 = load i32, ptr %40, align 4, !tbaa !6
   %42 = icmp sgt i32 %41, -1
-  br i1 %42, label %24, label %43, !llvm.loop !85
+  br i1 %42, label %24, label %43, !llvm.loop !86
 
 43:                                               ; preds = %39
   %44 = load ptr, ptr %0, align 8, !tbaa !10
@@ -3116,7 +3154,7 @@ define internal fastcc void @object_free(ptr noundef nonnull %0) unnamed_addr #2
   %84 = add nuw nsw i64 %68, 1
   %85 = sext i32 %83 to i64
   %86 = icmp slt i64 %84, %85
-  br i1 %86, label %66, label %87, !llvm.loop !86
+  br i1 %86, label %66, label %87, !llvm.loop !87
 
 87:                                               ; preds = %82, %60
   %88 = getelementptr inbounds nuw i8, ptr %0, i64 24
@@ -3196,7 +3234,7 @@ define void @__cm_runtimeError(ptr noundef %0) local_unnamed_addr #20 {
 
 7:                                                ; preds = %5, %1
   %8 = phi ptr [ %2, %5 ], [ %0, %1 ]
-  %9 = load ptr, ptr @gHandlers, align 8, !tbaa !87
+  %9 = load ptr, ptr @gHandlers, align 8, !tbaa !88
   %10 = icmp eq ptr %9, null
   br i1 %10, label %13, label %11
 
@@ -3225,16 +3263,16 @@ define internal fastcc nonnull ptr @new_string(i32 noundef %0) unnamed_addr #2 {
   unreachable
 
 8:                                                ; preds = %1
-  store ptr @RString, ptr %4, align 8, !tbaa !89
+  store ptr @RString, ptr %4, align 8, !tbaa !90
   %9 = getelementptr inbounds nuw i8, ptr %4, i64 8
-  store i32 1, ptr %9, align 8, !tbaa !90
+  store i32 1, ptr %9, align 8, !tbaa !91
   %10 = getelementptr inbounds nuw i8, ptr %4, i64 12
   store i32 %0, ptr %10, align 4, !tbaa !20
   %11 = getelementptr inbounds nuw i8, ptr %4, i64 24
   %12 = getelementptr inbounds nuw i8, ptr %4, i64 16
   store ptr %11, ptr %12, align 8, !tbaa !17
   %13 = getelementptr inbounds i8, ptr %11, i64 %2
-  store i8 0, ptr %13, align 1, !tbaa !40
+  store i8 0, ptr %13, align 1, !tbaa !43
   %14 = load i32, ptr @gLiveObjects, align 4, !tbaa !6
   %15 = add nsw i32 %14, 1
   store i32 %15, ptr @gLiveObjects, align 4, !tbaa !6
@@ -3246,7 +3284,7 @@ define internal fastcc nonnull ptr @new_string(i32 noundef %0) unnamed_addr #2 {
   %19 = load i32, ptr @gPoolCount, align 4, !tbaa !6
   %20 = load i32, ptr @gPoolCapacity, align 4, !tbaa !6
   %21 = icmp eq i32 %19, %20
-  %22 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
+  %22 = load ptr, ptr @gPoolItems, align 8, !tbaa !84
   br i1 %21, label %23, label %34
 
 23:                                               ; preds = %18
@@ -3265,7 +3303,7 @@ define internal fastcc nonnull ptr @new_string(i32 noundef %0) unnamed_addr #2 {
   unreachable
 
 33:                                               ; preds = %23
-  store ptr %29, ptr @gPoolItems, align 8, !tbaa !81
+  store ptr %29, ptr @gPoolItems, align 8, !tbaa !84
   store i32 %26, ptr @gPoolCapacity, align 4, !tbaa !6
   br label %34
 
@@ -3419,7 +3457,7 @@ define nonnull ptr @__cm_concatAll(ptr noundef readonly captures(none) %0, i32 n
   %95 = add nuw nsw i64 %13, 8
   %96 = add i64 %15, 8
   %97 = icmp eq i64 %96, %11
-  br i1 %97, label %98, label %12, !llvm.loop !91
+  br i1 %97, label %98, label %12, !llvm.loop !92
 
 98:                                               ; preds = %93
   %99 = icmp eq i64 %8, 0
@@ -3452,7 +3490,7 @@ define nonnull ptr @__cm_concatAll(ptr noundef readonly captures(none) %0, i32 n
   %117 = add nuw nsw i64 %105, 1
   %118 = add i64 %107, 1
   %119 = icmp eq i64 %118, %8
-  br i1 %119, label %120, label %104, !llvm.loop !92
+  br i1 %119, label %120, label %104, !llvm.loop !93
 
 120:                                              ; preds = %115, %98
   %121 = phi i32 [ %94, %98 ], [ %116, %115 ]
@@ -3648,7 +3686,7 @@ define nonnull ptr @__cm_concatAll(ptr noundef readonly captures(none) %0, i32 n
   %267 = add nuw nsw i64 %129, 8
   %268 = add i64 %131, 8
   %269 = icmp eq i64 %268, %127
-  br i1 %269, label %270, label %128, !llvm.loop !93
+  br i1 %269, label %270, label %128, !llvm.loop !94
 
 270:                                              ; preds = %265
   %271 = icmp eq i64 %124, 0
@@ -3689,7 +3727,7 @@ define nonnull ptr @__cm_concatAll(ptr noundef readonly captures(none) %0, i32 n
   %296 = add nuw nsw i64 %277, 1
   %297 = add i64 %279, 1
   %298 = icmp eq i64 %297, %124
-  br i1 %298, label %299, label %276, !llvm.loop !94
+  br i1 %298, label %299, label %276, !llvm.loop !95
 
 299:                                              ; preds = %270, %294, %4
   %300 = phi ptr [ %5, %4 ], [ %122, %294 ], [ %122, %270 ]
@@ -3697,7 +3735,7 @@ define nonnull ptr @__cm_concatAll(ptr noundef readonly captures(none) %0, i32 n
 }
 
 ; Function Attrs: mustprogress nocallback nofree nounwind willreturn memory(argmem: read)
-declare i32 @strncmp(ptr noundef captures(none), ptr noundef captures(none), i64 noundef) local_unnamed_addr #21
+declare i32 @memcmp(ptr noundef captures(none), ptr noundef captures(none), i64 noundef) local_unnamed_addr #21
 
 ; Function Attrs: nofree nounwind
 declare noundef i32 @scanf(ptr noundef readonly captures(none), ...) local_unnamed_addr #22
@@ -3774,7 +3812,7 @@ define i32 @__cm_ifaceBase(ptr noundef readonly captures(address_is_null) %0, pt
   br i1 %4, label %8, label %5
 
 5:                                                ; preds = %2
-  %6 = load ptr, ptr %0, align 8, !tbaa !95
+  %6 = load ptr, ptr %0, align 8, !tbaa !96
   %7 = icmp eq ptr %6, null
   br i1 %7, label %29, label %9
 
@@ -3790,7 +3828,7 @@ define i32 @__cm_ifaceBase(ptr noundef readonly captures(address_is_null) %0, pt
   br i1 %13, label %25, label %14
 
 14:                                               ; preds = %9
-  %15 = load ptr, ptr %12, align 8, !tbaa !96
+  %15 = load ptr, ptr %12, align 8, !tbaa !97
   %16 = icmp eq ptr %15, null
   br i1 %16, label %25, label %17
 
@@ -3802,15 +3840,15 @@ define i32 @__cm_ifaceBase(ptr noundef readonly captures(address_is_null) %0, pt
 
 21:                                               ; preds = %17
   %22 = getelementptr inbounds nuw i8, ptr %19, i64 16
-  %23 = load ptr, ptr %22, align 8, !tbaa !96
+  %23 = load ptr, ptr %22, align 8, !tbaa !97
   %24 = icmp eq ptr %23, null
-  br i1 %24, label %25, label %17, !llvm.loop !98
+  br i1 %24, label %25, label %17, !llvm.loop !99
 
 25:                                               ; preds = %21, %14, %9
   %26 = getelementptr inbounds nuw i8, ptr %10, i64 16
-  %27 = load ptr, ptr %26, align 8, !tbaa !95
+  %27 = load ptr, ptr %26, align 8, !tbaa !96
   %28 = icmp eq ptr %27, null
-  br i1 %28, label %29, label %9, !llvm.loop !99
+  br i1 %28, label %29, label %9, !llvm.loop !100
 
 29:                                               ; preds = %25, %5
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
@@ -3826,7 +3864,7 @@ define i32 @__cm_ifaceBase(ptr noundef readonly captures(address_is_null) %0, pt
 
 37:                                               ; preds = %17
   %38 = getelementptr inbounds nuw i8, ptr %19, i64 8
-  %39 = load i32, ptr %38, align 8, !tbaa !100
+  %39 = load i32, ptr %38, align 8, !tbaa !101
   ret i32 %39
 }
 
@@ -3836,15 +3874,15 @@ define range(i32 0, 2) i32 @__cm_isType(ptr noundef readonly captures(address_is
   br i1 %3, label %34, label %4
 
 4:                                                ; preds = %2
-  %5 = load ptr, ptr %0, align 8, !tbaa !95
+  %5 = load ptr, ptr %0, align 8, !tbaa !96
   %6 = icmp eq ptr %5, null
   br i1 %6, label %34, label %11
 
 7:                                                ; preds = %11
   %8 = getelementptr inbounds nuw i8, ptr %12, i64 16
-  %9 = load ptr, ptr %8, align 8, !tbaa !95
+  %9 = load ptr, ptr %8, align 8, !tbaa !96
   %10 = icmp eq ptr %9, null
-  br i1 %10, label %14, label %11, !llvm.loop !101
+  br i1 %10, label %14, label %11, !llvm.loop !102
 
 11:                                               ; preds = %4, %7
   %12 = phi ptr [ %9, %7 ], [ %5, %4 ]
@@ -3859,15 +3897,15 @@ define range(i32 0, 2) i32 @__cm_isType(ptr noundef readonly captures(address_is
   br i1 %18, label %30, label %19
 
 19:                                               ; preds = %14
-  %20 = load ptr, ptr %17, align 8, !tbaa !96
+  %20 = load ptr, ptr %17, align 8, !tbaa !97
   %21 = icmp eq ptr %20, null
   br i1 %21, label %30, label %26
 
 22:                                               ; preds = %26
   %23 = getelementptr inbounds nuw i8, ptr %28, i64 16
-  %24 = load ptr, ptr %23, align 8, !tbaa !96
+  %24 = load ptr, ptr %23, align 8, !tbaa !97
   %25 = icmp eq ptr %24, null
-  br i1 %25, label %30, label %26, !llvm.loop !102
+  br i1 %25, label %30, label %26, !llvm.loop !103
 
 26:                                               ; preds = %19, %22
   %27 = phi ptr [ %24, %22 ], [ %20, %19 ]
@@ -3877,9 +3915,9 @@ define range(i32 0, 2) i32 @__cm_isType(ptr noundef readonly captures(address_is
 
 30:                                               ; preds = %22, %19, %14
   %31 = getelementptr inbounds nuw i8, ptr %15, i64 16
-  %32 = load ptr, ptr %31, align 8, !tbaa !95
+  %32 = load ptr, ptr %31, align 8, !tbaa !96
   %33 = icmp eq ptr %32, null
-  br i1 %33, label %34, label %14, !llvm.loop !103
+  br i1 %33, label %34, label %14, !llvm.loop !104
 
 34:                                               ; preds = %11, %30, %26, %4, %2
   %35 = phi i32 [ 0, %4 ], [ 0, %2 ], [ 1, %26 ], [ 0, %30 ], [ 1, %11 ]
@@ -3904,9 +3942,9 @@ define noundef ptr @__cm_cast(ptr noundef readonly returned captures(address_is_
 
 11:                                               ; preds = %8
   %12 = getelementptr inbounds nuw i8, ptr %9, i64 16
-  %13 = load ptr, ptr %12, align 8, !tbaa !95
+  %13 = load ptr, ptr %12, align 8, !tbaa !96
   %14 = icmp eq ptr %13, null
-  br i1 %14, label %15, label %8, !llvm.loop !104
+  br i1 %14, label %15, label %8, !llvm.loop !105
 
 15:                                               ; preds = %11, %31
   %16 = phi ptr [ %33, %31 ], [ %6, %11 ]
@@ -3916,15 +3954,15 @@ define noundef ptr @__cm_cast(ptr noundef readonly returned captures(address_is_
   br i1 %19, label %31, label %20
 
 20:                                               ; preds = %15
-  %21 = load ptr, ptr %18, align 8, !tbaa !96
+  %21 = load ptr, ptr %18, align 8, !tbaa !97
   %22 = icmp eq ptr %21, null
   br i1 %22, label %31, label %27
 
 23:                                               ; preds = %27
   %24 = getelementptr inbounds nuw i8, ptr %29, i64 16
-  %25 = load ptr, ptr %24, align 8, !tbaa !96
+  %25 = load ptr, ptr %24, align 8, !tbaa !97
   %26 = icmp eq ptr %25, null
-  br i1 %26, label %31, label %27, !llvm.loop !102
+  br i1 %26, label %31, label %27, !llvm.loop !103
 
 27:                                               ; preds = %20, %23
   %28 = phi ptr [ %25, %23 ], [ %21, %20 ]
@@ -3934,9 +3972,9 @@ define noundef ptr @__cm_cast(ptr noundef readonly returned captures(address_is_
 
 31:                                               ; preds = %23, %20, %15
   %32 = getelementptr inbounds nuw i8, ptr %16, i64 16
-  %33 = load ptr, ptr %32, align 8, !tbaa !95
+  %33 = load ptr, ptr %32, align 8, !tbaa !96
   %34 = icmp eq ptr %33, null
-  br i1 %34, label %35, label %15, !llvm.loop !103
+  br i1 %34, label %35, label %15, !llvm.loop !104
 
 35:                                               ; preds = %31, %5
   call void @llvm.lifetime.start.p0(ptr nonnull %3) #40
@@ -3978,34 +4016,34 @@ define noundef ptr @__cm_boxLong(i64 noundef %0) local_unnamed_addr #2 {
   %17 = getelementptr i8, ptr %13, i64 3072
   %18 = getelementptr i8, ptr %14, i64 3072
   %19 = getelementptr i8, ptr %15, i64 3072
-  store ptr @RInteger, ptr %16, align 8, !tbaa !105
-  store ptr @RInteger, ptr %17, align 8, !tbaa !105
-  store ptr @RInteger, ptr %18, align 8, !tbaa !105
-  store ptr @RInteger, ptr %19, align 8, !tbaa !105
+  store ptr @RInteger, ptr %16, align 8, !tbaa !106
+  store ptr @RInteger, ptr %17, align 8, !tbaa !106
+  store ptr @RInteger, ptr %18, align 8, !tbaa !106
+  store ptr @RInteger, ptr %19, align 8, !tbaa !106
   %20 = getelementptr i8, ptr %12, i64 3080
   %21 = getelementptr i8, ptr %13, i64 3080
   %22 = getelementptr i8, ptr %14, i64 3080
   %23 = getelementptr i8, ptr %15, i64 3080
-  store i32 0, ptr %20, align 8, !tbaa !106
-  store i32 0, ptr %21, align 8, !tbaa !106
-  store i32 0, ptr %22, align 8, !tbaa !106
-  store i32 0, ptr %23, align 8, !tbaa !106
+  store i32 0, ptr %20, align 8, !tbaa !107
+  store i32 0, ptr %21, align 8, !tbaa !107
+  store i32 0, ptr %22, align 8, !tbaa !107
+  store i32 0, ptr %23, align 8, !tbaa !107
   %24 = getelementptr i8, ptr %12, i64 3088
   %25 = getelementptr i8, ptr %13, i64 3088
   %26 = getelementptr i8, ptr %14, i64 3088
   %27 = getelementptr i8, ptr %15, i64 3088
-  store i64 %8, ptr %24, align 8, !tbaa !79
-  store i64 %9, ptr %25, align 8, !tbaa !79
-  store i64 %10, ptr %26, align 8, !tbaa !79
-  store i64 %11, ptr %27, align 8, !tbaa !79
+  store i64 %8, ptr %24, align 8, !tbaa !82
+  store i64 %9, ptr %25, align 8, !tbaa !82
+  store i64 %10, ptr %26, align 8, !tbaa !82
+  store i64 %11, ptr %27, align 8, !tbaa !82
   %28 = add nuw i64 %7, 4
   %29 = icmp eq i64 %28, 1152
-  br i1 %29, label %30, label %6, !llvm.loop !107
+  br i1 %29, label %30, label %6, !llvm.loop !108
 
 30:                                               ; preds = %6
-  store ptr @RInteger, ptr getelementptr inbounds nuw (i8, ptr @gSmallIntegers, i64 27648), align 8, !tbaa !105
-  store i32 0, ptr getelementptr inbounds nuw (i8, ptr @gSmallIntegers, i64 27656), align 8, !tbaa !106
-  store i64 1024, ptr getelementptr inbounds nuw (i8, ptr @gSmallIntegers, i64 27664), align 8, !tbaa !79
+  store ptr @RInteger, ptr getelementptr inbounds nuw (i8, ptr @gSmallIntegers, i64 27648), align 8, !tbaa !106
+  store i32 0, ptr getelementptr inbounds nuw (i8, ptr @gSmallIntegers, i64 27656), align 8, !tbaa !107
+  store i64 1024, ptr getelementptr inbounds nuw (i8, ptr @gSmallIntegers, i64 27664), align 8, !tbaa !82
   store i1 true, ptr @gSmallIntegersReady, align 4
   br label %31
 
@@ -4017,7 +4055,7 @@ define noundef ptr @__cm_boxLong(i64 noundef %0) local_unnamed_addr #2 {
 34:                                               ; preds = %1
   %35 = tail call ptr @__catmint_new(ptr noundef nonnull @RInteger)
   %36 = getelementptr inbounds nuw i8, ptr %35, i64 16
-  store i64 %0, ptr %36, align 8, !tbaa !79
+  store i64 %0, ptr %36, align 8, !tbaa !82
   br label %37
 
 37:                                               ; preds = %34, %31
@@ -4051,7 +4089,7 @@ define i64 @__cm_unboxLong(ptr noundef readonly captures(address_is_null) %0) lo
 
 13:                                               ; preds = %5
   %14 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %15 = load i64, ptr %14, align 8, !tbaa !79
+  %15 = load i64, ptr %14, align 8, !tbaa !82
   ret i64 %15
 }
 
@@ -4090,7 +4128,7 @@ define range(i32 0, 2) i32 @__cm_equals(ptr noundef readonly captures(address) %
   %23 = getelementptr inbounds nuw i8, ptr %1, i64 16
   %24 = load ptr, ptr %23, align 8, !tbaa !17
   %25 = sext i32 %16 to i64
-  %26 = tail call i32 @strncmp(ptr noundef %22, ptr noundef %24, i64 noundef %25) #40
+  %26 = tail call i32 @memcmp(ptr noundef %22, ptr noundef %24, i64 noundef %25)
   %27 = icmp eq i32 %26, 0
   br label %36
 
@@ -4100,9 +4138,9 @@ define range(i32 0, 2) i32 @__cm_equals(ptr noundef readonly captures(address) %
 
 30:                                               ; preds = %28
   %31 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %32 = load i64, ptr %31, align 8, !tbaa !79
+  %32 = load i64, ptr %31, align 8, !tbaa !82
   %33 = getelementptr inbounds nuw i8, ptr %1, i64 16
-  %34 = load i64, ptr %33, align 8, !tbaa !79
+  %34 = load i64, ptr %33, align 8, !tbaa !82
   %35 = icmp eq i64 %32, %34
   br label %36
 
@@ -4163,17 +4201,14 @@ define nonnull ptr @__cm_longToString(i64 noundef %0) local_unnamed_addr #2 {
   ret ptr %6
 }
 
-; Function Attrs: mustprogress nocallback nofree nounwind willreturn memory(argmem: read)
-declare i32 @memcmp(ptr noundef captures(none), ptr noundef captures(none), i64 noundef) local_unnamed_addr #21
-
 ; Function Attrs: nounwind ssp uwtable(sync)
 define nonnull ptr @M6_String_chr(i32 noundef %0) local_unnamed_addr #2 {
   %2 = alloca [2 x i8], align 1
   call void @llvm.lifetime.start.p0(ptr nonnull %2) #40
   %3 = trunc i32 %0 to i8
-  store i8 %3, ptr %2, align 1, !tbaa !40
+  store i8 %3, ptr %2, align 1, !tbaa !43
   %4 = getelementptr inbounds nuw i8, ptr %2, i64 1
-  store i8 0, ptr %4, align 1, !tbaa !40
+  store i8 0, ptr %4, align 1, !tbaa !43
   %5 = call i64 @strlen(ptr noundef nonnull readonly dereferenceable(1) %2) #40
   %6 = trunc i64 %5 to i32
   %7 = tail call fastcc ptr @new_string(i32 noundef %6)
@@ -4189,7 +4224,7 @@ declare double @"\01_strtod"(ptr noundef, ptr noundef) local_unnamed_addr #23
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind ssp willreturn memory(write, argmem: none, inaccessiblemem: none, target_mem0: none, target_mem1: none) uwtable(sync)
 define void @__cm_setArgs(i32 noundef %0, ptr noundef %1) local_unnamed_addr #28 {
   store i32 %0, ptr @gArgCount, align 4, !tbaa !6
-  store ptr %1, ptr @gArgValues, align 8, !tbaa !108
+  store ptr %1, ptr @gArgValues, align 8, !tbaa !109
   ret void
 }
 
@@ -4384,14 +4419,14 @@ define void @__cm_pushHandler(ptr noundef %0) local_unnamed_addr #8 {
   unreachable
 
 6:                                                ; preds = %1
-  store ptr %0, ptr %2, align 8, !tbaa !110
+  store ptr %0, ptr %2, align 8, !tbaa !111
   %7 = load i32, ptr @gPoolDepth, align 4, !tbaa !6
   %8 = getelementptr inbounds nuw i8, ptr %2, i64 8
-  store i32 %7, ptr %8, align 8, !tbaa !112
-  %9 = load ptr, ptr @gHandlers, align 8, !tbaa !87
+  store i32 %7, ptr %8, align 8, !tbaa !113
+  %9 = load ptr, ptr @gHandlers, align 8, !tbaa !88
   %10 = getelementptr inbounds nuw i8, ptr %2, i64 16
-  store ptr %9, ptr %10, align 8, !tbaa !113
-  store ptr %2, ptr @gHandlers, align 8, !tbaa !87
+  store ptr %9, ptr %10, align 8, !tbaa !114
+  store ptr %2, ptr @gHandlers, align 8, !tbaa !88
   ret void
 }
 
@@ -4403,14 +4438,14 @@ define i32 @__cm_poolDepth() local_unnamed_addr #9 {
 
 ; Function Attrs: mustprogress nounwind ssp willreturn memory(readwrite, target_mem0: none, target_mem1: none) uwtable(sync)
 define void @__cm_popHandler() local_unnamed_addr #31 {
-  %1 = load ptr, ptr @gHandlers, align 8, !tbaa !87
+  %1 = load ptr, ptr @gHandlers, align 8, !tbaa !88
   %2 = icmp eq ptr %1, null
   br i1 %2, label %6, label %3
 
 3:                                                ; preds = %0
   %4 = getelementptr inbounds nuw i8, ptr %1, i64 16
-  %5 = load ptr, ptr %4, align 8, !tbaa !113
-  store ptr %5, ptr @gHandlers, align 8, !tbaa !87
+  %5 = load ptr, ptr %4, align 8, !tbaa !114
+  store ptr %5, ptr @gHandlers, align 8, !tbaa !88
   tail call void @free(ptr noundef nonnull %1)
   br label %6
 
@@ -4429,7 +4464,7 @@ define ptr @__cm_caught() local_unnamed_addr #9 {
 
 ; Function Attrs: noreturn nounwind ssp uwtable(sync)
 define void @__cm_throw(ptr noundef %0) local_unnamed_addr #20 {
-  %2 = load ptr, ptr @gHandlers, align 8, !tbaa !87
+  %2 = load ptr, ptr @gHandlers, align 8, !tbaa !88
   store ptr %0, ptr @gThrown, align 8, !tbaa !26
   %3 = icmp eq ptr %2, null
   br i1 %3, label %4, label %21
@@ -4465,13 +4500,13 @@ define void @__cm_throw(ptr noundef %0) local_unnamed_addr #20 {
   unreachable
 
 21:                                               ; preds = %1
-  %22 = load ptr, ptr %2, align 8, !tbaa !110
+  %22 = load ptr, ptr %2, align 8, !tbaa !111
   %23 = getelementptr inbounds nuw i8, ptr %2, i64 16
-  %24 = load ptr, ptr %23, align 8, !tbaa !113
-  store ptr %24, ptr @gHandlers, align 8, !tbaa !87
+  %24 = load ptr, ptr %23, align 8, !tbaa !114
+  store ptr %24, ptr @gHandlers, align 8, !tbaa !88
   tail call void @__cm_retain(ptr noundef %0)
   %25 = getelementptr inbounds nuw i8, ptr %2, i64 8
-  %26 = load i32, ptr %25, align 8, !tbaa !112
+  %26 = load i32, ptr %25, align 8, !tbaa !113
   tail call void @__cm_poolUnwind(i32 noundef %26)
   tail call void @free(ptr noundef nonnull %2)
   tail call void @longjmp(ptr noundef %22, i32 noundef 1) #45
@@ -4492,7 +4527,7 @@ define void @__cm_poolUnwind(i32 noundef %0) local_unnamed_addr #2 {
 7:                                                ; preds = %4
   %8 = add nsw i32 %5, -1
   store i32 %8, ptr @gPoolDepth, align 4, !tbaa !6
-  %9 = load ptr, ptr @gPoolMarks, align 8, !tbaa !83
+  %9 = load ptr, ptr @gPoolMarks, align 8, !tbaa !39
   %10 = sext i32 %8 to i64
   %11 = getelementptr inbounds i32, ptr %9, i64 %10
   %12 = load i32, ptr %11, align 4, !tbaa !6
@@ -4502,7 +4537,7 @@ define void @__cm_poolUnwind(i32 noundef %0) local_unnamed_addr #2 {
 
 15:                                               ; preds = %7, %51
   %16 = phi i32 [ %52, %51 ], [ %13, %7 ]
-  %17 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
+  %17 = load ptr, ptr @gPoolItems, align 8, !tbaa !84
   %18 = add nsw i32 %16, -1
   %19 = sext i32 %18 to i64
   %20 = getelementptr inbounds ptr, ptr %17, i64 %19
@@ -4519,23 +4554,23 @@ define void @__cm_poolUnwind(i32 noundef %0) local_unnamed_addr #2 {
   %28 = load ptr, ptr %27, align 8, !tbaa !26
   store ptr null, ptr %27, align 8, !tbaa !26
   %29 = icmp eq ptr %28, null
-  br i1 %29, label %51, label %30, !llvm.loop !114
+  br i1 %29, label %51, label %30, !llvm.loop !115
 
 30:                                               ; preds = %25
   %31 = getelementptr inbounds nuw i8, ptr %28, i64 8
   %32 = load i32, ptr %31, align 8, !tbaa !16
   %33 = icmp eq i32 %32, 0
-  br i1 %33, label %51, label %34, !llvm.loop !114
+  br i1 %33, label %51, label %34, !llvm.loop !115
 
 34:                                               ; preds = %30
   %35 = add nsw i32 %32, -1
   store i32 %35, ptr %31, align 8, !tbaa !16
   %36 = icmp eq i32 %35, 0
-  br i1 %36, label %37, label %51, !llvm.loop !114
+  br i1 %36, label %37, label %51, !llvm.loop !115
 
 37:                                               ; preds = %34
   store i32 1, ptr %31, align 8, !tbaa !16
-  br label %48, !llvm.loop !114
+  br label %48, !llvm.loop !115
 
 38:                                               ; preds = %15
   %39 = icmp eq ptr %21, null
@@ -4575,7 +4610,7 @@ define void @__cm_poolUnwind(i32 noundef %0) local_unnamed_addr #2 {
 56:                                               ; preds = %54, %4, %7
   %57 = phi i32 [ %55, %54 ], [ 0, %4 ], [ %8, %7 ]
   %58 = icmp sgt i32 %57, %0
-  br i1 %58, label %4, label %59, !llvm.loop !115
+  br i1 %58, label %4, label %59, !llvm.loop !116
 
 59:                                               ; preds = %56, %1
   ret void
@@ -4589,7 +4624,7 @@ define void @__cm_poolPush() local_unnamed_addr #2 {
   %1 = load i32, ptr @gPoolDepth, align 4, !tbaa !6
   %2 = load i32, ptr @gPoolMarkCapacity, align 4, !tbaa !6
   %3 = icmp eq i32 %1, %2
-  %4 = load ptr, ptr @gPoolMarks, align 8, !tbaa !83
+  %4 = load ptr, ptr @gPoolMarks, align 8, !tbaa !39
   br i1 %3, label %5, label %16
 
 5:                                                ; preds = %0
@@ -4608,7 +4643,7 @@ define void @__cm_poolPush() local_unnamed_addr #2 {
   unreachable
 
 15:                                               ; preds = %5
-  store ptr %11, ptr @gPoolMarks, align 8, !tbaa !83
+  store ptr %11, ptr @gPoolMarks, align 8, !tbaa !39
   store i32 %8, ptr @gPoolMarkCapacity, align 4, !tbaa !6
   br label %16
 
@@ -4632,7 +4667,7 @@ define void @__cm_poolPop() local_unnamed_addr #2 {
 3:                                                ; preds = %0
   %4 = add nsw i32 %1, -1
   store i32 %4, ptr @gPoolDepth, align 4, !tbaa !6
-  %5 = load ptr, ptr @gPoolMarks, align 8, !tbaa !83
+  %5 = load ptr, ptr @gPoolMarks, align 8, !tbaa !39
   %6 = sext i32 %4 to i64
   %7 = getelementptr inbounds i32, ptr %5, i64 %6
   %8 = load i32, ptr %7, align 4, !tbaa !6
@@ -4641,7 +4676,7 @@ define void @__cm_poolPop() local_unnamed_addr #2 {
   br i1 %10, label %11, label %39
 
 11:                                               ; preds = %3
-  %12 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
+  %12 = load ptr, ptr @gPoolItems, align 8, !tbaa !84
   br label %13
 
 13:                                               ; preds = %11, %35
@@ -4674,7 +4709,7 @@ define void @__cm_poolPop() local_unnamed_addr #2 {
 32:                                               ; preds = %29
   store i32 1, ptr %26, align 8, !tbaa !16
   tail call fastcc void @object_free(ptr noundef %19)
-  %33 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
+  %33 = load ptr, ptr @gPoolItems, align 8, !tbaa !84
   %34 = load i32, ptr @gPoolCount, align 4, !tbaa !6
   br label %35
 
@@ -4700,7 +4735,7 @@ define void @__cm_poolAddSlot(ptr noundef %0) local_unnamed_addr #2 {
   %7 = load i32, ptr @gPoolCount, align 4, !tbaa !6
   %8 = load i32, ptr @gPoolCapacity, align 4, !tbaa !6
   %9 = icmp eq i32 %7, %8
-  %10 = load ptr, ptr @gPoolItems, align 8, !tbaa !81
+  %10 = load ptr, ptr @gPoolItems, align 8, !tbaa !84
   br i1 %9, label %11, label %22
 
 11:                                               ; preds = %6
@@ -4719,7 +4754,7 @@ define void @__cm_poolAddSlot(ptr noundef %0) local_unnamed_addr #2 {
   unreachable
 
 21:                                               ; preds = %11
-  store ptr %17, ptr @gPoolItems, align 8, !tbaa !81
+  store ptr %17, ptr @gPoolItems, align 8, !tbaa !84
   store i32 %14, ptr @gPoolCapacity, align 4, !tbaa !6
   br label %22
 
@@ -4866,19 +4901,19 @@ define range(i32 -2147483647, -2147483648) i32 @__cm_workerStart(ptr noundef %0,
   %7 = sext i32 %3 to i64
   %8 = getelementptr inbounds %struct.__cm_worker, ptr @gWorkers, i64 %7
   %9 = getelementptr inbounds nuw i8, ptr %8, i64 8
-  store ptr %0, ptr %9, align 8, !tbaa !116
+  store ptr %0, ptr %9, align 8, !tbaa !117
   %10 = getelementptr inbounds nuw i8, ptr %8, i64 16
-  store i64 %1, ptr %10, align 8, !tbaa !119
+  store i64 %1, ptr %10, align 8, !tbaa !120
   %11 = getelementptr inbounds nuw i8, ptr %8, i64 24
-  store i64 0, ptr %11, align 8, !tbaa !120
+  store i64 0, ptr %11, align 8, !tbaa !121
   %12 = getelementptr inbounds nuw i8, ptr %8, i64 32
-  store i32 1, ptr %12, align 8, !tbaa !121
+  store i32 1, ptr %12, align 8, !tbaa !122
   %13 = tail call i32 @pthread_create(ptr noundef nonnull %8, ptr noundef null, ptr noundef nonnull @worker_body, ptr noundef nonnull %8) #40
   %14 = icmp eq i32 %13, 0
   br i1 %14, label %16, label %15
 
 15:                                               ; preds = %6
-  store i32 0, ptr %12, align 8, !tbaa !121
+  store i32 0, ptr %12, align 8, !tbaa !122
   br label %19
 
 16:                                               ; preds = %6
@@ -4897,12 +4932,12 @@ declare i32 @pthread_create(ptr noundef, ptr noundef, ptr noundef, ptr noundef) 
 ; Function Attrs: nounwind ssp uwtable(sync)
 define internal noalias noundef ptr @worker_body(ptr noundef captures(none) initializes((24, 32)) %0) #2 {
   %2 = getelementptr inbounds nuw i8, ptr %0, i64 8
-  %3 = load ptr, ptr %2, align 8, !tbaa !116
+  %3 = load ptr, ptr %2, align 8, !tbaa !117
   %4 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %5 = load i64, ptr %4, align 8, !tbaa !119
+  %5 = load i64, ptr %4, align 8, !tbaa !120
   %6 = tail call i64 %3(i64 noundef %5) #40
   %7 = getelementptr inbounds nuw i8, ptr %0, i64 24
-  store i64 %6, ptr %7, align 8, !tbaa !120
+  store i64 %6, ptr %7, align 8, !tbaa !121
   ret ptr null
 }
 
@@ -4926,7 +4961,7 @@ define i64 @M6_Worker_wait(i32 noundef %0) local_unnamed_addr #2 {
   %10 = zext nneg i32 %0 to i64
   %11 = getelementptr %struct.__cm_worker, ptr @gWorkers, i64 %10
   %12 = getelementptr i8, ptr %11, i64 -8
-  %13 = load i32, ptr %12, align 8, !tbaa !121
+  %13 = load i32, ptr %12, align 8, !tbaa !122
   %14 = icmp eq i32 %13, 0
   br i1 %14, label %15, label %16
 
@@ -4936,14 +4971,14 @@ define i64 @M6_Worker_wait(i32 noundef %0) local_unnamed_addr #2 {
 
 16:                                               ; preds = %9
   %17 = getelementptr i8, ptr %11, i64 -40
-  %18 = load ptr, ptr %17, align 8, !tbaa !122
+  %18 = load ptr, ptr %17, align 8, !tbaa !123
   %19 = tail call i32 @"\01_pthread_join"(ptr noundef %18, ptr noundef null) #40
-  store i32 0, ptr %12, align 8, !tbaa !121
+  store i32 0, ptr %12, align 8, !tbaa !122
   %20 = load i32, ptr @gWorkersCollected, align 4, !tbaa !6
   %21 = add nsw i32 %20, 1
   store i32 %21, ptr @gWorkersCollected, align 4, !tbaa !6
   %22 = getelementptr i8, ptr %11, i64 -16
-  %23 = load i64, ptr %22, align 8, !tbaa !120
+  %23 = load i64, ptr %22, align 8, !tbaa !121
   %24 = load i32, ptr @gWorkerCount, align 4, !tbaa !6
   %25 = icmp eq i32 %21, %24
   br i1 %25, label %26, label %27
@@ -5012,7 +5047,7 @@ define void @M5_Bytes_init(ptr noundef captures(none) %0, i32 noundef %1) local_
 define void @M4_Ints_init(ptr noundef captures(none) %0, i32 noundef %1) local_unnamed_addr #2 {
   %3 = alloca [128 x i8], align 1
   %4 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %5 = load ptr, ptr %4, align 8, !tbaa !63
+  %5 = load ptr, ptr %4, align 8, !tbaa !66
   tail call void @free(ptr noundef %5)
   %6 = icmp slt i32 %1, 0
   br i1 %6, label %7, label %9
@@ -5039,9 +5074,9 @@ define void @M4_Ints_init(ptr noundef captures(none) %0, i32 noundef %1) local_u
 
 16:                                               ; preds = %9, %11
   %17 = phi ptr [ null, %9 ], [ %13, %11 ]
-  store ptr %17, ptr %4, align 8, !tbaa !63
+  store ptr %17, ptr %4, align 8, !tbaa !66
   %18 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  store i32 %1, ptr %18, align 4, !tbaa !60
+  store i32 %1, ptr %18, align 4, !tbaa !63
   ret void
 }
 
@@ -5049,7 +5084,7 @@ define void @M4_Ints_init(ptr noundef captures(none) %0, i32 noundef %1) local_u
 define void @M6_Floats_init(ptr noundef captures(none) %0, i32 noundef %1) local_unnamed_addr #2 {
   %3 = alloca [128 x i8], align 1
   %4 = getelementptr inbounds nuw i8, ptr %0, i64 16
-  %5 = load ptr, ptr %4, align 8, !tbaa !73
+  %5 = load ptr, ptr %4, align 8, !tbaa !76
   tail call void @free(ptr noundef %5)
   %6 = icmp slt i32 %1, 0
   br i1 %6, label %7, label %9
@@ -5076,9 +5111,9 @@ define void @M6_Floats_init(ptr noundef captures(none) %0, i32 noundef %1) local
 
 16:                                               ; preds = %9, %11
   %17 = phi ptr [ null, %9 ], [ %13, %11 ]
-  store ptr %17, ptr %4, align 8, !tbaa !73
+  store ptr %17, ptr %4, align 8, !tbaa !76
   %18 = getelementptr inbounds nuw i8, ptr %0, i64 12
-  store i32 %1, ptr %18, align 4, !tbaa !70
+  store i32 %1, ptr %18, align 4, !tbaa !73
   ret void
 }
 
@@ -5196,87 +5231,88 @@ attributes #45 = { noreturn nounwind }
 !36 = !{!35, !7, i64 12}
 !37 = distinct !{!37, !38}
 !38 = !{!"llvm.loop.unroll.disable"}
-!39 = !{!19, !19, i64 0}
-!40 = !{!8, !8, i64 0}
+!39 = !{!40, !40, i64 0}
+!40 = !{!"p1 int", !13, i64 0}
 !41 = distinct !{!41, !28}
-!42 = distinct !{!42, !28}
-!43 = distinct !{!43, !28}
+!42 = !{!19, !19, i64 0}
+!43 = !{!8, !8, i64 0}
 !44 = distinct !{!44, !28}
 !45 = distinct !{!45, !28}
 !46 = distinct !{!46, !28}
 !47 = distinct !{!47, !28}
-!48 = !{!31, !31, i64 0}
-!49 = !{i64 0, i64 8, !50, i64 8, i64 8, !50}
-!50 = !{!51, !51, i64 0}
-!51 = !{!"long", !8, i64 0}
-!52 = !{!53, !51, i64 0}
-!53 = !{!"timespec", !51, i64 0, !51, i64 8}
-!54 = !{!53, !51, i64 8}
-!55 = !{!56, !7, i64 8}
-!56 = !{!"tm", !7, i64 0, !7, i64 4, !7, i64 8, !7, i64 12, !7, i64 16, !7, i64 20, !7, i64 24, !7, i64 28, !7, i64 32, !51, i64 40, !19, i64 48}
-!57 = !{!56, !7, i64 4}
-!58 = !{!56, !7, i64 0}
-!59 = !{!56, !7, i64 28}
-!60 = !{!61, !7, i64 12}
-!61 = !{!"TInts", !12, i64 0, !7, i64 8, !7, i64 12, !62, i64 16}
-!62 = !{!"p1 long long", !13, i64 0}
-!63 = !{!61, !62, i64 16}
-!64 = !{!65, !65, i64 0}
-!65 = !{!"long long", !8, i64 0}
-!66 = distinct !{!66, !28, !67, !68}
-!67 = !{!"llvm.loop.isvectorized", i32 1}
-!68 = !{!"llvm.loop.unroll.runtime.disable"}
-!69 = distinct !{!69, !28, !68, !67}
-!70 = !{!71, !7, i64 12}
-!71 = !{!"TFloats", !12, i64 0, !7, i64 8, !7, i64 12, !72, i64 16}
-!72 = !{!"p1 double", !13, i64 0}
-!73 = !{!71, !72, i64 16}
-!74 = !{!75, !75, i64 0}
-!75 = !{!"double", !8, i64 0}
-!76 = distinct !{!76, !28, !67, !68}
-!77 = distinct !{!77, !28, !68, !67}
-!78 = distinct !{!78, !28}
-!79 = !{!80, !65, i64 16}
-!80 = !{!"TInteger", !12, i64 0, !7, i64 8, !65, i64 16}
-!81 = !{!23, !23, i64 0}
-!82 = !{!33, !7, i64 24}
-!83 = !{!84, !84, i64 0}
-!84 = !{!"p1 int", !13, i64 0}
-!85 = distinct !{!85, !28}
+!48 = distinct !{!48, !28}
+!49 = distinct !{!49, !28}
+!50 = distinct !{!50, !28}
+!51 = !{!31, !31, i64 0}
+!52 = !{i64 0, i64 8, !53, i64 8, i64 8, !53}
+!53 = !{!54, !54, i64 0}
+!54 = !{!"long", !8, i64 0}
+!55 = !{!56, !54, i64 0}
+!56 = !{!"timespec", !54, i64 0, !54, i64 8}
+!57 = !{!56, !54, i64 8}
+!58 = !{!59, !7, i64 8}
+!59 = !{!"tm", !7, i64 0, !7, i64 4, !7, i64 8, !7, i64 12, !7, i64 16, !7, i64 20, !7, i64 24, !7, i64 28, !7, i64 32, !54, i64 40, !19, i64 48}
+!60 = !{!59, !7, i64 4}
+!61 = !{!59, !7, i64 0}
+!62 = !{!59, !7, i64 28}
+!63 = !{!64, !7, i64 12}
+!64 = !{!"TInts", !12, i64 0, !7, i64 8, !7, i64 12, !65, i64 16}
+!65 = !{!"p1 long long", !13, i64 0}
+!66 = !{!64, !65, i64 16}
+!67 = !{!68, !68, i64 0}
+!68 = !{!"long long", !8, i64 0}
+!69 = distinct !{!69, !28, !70, !71}
+!70 = !{!"llvm.loop.isvectorized", i32 1}
+!71 = !{!"llvm.loop.unroll.runtime.disable"}
+!72 = distinct !{!72, !28, !71, !70}
+!73 = !{!74, !7, i64 12}
+!74 = !{!"TFloats", !12, i64 0, !7, i64 8, !7, i64 12, !75, i64 16}
+!75 = !{!"p1 double", !13, i64 0}
+!76 = !{!74, !75, i64 16}
+!77 = !{!78, !78, i64 0}
+!78 = !{!"double", !8, i64 0}
+!79 = distinct !{!79, !28, !70, !71}
+!80 = distinct !{!80, !28, !71, !70}
+!81 = distinct !{!81, !28}
+!82 = !{!83, !68, i64 16}
+!83 = !{!"TInteger", !12, i64 0, !7, i64 8, !68, i64 16}
+!84 = !{!23, !23, i64 0}
+!85 = !{!33, !7, i64 24}
 !86 = distinct !{!86, !28}
-!87 = !{!88, !88, i64 0}
-!88 = !{!"p1 _ZTS12__cm_handler", !13, i64 0}
-!89 = !{!18, !12, i64 0}
-!90 = !{!18, !7, i64 8}
-!91 = distinct !{!91, !28}
-!92 = distinct !{!92, !38}
-!93 = distinct !{!93, !28}
-!94 = distinct !{!94, !38}
-!95 = !{!12, !12, i64 0}
-!96 = !{!97, !12, i64 0}
-!97 = !{!"__cm_iface", !12, i64 0, !7, i64 8}
-!98 = distinct !{!98, !28}
+!87 = distinct !{!87, !28}
+!88 = !{!89, !89, i64 0}
+!89 = !{!"p1 _ZTS12__cm_handler", !13, i64 0}
+!90 = !{!18, !12, i64 0}
+!91 = !{!18, !7, i64 8}
+!92 = distinct !{!92, !28}
+!93 = distinct !{!93, !38}
+!94 = distinct !{!94, !28}
+!95 = distinct !{!95, !38}
+!96 = !{!12, !12, i64 0}
+!97 = !{!98, !12, i64 0}
+!98 = !{!"__cm_iface", !12, i64 0, !7, i64 8}
 !99 = distinct !{!99, !28}
-!100 = !{!97, !7, i64 8}
-!101 = distinct !{!101, !28}
+!100 = distinct !{!100, !28}
+!101 = !{!98, !7, i64 8}
 !102 = distinct !{!102, !28}
 !103 = distinct !{!103, !28}
 !104 = distinct !{!104, !28}
-!105 = !{!80, !12, i64 0}
-!106 = !{!80, !7, i64 8}
-!107 = distinct !{!107, !28, !67, !68}
-!108 = !{!109, !109, i64 0}
-!109 = !{!"p2 omnipotent char", !23, i64 0}
-!110 = !{!111, !84, i64 0}
-!111 = !{!"__cm_handler", !84, i64 0, !7, i64 8, !88, i64 16}
-!112 = !{!111, !7, i64 8}
-!113 = !{!111, !88, i64 16}
-!114 = distinct !{!114, !28}
+!105 = distinct !{!105, !28}
+!106 = !{!83, !12, i64 0}
+!107 = !{!83, !7, i64 8}
+!108 = distinct !{!108, !28, !70, !71}
+!109 = !{!110, !110, i64 0}
+!110 = !{!"p2 omnipotent char", !23, i64 0}
+!111 = !{!112, !40, i64 0}
+!112 = !{!"__cm_handler", !40, i64 0, !7, i64 8, !89, i64 16}
+!113 = !{!112, !7, i64 8}
+!114 = !{!112, !89, i64 16}
 !115 = distinct !{!115, !28}
-!116 = !{!117, !13, i64 8}
-!117 = !{!"__cm_worker", !118, i64 0, !13, i64 8, !65, i64 16, !65, i64 24, !7, i64 32}
-!118 = !{!"p1 _ZTS17_opaque_pthread_t", !13, i64 0}
-!119 = !{!117, !65, i64 16}
-!120 = !{!117, !65, i64 24}
-!121 = !{!117, !7, i64 32}
-!122 = !{!117, !118, i64 0}
+!116 = distinct !{!116, !28}
+!117 = !{!118, !13, i64 8}
+!118 = !{!"__cm_worker", !119, i64 0, !13, i64 8, !68, i64 16, !68, i64 24, !7, i64 32}
+!119 = !{!"p1 _ZTS17_opaque_pthread_t", !13, i64 0}
+!120 = !{!118, !68, i64 16}
+!121 = !{!118, !68, i64 24}
+!122 = !{!118, !7, i64 32}
+!123 = !{!118, !119, i64 0}

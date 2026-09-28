@@ -57,6 +57,11 @@ bool SemanticAnalysis::visit(Program *p) {
     checkMainClassAndMethod();
   }
   checkInheritanceGraph();
+
+  // Before anything is checked: a method's inferred return type has to be
+  // settled for every method, or a caller declared above its callee sees a
+  // different type from one declared below it.
+  inferReturnTypesEarly();
   
   auto mainVisits = 0;
 
@@ -781,6 +786,142 @@ bool SemanticAnalysis::visit(StaticDispatch *d) {
 
   typeTable.setType(d, typeTable.getType(method->getReturnType()));
   return true;
+}
+
+/// `def f:` parses as the return type "auto", and the ordinary pass fills it
+/// in while visiting the body -- which means a caller visited *earlier* than
+/// its callee still saw "auto", which the type table maps to Void. That made
+/// three things depend on declaration order: an argument's type, an override's
+/// signature, and an interface's conformance check. So the inferring happens
+/// here first, before any of them run.
+///
+/// It is deliberately structural and shallow. It reads literals, `new`,
+/// arithmetic over those, and calls to methods that declare their type; it
+/// gives no answer for anything needing the symbol table, and no answer is
+/// not an error -- the ordinary pass still infers those the way it did.
+std::string SemanticAnalysis::earlyTypeOf(Class *c, Expression *e) {
+  if (!e) {
+    return std::string();
+  }
+
+  if (auto *ic = dynamic_cast<IntConstant *>(e)) {
+    return ic->fitsInInt() ? strings::Int : strings::Int64;
+  }
+  if (dynamic_cast<FloatConstant *>(e)) {
+    return strings::Float;
+  }
+  if (dynamic_cast<StringConstant *>(e)) {
+    return strings::String;
+  }
+  if (dynamic_cast<NullConstant *>(e)) {
+    return strings::Null;
+  }
+  // A `new` or a cast names its own type, but only count it once the type
+  // table knows the name -- an unknown one is the ordinary pass's error to
+  // report, with a line number.
+  if (auto *n = dynamic_cast<NewObject *>(e)) {
+    return typeTable.contains(n->getType()) ? n->getType() : std::string();
+  }
+  if (auto *cast = dynamic_cast<Cast *>(e)) {
+    return typeTable.contains(cast->getType()) ? cast->getType()
+                                               : std::string();
+  }
+  if (auto *bo = dynamic_cast<BinaryOperator *>(e)) {
+    // A comparison answers 1 or 0 whatever it compares.
+    if (bo->getOperatorKind() > BinaryOperator::LastArithmetic) {
+      return strings::Int;
+    }
+    const std::string left = earlyTypeOf(c, bo->getLHS());
+    const std::string right = earlyTypeOf(c, bo->getRHS());
+    if (left.empty() || right.empty()) {
+      return std::string();
+    }
+    const std::string common = typeTable.getCommonTypeStr(left, right);
+    return common == strings::Void ? std::string() : common;
+  }
+  if (auto *d = dynamic_cast<Dispatch *>(e)) {
+    // Only a bare call, on this class, where the answer does not need a
+    // receiver's type worked out. That is enough for one inferred method to
+    // return what another one does, which is why this runs to a fixed point.
+    if (d->getObject() || !c) {
+      return std::string();
+    }
+    auto *target = typeTable.getMethod(c, d->getName());
+    if (!target || target->getReturnType() == "auto") {
+      return std::string();
+    }
+    return target->getReturnType();
+  }
+
+  return std::string();
+}
+
+std::string SemanticAnalysis::earlyReturnType(Class *c, Method *m) {
+  if (!m->getBody() || m->getReturnType() != "auto") {
+    return std::string();
+  }
+
+  ReturnFinder returns;
+  returns.visit(m->getBody());
+
+  std::string inferred;
+  for (auto *r : returns.Returns) {
+    if (!r->getRet()) {
+      continue;
+    }
+    const std::string one = earlyTypeOf(c, r->getRet());
+    if (one.empty()) {
+      return std::string(); // cannot see all of them; leave it to the pass
+    }
+    if (inferred.empty() || inferred == one) {
+      inferred = one;
+      continue;
+    }
+    // The *same* rule the ordinary pass uses, not the general convertibility
+    // one: that allows an Int to become a String, so a method returning both
+    // inferred String here and the strict check below never ran. Reusing
+    // commonReturnType is what keeps the two from disagreeing.
+    Type *reconciled = nullptr;
+    try {
+      reconciled = commonReturnType(typeTable.getType(inferred),
+                                    typeTable.getType(one));
+    } catch (const SemanticException &) {
+      return std::string(); // a name this pass cannot resolve yet
+    }
+    if (!reconciled) {
+      // They disagree. Say nothing here, so that the ordinary pass reports it
+      // with a line number and the real types.
+      return std::string();
+    }
+    inferred = reconciled->getName();
+  }
+
+  return inferred == strings::Void ? std::string() : inferred;
+}
+
+void SemanticAnalysis::inferReturnTypesEarly() {
+  // A fixed point, because one inferred method can return what another does.
+  // The bound is the number of methods: each round settles at least one or
+  // stops.
+  bool changed = true;
+  int rounds = 0;
+  while (changed && rounds < 64) {
+    changed = false;
+    ++rounds;
+    for (auto c : *program) {
+      for (auto f : *c) {
+        auto *m = dynamic_cast<Method *>(f);
+        if (!m || m->getReturnType() != "auto") {
+          continue;
+        }
+        const std::string inferred = earlyReturnType(c, m);
+        if (!inferred.empty() && inferred != "auto") {
+          m->setReturnType(inferred);
+          changed = true;
+        }
+      }
+    }
+  }
 }
 
 Type *SemanticAnalysis::commonReturnType(Type *a, Type *b) {
