@@ -1,0 +1,83 @@
+# Bytes, Ints and Floats: a fixed-length run of numbers, stored as numbers.
+#
+# This is the one container List cannot be. A List holds object references,
+# so a million flags is a million allocations and a pointer chase for each;
+# these are one allocation and an indexed load.
+
+class Main from IO
+  def main:
+    # Bytes: one byte per element, for flags and buffers.
+    Bytes flags = new Bytes(8)
+    out("len ${flags.len()}\n")
+    out("zeroed ${flags.get(0)}\n")
+    flags.set(3, 200)
+    out("set ${flags.get(3)}\n")
+    flags.fill(1)
+    out("filled ${flags.get(0)} ${flags.get(7)}\n")
+    # A byte keeps the low eight bits, as one does.
+    flags.set(0, 300)
+    out("wrapped ${flags.get(0)}\n")
+
+    # Ints: 64 bits per element, so a count cannot quietly overflow.
+    Ints numbers = new Ints(4)
+    numbers.set(0, 9000000000)
+    numbers.set(1, 0 - 5)
+    out("big ${numbers.get(0)}\n")
+    out("negative ${numbers.get(1)}\n")
+    out("untouched ${numbers.get(2)}\n")
+
+    Int64 total = 0
+    Int i = 0
+    while i < numbers.len():
+      total = total + numbers.get(i)
+      i = i + 1
+    end
+    out("total ${total}\n")
+
+    # Floats.
+    Floats readings = new Floats(3)
+    readings.fill(1.5)
+    readings.set(2, Math.sqrt(2.0))
+    out("filled ${readings.get(0)}\n")
+    out("root ${readings.get(2)}\n")
+
+    # Declaring one without a length gives an empty array rather than a
+    # surprise.
+    Bytes empty
+    out("empty ${empty.len()}\n")
+
+    # Out of bounds is a catchable error, like every other runtime failure.
+    try:
+      flags.get(8)
+      out("unreachable\n")
+    catch e:
+      out("caught ${e}\n")
+    end
+
+    try:
+      Ints bad = new Ints(0 - 1)
+      out("unreachable\n")
+    catch e:
+      out("caught ${e}\n")
+    end
+
+    # copy gives the copy its own buffer, so changing one leaves the other.
+    Ints original = new Ints(2)
+    original.set(0, 42)
+    Ints duplicate = original.copy()
+    duplicate.set(0, 7)
+    out("original ${original.get(0)} copy ${duplicate.get(0)}\n")
+
+    # An array is an ordinary object: counted, and released with its buffer.
+    Int before = allocated()
+    i = 0
+    while i < 1000:
+      Bytes scratch = new Bytes(64)
+      scratch.set(0, i)
+      i = i + 1
+    end
+    out("leaked ${allocated() - before}\n")
+
+    out("done\n")
+  end
+end

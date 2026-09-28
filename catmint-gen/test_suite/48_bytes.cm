@@ -1,0 +1,69 @@
+# Bytes to and from String and File.
+#
+# The fixed-length arrays existed but had no way in or out: filling a buffer
+# from a file meant reading a String and converting it a character at a time.
+# These four methods are also what makes the foreign function interface worth
+# having, since a buffer is what C functions take.
+
+class Main from IO
+  def main:
+    String text = "hello, catmint"
+    Bytes b = text.toBytes()
+    out("len ${b.len()}\n")
+    out("first ${b.get(0)} last ${b.get(b.len() - 1)}\n")
+    out("back ${b.toString()}\n")
+
+    # A slice is half-open, like substr, and owns its own buffer.
+    Bytes head = b.slice(0, 5)
+    out("head ${head.toString()} ${head.len()}\n")
+
+    String path = "/tmp/catmint_test_bytes.bin"
+    File writer
+    writer.open(path, "w")
+    Int written = writer.writeBytes(b, b.len())
+    writer.close()
+    out("wrote ${written}\n")
+
+    Bytes buffer = new Bytes(64)
+    File reader
+    reader.open(path, "r")
+    Int got = reader.readBytes(buffer)
+    reader.close()
+    out("read ${got}\n")
+    out("round ${buffer.slice(0, got).toString()}\n")
+    File.remove(path)
+
+    # Binary data, a zero byte included, survives both directions. A catmint
+    # String carries its length rather than ending at a NUL, so it can hold
+    # one.
+    Bytes raw = new Bytes(4)
+    raw.set(0, 200)
+    raw.set(1, 0)
+    raw.set(2, 255)
+    raw.set(3, 65)
+    String asText = raw.toString()
+    Bytes again = asText.toBytes()
+    out("binary ${again.len()} ${again.get(0)} ${again.get(1)} ${again.get(2)} ${again.get(3)}\n")
+
+    # A String carries its length, so comparison has to look at every byte.
+    # strncmp stopped at the first NUL, which made these two equal.
+    Bytes zeroOne = new Bytes(2)
+    zeroOne.set(0, 0)
+    zeroOne.set(1, 1)
+    Bytes zeroTwo = new Bytes(2)
+    zeroTwo.set(0, 0)
+    zeroTwo.set(1, 2)
+    out("differ after a NUL ${zeroOne.toString().equals(zeroTwo.toString())}\n")
+    Bytes sameAgain = zeroOne.copy()
+    out("same after a NUL ${zeroOne.toString().equals(sameAgain.toString())}\n")
+
+    Int before = allocated()
+    Int i = 0
+    while i < 200:
+      Bytes tmp = text.toBytes()
+      String back = tmp.toString()
+      i = i + 1
+    end
+    out("leaked ${allocated() - before}\n")
+  end
+end

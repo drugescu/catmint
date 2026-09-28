@@ -1,0 +1,2 @@
+IO n
+n.out("Hello, catmint!\n")

@@ -1,0 +1,73 @@
+# defer: run this where the block ends, on every way out of it.
+
+class Resource
+  String name
+  Int isOpen
+
+  constructor(String label):
+    name = label
+    isOpen = 1
+  end
+
+  def Resource close:
+    isOpen = 0
+    return self
+  end
+end
+
+class Main from IO
+  # Both returns run the deferred close, so the cleanup is written once
+  # instead of once per exit.
+  def Int work(Int n):
+    Resource r = new Resource("job ${n}")
+    defer out("closing ${r.name}\n")
+
+    if n > 10:
+      out("too big\n")
+      return 0 - 1
+    end
+    out("working on ${r.name}\n")
+    return n * 2
+  end
+
+  def main:
+    out("result ${work(4)}\n")
+    out("result ${work(99)}\n")
+
+    # Last registered runs first.
+    out("--- order ---\n")
+    order()
+
+    # A block's defers run at the end of that block, so a loop body runs
+    # its own every time round.
+    out("--- loop ---\n")
+    Int i = 0
+    while i < 2:
+      defer out("end of pass\n")
+      out("pass ${i}\n")
+      i = i + 1
+    end
+
+    # The expression runs when the block ends, not where the defer is
+    # written. This is the one way it differs from Go's, and it is why the
+    # line below reports the final value rather than the one at the defer.
+    out("--- timing ---\n")
+    timing()
+
+    out("done\n")
+  end
+
+  def order:
+    defer out("third\n")
+    defer out("second\n")
+    defer out("first\n")
+    out("body\n")
+  end
+
+  def timing:
+    Int n = 1
+    defer out("n at the end is ${n}\n")
+    n = 42
+    out("n in the body is ${n}\n")
+  end
+end

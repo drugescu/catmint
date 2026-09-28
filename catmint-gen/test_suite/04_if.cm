@@ -1,0 +1,15 @@
+class Main from IO
+  def main:
+    Int a = 7
+    if a > 5:
+      out("big\n")
+    else
+      out("small\n")
+    end
+    if a % 2 == 0:
+      out("even\n")
+    else
+      out("odd\n")
+    end
+  end
+end

@@ -17,10 +17,17 @@ const auto Classes = "Classes";
 const auto Name = "Name";
 const auto NameList = "NameList";
 const auto ClassParent = "Parent";
+const auto SourceFile = "SourceFile";
+const auto Implements = "Implements";
+const auto IsInterface = "IsInterface";
 const auto Features = "Features";
 const auto Type = "Type";
 const auto Initializer = "Initializer";
 const auto ReturnType = "ReturnType";
+const auto Static = "Static";
+const auto Abstract = "Abstract";
+const auto Unsafe = "Unsafe";
+const auto Extern = "Extern";
 const auto Body = "Body";
 const auto FormalParams = "FormalParams";
 const auto Value = "Value";
@@ -60,6 +67,14 @@ const auto SlicevectorNodeType = "Slicevector";
 const auto DispatchNodeType = "Dispatch";
 const auto StaticDispatchNodeType = "StaticDispatch";
 const auto NewObjectNodeType = "NewObject";
+const auto FieldAccessNodeType = "FieldAccess";
+const auto TryStatementNodeType = "TryStatement";
+const auto ThrowStatementNodeType = "ThrowStatement";
+const auto DeferStatementNodeType = "DeferStatement";
+const auto BreakNodeType = "Break";
+const auto ContinueNodeType = "Continue";
+const auto SpawnStatementNodeType = "SpawnStatement";
+const auto Handler = "Handler";
 const auto IfStatementNodeType = "IfStatement";
 const auto WhileStatementNodeType = "WhileStatement";
 const auto ForStatementNodeType = "ForStatement";
@@ -120,6 +135,14 @@ void ASTSerializer::writePair(const Writer::Ch *key, int value) {
   writer->Int(value);
 }
 
+// A literal too large for an Int still has to round-trip, so integer values
+// are written and read as 64 bits. Small values encode identically, so this
+// does not change any existing AST file.
+void ASTSerializer::writePair(const Writer::Ch *key, long long value) {
+  writer->Key(key);
+  writer->Int64(value);
+}
+
 void ASTSerializer::writePair(const Writer::Ch *key, double value) {
   writer->Key(key);
   writer->Double(value);
@@ -152,6 +175,30 @@ bool ASTSerializer::visit(Class *C) {
   auto parent = C->getParent();
   if (!parent.empty()) {
     writePair(keys::ClassParent, parent);
+  }
+
+  // Written only when known, so an AST produced before classes carried their
+  // file is still read back unchanged.
+  auto file = C->getFile();
+  if (!file.empty()) {
+    writePair(keys::SourceFile, file);
+  }
+
+  if (C->isInterface()) {
+    writer->Key(keys::IsInterface);
+    writer->Bool(true);
+  }
+
+  if (C->isExtern()) {
+    writer->Key(keys::Extern);
+    writer->Bool(true);
+  }
+  if (!C->getInterfaces().empty()) {
+    writer->Key(keys::Implements);
+    CreateJSONArray implemented(*this);
+    for (const auto &name : C->getInterfaces()) {
+      writer->String(name.c_str());
+    }
   }
 
   if (C->begin() == C->end()) {
@@ -194,6 +241,23 @@ bool ASTSerializer::visit(Method *M) {
   auto ret = M->getReturnType();
   if (!ret.empty()) {
     writePair(keys::ReturnType, ret);
+  }
+
+  // Written only when true, so an AST for a program with no static methods
+  // is byte-for-byte what it was before static methods existed.
+  if (M->isStatic()) {
+    writer->Key(keys::Static);
+    writer->Bool(true);
+  }
+
+  if (M->isAbstract()) {
+    writer->Key(keys::Abstract);
+    writer->Bool(true);
+  }
+
+  if (M->isUnsafe()) {
+    writer->Key(keys::Unsafe);
+    writer->Bool(true);
   }
 
   if (auto body = M->getBody()) {
@@ -286,6 +350,11 @@ bool ASTSerializer::visit(Block *B) {
   CreateJSONObject object(*this, keys::BlockNodeType, B);
   writePair(keys::LineNumber, B->getLineNumber());
 
+  if (B->isUnsafe()) {
+    writer->Key(keys::Unsafe);
+    writer->Bool(true);
+  }
+
   if (B->begin() == B->end()) {
     return true;
   }
@@ -353,6 +422,10 @@ static std::string getBinOpKindSerialization(BinaryOperator::BinOpKind opKind) {
     return "==";
   case BinaryOperator::NotEqual:
     return "!=";
+  case BinaryOperator::AndAlso:
+    return "and";
+  case BinaryOperator::OrElse:
+    return "or";
   default:
     assert(false && "Unhandled binary operator");
   }
@@ -569,7 +642,117 @@ bool ASTSerializer::visit(NewObject *NO) {
   CreateJSONObject newObject(*this, keys::NewObjectNodeType, NO);
   writePair(keys::LineNumber, NO->getLineNumber());
   writePair(keys::Type, NO->getType());
+
+  if (NO->begin() == NO->end()) {
+    return true;
+  }
+
+  writer->Key(keys::Arguments);
+  CreateJSONArray arguments(*this);
+  for (auto arg : *NO) {
+    if (!visit(arg)) {
+      return false;
+    }
+  }
+
   return true;
+}
+
+bool ASTSerializer::visit(FieldAccess *FA) {
+  assert(isValid() && "Invalid serializer");
+  assert(FA && "Expected non-null field access");
+
+  CreateJSONObject fieldObject(*this, keys::FieldAccessNodeType, FA);
+  writePair(keys::LineNumber, FA->getLineNumber());
+  writePair(keys::Name, FA->getField());
+
+  writer->Key(keys::Object);
+  auto object = FA->getObject();
+  assert(object && "Field access doesn't have an object");
+  if (!visit(object)) {
+    return false;
+  }
+
+  // Present only for `a.b = v`; a read carries no value.
+  if (auto value = FA->getValue()) {
+    writer->Key(keys::Value);
+    if (!visit(value)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool ASTSerializer::visit(TryStatement *Try) {
+  assert(isValid() && "Invalid serializer");
+  assert(Try && "Expected non-null try statement");
+
+  CreateJSONObject tryObject(*this, keys::TryStatementNodeType, Try);
+  writePair(keys::LineNumber, Try->getLineNumber());
+  writePair(keys::Name, Try->getCatchName());
+
+  writer->Key(keys::Body);
+  auto body = Try->getBody();
+  assert(body && "Try without a body");
+  if (!visit(body)) {
+    return false;
+  }
+
+  writer->Key(keys::Handler);
+  auto handler = Try->getHandler();
+  assert(handler && "Try without a handler");
+  return visit(handler);
+}
+
+bool ASTSerializer::visit(ThrowStatement *Throw) {
+  assert(isValid() && "Invalid serializer");
+  assert(Throw && "Expected non-null throw statement");
+
+  CreateJSONObject throwObject(*this, keys::ThrowStatementNodeType, Throw);
+  writePair(keys::LineNumber, Throw->getLineNumber());
+
+  writer->Key(keys::Object);
+  auto value = Throw->getValue();
+  assert(value && "Throw without a value");
+  return visit(value);
+}
+
+bool ASTSerializer::visit(DeferStatement *Defer) {
+  assert(isValid() && "Invalid serializer");
+  assert(Defer && "Expected non-null defer statement");
+
+  CreateJSONObject deferObject(*this, keys::DeferStatementNodeType, Defer);
+  writePair(keys::LineNumber, Defer->getLineNumber());
+
+  writer->Key(keys::Object);
+  auto action = Defer->getAction();
+  assert(action && "Defer without an action");
+  return visit(action);
+}
+
+bool ASTSerializer::visit(LoopControl *LC) {
+  assert(isValid() && "Invalid serializer");
+  assert(LC && "Expected non-null loop control statement");
+
+  CreateJSONObject loopObject(
+      *this, LC->isBreak() ? keys::BreakNodeType : keys::ContinueNodeType, LC);
+  writePair(keys::LineNumber, LC->getLineNumber());
+
+  return true;
+}
+
+bool ASTSerializer::visit(SpawnStatement *Spawn) {
+  assert(isValid() && "Invalid serializer");
+  assert(Spawn && "Expected non-null spawn statement");
+
+  CreateJSONObject spawnObject(*this, keys::SpawnStatementNodeType, Spawn);
+  writePair(keys::LineNumber, Spawn->getLineNumber());
+
+  writer->Key(keys::Object);
+  auto call = Spawn->getCall();
+  assert(call && "Spawn without a call");
+  return visit(call);
 }
 
 bool ASTSerializer::visit(ReturnExpression *R) {
@@ -815,6 +998,31 @@ std::unique_ptr<Class> ASTDeserializer::parseClass(rapidjson::Value &tree) {
   auto classNode = createNode<Class>(tree, parseLineNumber(tree),
                                      tree[keys::Name].GetString(), parent);
 
+  if (tree.HasMember(keys::SourceFile)) {
+    assert(tree[keys::SourceFile].IsString() && "Invalid source file");
+    classNode->setFile(tree[keys::SourceFile].GetString());
+  }
+
+  if (tree.HasMember(keys::IsInterface)) {
+    assert(tree[keys::IsInterface].IsBool() && "Invalid interface flag");
+    classNode->setInterface(tree[keys::IsInterface].GetBool());
+  }
+
+  if (tree.HasMember(keys::Extern)) {
+    assert(tree[keys::Extern].IsBool() && "Invalid extern flag");
+    classNode->setExtern(tree[keys::Extern].GetBool());
+  }
+  if (tree.HasMember(keys::Implements)) {
+    assert(tree[keys::Implements].IsArray() && "Implements must be an array");
+    std::vector<std::string> implemented;
+    auto &names = tree[keys::Implements];
+    for (auto b = names.Begin(), e = names.End(); b != e; ++b) {
+      assert(b->IsString() && "Invalid implemented interface");
+      implemented.push_back(b->GetString());
+    }
+    classNode->setInterfaces(implemented);
+  }
+
   if (tree.HasMember(keys::Features)) {
     auto &features = tree[keys::Features];
     assert(features.IsArray() && "Features must be in an array");
@@ -894,6 +1102,21 @@ std::unique_ptr<Method> ASTDeserializer::parseMethod(rapidjson::Value &tree) {
                                    tree[keys::Name].GetString(), returnType,
                                    std::move(body));
 
+  if (tree.HasMember(keys::Static)) {
+    assert(tree[keys::Static].IsBool() && "Invalid static flag");
+    method->setStatic(tree[keys::Static].GetBool());
+  }
+
+  if (tree.HasMember(keys::Abstract)) {
+    assert(tree[keys::Abstract].IsBool() && "Invalid abstract flag");
+    method->setAbstract(tree[keys::Abstract].GetBool());
+  }
+
+  if (tree.HasMember(keys::Unsafe)) {
+    assert(tree[keys::Unsafe].IsBool() && "Invalid unsafe flag");
+    method->setUnsafe(tree[keys::Unsafe].GetBool());
+  }
+
   //if (tree.HasMember(keys::AttributeNodeType)) {
   //  auto &formalParams = tree[keys::AttributeNodeType];
   if (tree.HasMember(keys::FormalParams)) {
@@ -972,6 +1195,20 @@ ASTDeserializer::parseExpression(rapidjson::Value &tree) {
     return parseStaticDispatch(tree);
   } else if (nodeType == keys::NewObjectNodeType) {
     return parseNewObject(tree);
+  } else if (nodeType == keys::FieldAccessNodeType) {
+    return parseFieldAccess(tree);
+  } else if (nodeType == keys::TryStatementNodeType) {
+    return parseTryStatement(tree);
+  } else if (nodeType == keys::ThrowStatementNodeType) {
+    return parseThrowStatement(tree);
+  } else if (nodeType == keys::DeferStatementNodeType) {
+    return parseDeferStatement(tree);
+  } else if (nodeType == keys::BreakNodeType) {
+    return parseLoopControl(tree, /*isBreak=*/true);
+  } else if (nodeType == keys::ContinueNodeType) {
+    return parseLoopControl(tree, /*isBreak=*/false);
+  } else if (nodeType == keys::SpawnStatementNodeType) {
+    return parseSpawnStatement(tree);
   } else if (nodeType == keys::IfStatementNodeType) {
     return parseIfStatement(tree);
   } else if (nodeType == keys::WhileStatementNodeType) {
@@ -980,14 +1217,14 @@ ASTDeserializer::parseExpression(rapidjson::Value &tree) {
     return parseLocalDefinition(tree);
   } else if (nodeType == keys::AssignmentNodeType) {
     return parseAssignment(tree);
-  } /*else if (nodeType == keys::ForStatementNodeType) {
-    return parseForStatement(tree);
   } else if (nodeType == keys::ReturnNodeType) {
     return parseReturn(tree);
-  } else if (nodeType == keys::SlicevectorNodeType) {
+  } else if (nodeType == keys::ForStatementNodeType) {
+    return parseForStatement(tree);
+  } /*else if (nodeType == keys::SlicevectorNodeType) {
     return parseSlicevector(tree);
   } */
-  // Add for, return, slicevector
+  // Add slicevector
 
   assert(false && "Unknown expression kind, or unimplemented (for, return, slicevector)");
   return nullptr;
@@ -1019,11 +1256,10 @@ ASTDeserializer::parseIntConstant(rapidjson::Value &tree) {
          "Expected int constant object");
 
   assert(tree.HasMember(keys::Value) && "Int constant without value");
-  assert(tree[keys::Value].IsInt() && "Invalid value for int constant");
-  // TODO: figure out about unsigned etc
+  assert(tree[keys::Value].IsInt64() && "Invalid value for int constant");
 
   return createNode<IntConstant>(tree, parseLineNumber(tree),
-                                 tree[keys::Value].GetInt());
+                                 tree[keys::Value].GetInt64());
 }
 
 std::unique_ptr<FloatConstant>
@@ -1079,6 +1315,11 @@ std::unique_ptr<Block> ASTDeserializer::parseBlock(rapidjson::Value &tree) {
          "Expected block object");
 
   auto block = createNode<Block>(tree, parseLineNumber(tree));
+
+  if (tree.HasMember(keys::Unsafe)) {
+    assert(tree[keys::Unsafe].IsBool() && "Invalid unsafe flag");
+    block->setUnsafe(tree[keys::Unsafe].GetBool());
+  }
 
   if (tree.HasMember(keys::Expressions)) {
     assert(tree[keys::Expressions].IsArray() && "Expressions not in array");
@@ -1136,6 +1377,10 @@ static BinaryOperator::BinOpKind getBinOpKind(rapidjson::Value &tree) {
     return BinaryOperator::Equal;
   } else if (opKind == "!=") {
     return BinaryOperator::NotEqual;
+  } else if (opKind == "and") {
+    return BinaryOperator::AndAlso;
+  } else if (opKind == "or") {
+    return BinaryOperator::OrElse;
   }
 
   assert(false && "Unknown binary operator kind, or unimplemented");
@@ -1342,8 +1587,119 @@ ASTDeserializer::parseNewObject(rapidjson::Value &tree) {
   assert(tree.HasMember(keys::Type) && "New operator without type");
   assert(tree[keys::Type].IsString() && "Invalid type for new operator");
 
-  return createNode<NewObject>(tree, parseLineNumber(tree),
-                               tree[keys::Type].GetString());
+  auto newObject = createNode<NewObject>(tree, parseLineNumber(tree),
+                                         tree[keys::Type].GetString());
+
+  if (tree.HasMember(keys::Arguments)) {
+    assert(tree[keys::Arguments].IsArray() && "Arguments not in array");
+
+    auto &args = tree[keys::Arguments];
+    for (auto b = args.Begin(), e = args.End(); b != e; ++b) {
+      auto &argTree = *b;
+      assert(argTree.IsObject() && "Expected argument object");
+      auto argNode = parseExpression(argTree);
+      assert(argNode && "Expected non-null expression node");
+      newObject->addArgument(std::move(argNode));
+    }
+  }
+
+  return newObject;
+}
+
+std::unique_ptr<FieldAccess>
+ASTDeserializer::parseFieldAccess(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::FieldAccessNodeType &&
+         "Expected field access object");
+
+  assert(tree.HasMember(keys::Name) && "Field access without a field name");
+  assert(tree[keys::Name].IsString() && "Invalid field name");
+
+  assert(tree.HasMember(keys::Object) && "Field access without an object");
+  auto object = parseExpression(tree[keys::Object]);
+  assert(object && "Expected non-null expression node");
+
+  std::unique_ptr<Expression> value(nullptr);
+  if (tree.HasMember(keys::Value)) {
+    value = parseExpression(tree[keys::Value]);
+    assert(value && "Expected non-null expression node");
+  }
+
+  return createNode<FieldAccess>(tree, parseLineNumber(tree), std::move(object),
+                                 tree[keys::Name].GetString(),
+                                 std::move(value));
+}
+
+std::unique_ptr<TryStatement>
+ASTDeserializer::parseTryStatement(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::TryStatementNodeType &&
+         "Expected try statement object");
+
+  assert(tree.HasMember(keys::Name) && "Try without a catch name");
+  assert(tree.HasMember(keys::Body) && "Try without a body");
+  assert(tree.HasMember(keys::Handler) && "Try without a handler");
+
+  auto body = parseExpression(tree[keys::Body]);
+  assert(body && "Expected non-null expression node");
+  auto handler = parseExpression(tree[keys::Handler]);
+  assert(handler && "Expected non-null expression node");
+
+  return createNode<TryStatement>(tree, parseLineNumber(tree), std::move(body),
+                                  tree[keys::Name].GetString(),
+                                  std::move(handler));
+}
+
+std::unique_ptr<ThrowStatement>
+ASTDeserializer::parseThrowStatement(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::ThrowStatementNodeType &&
+         "Expected throw statement object");
+
+  assert(tree.HasMember(keys::Object) && "Throw without a value");
+  auto value = parseExpression(tree[keys::Object]);
+  assert(value && "Expected non-null expression node");
+
+  return createNode<ThrowStatement>(tree, parseLineNumber(tree),
+                                    std::move(value));
+}
+
+std::unique_ptr<DeferStatement>
+ASTDeserializer::parseDeferStatement(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::DeferStatementNodeType &&
+         "Expected defer statement object");
+
+  assert(tree.HasMember(keys::Object) && "Defer without an action");
+  auto action = parseExpression(tree[keys::Object]);
+  assert(action && "Expected non-null expression node");
+
+  return createNode<DeferStatement>(tree, parseLineNumber(tree),
+                                    std::move(action));
+}
+
+std::unique_ptr<LoopControl>
+ASTDeserializer::parseLoopControl(rapidjson::Value &tree, bool isBreak) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         "Expected loop control object");
+
+  return createNode<LoopControl>(
+      tree, parseLineNumber(tree),
+      isBreak ? LoopControl::Break : LoopControl::Continue);
+}
+
+std::unique_ptr<SpawnStatement>
+ASTDeserializer::parseSpawnStatement(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::SpawnStatementNodeType &&
+         "Expected spawn statement object");
+
+  assert(tree.HasMember(keys::Object) && "Spawn without a call");
+  auto call = parseExpression(tree[keys::Object]);
+  assert(call && "Expected non-null expression node");
+
+  return createNode<SpawnStatement>(tree, parseLineNumber(tree),
+                                    std::move(call));
 }
 
 std::unique_ptr<IfStatement>
@@ -1376,6 +1732,50 @@ ASTDeserializer::parseIfStatement(rapidjson::Value &tree) {
 
   return createNode<IfStatement>(tree, parseLineNumber(tree), std::move(cond),
                                  std::move(then), std::move(elseOrNull));
+}
+
+std::unique_ptr<ForStatement>
+ASTDeserializer::parseForStatement(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::ForStatementNodeType &&
+         "Expected for statement object");
+
+  assert(tree.HasMember(keys::Iterator) && "For statement without iterator");
+  assert(tree[keys::Iterator].IsObject() && "Invalid iterator for for statement");
+  auto iter = parseExpression(tree[keys::Iterator]);
+  assert(iter && "Expected non-null expression node");
+
+  assert(tree.HasMember(keys::Container) && "For statement without container");
+  assert(tree[keys::Container].IsObject() &&
+         "Invalid container for for statement");
+  auto cont = parseExpression(tree[keys::Container]);
+  assert(cont && "Expected non-null expression node");
+
+  assert(tree.HasMember(keys::Body) && "For statement without body");
+  assert(tree[keys::Body].IsObject() && "Invalid body for for statement");
+  auto body = parseExpression(tree[keys::Body]);
+  assert(body && "Expected non-null expression node");
+
+  return createNode<ForStatement>(tree, parseLineNumber(tree), std::move(iter),
+                                  std::move(cont), std::move(body));
+}
+
+std::unique_ptr<ReturnExpression>
+ASTDeserializer::parseReturn(rapidjson::Value &tree) {
+  assert(tree.IsObject() && tree.HasMember(keys::NodeType) &&
+         tree[keys::NodeType] == keys::ReturnNodeType &&
+         "Expected return object");
+
+  // ASTSerializer::visit(ReturnExpression *) writes the returned expression
+  // under the "Object" key.
+  assert(tree.HasMember(keys::Object) && "Return without an expression");
+  assert(tree[keys::Object].IsObject() && "Invalid expression for return");
+
+  auto retExpr = parseExpression(tree[keys::Object]);
+  assert(retExpr && "Expected non-null expression node");
+
+  return createNode<ReturnExpression>(tree, parseLineNumber(tree),
+                                      std::move(retExpr));
 }
 
 std::unique_ptr<WhileStatement>

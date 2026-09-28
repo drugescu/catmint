@@ -1,0 +1,49 @@
+#!/bin/sh
+# The warning fires on the trap and stays quiet on everything else. Run by
+# ctest.sh from catmint-gen with the source file as $1.
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+source=$1
+
+fail() { echo "54_width_warning.check: $1"; exit 1; }
+
+# 32-bit arithmetic widened on the way into an Int64: the trap.
+cat > "$work/trap.cm" <<'INNER'
+class Main from IO
+  def main:
+    Int a = 100000
+    Int b = 100000
+    Int64 wrong = a * b
+    out("${wrong}\n")
+  end
+end
+INNER
+../catmintc "$work/trap.cm" -o "$work/trap.bin" >"$work/log" 2>&1 \
+  || fail "the warning should not stop the build: $(cat "$work/log")"
+grep -qi "line 5" "$work/log" \
+  || fail "no warning, or it does not say where:
+$(cat "$work/log")"
+grep -qi "32" "$work/log" \
+  || fail "the warning does not say what the problem is:
+$(cat "$work/log")"
+
+# It really is only a warning: the program still runs, and still wraps, which
+# is the C behaviour this deliberately keeps.
+[ "$("$work/trap.bin")" = "1410065408" ] \
+  || fail "the arithmetic changed; it was supposed to stay as C has it: $("$work/trap.bin")"
+
+# And the file under test, whose every Int64 is written correctly, is silent.
+../catmintc "$source" -o "$work/quiet.bin" >"$work/quiet.log" 2>&1 \
+  || fail "could not compile: $(cat "$work/quiet.log")"
+grep -qi "32 bits" "$work/quiet.log" \
+  && fail "warned about correct code:
+$(cat "$work/quiet.log")"
+
+# Nor does anything in the repository's own catmint code warn, which is the
+# test of whether the warning is quiet enough to be worth having.
+for f in ../lib/*.cmm ../examples/*.cm; do
+  ../catmintc -I ../lib "$f" -o "$work/x.bin" >"$work/f.log" 2>&1
+  grep -qi "32 bits" "$work/f.log" && fail "warned on $f:
+$(cat "$work/f.log")"
+done
+exit 0

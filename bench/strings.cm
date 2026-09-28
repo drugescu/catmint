@@ -1,0 +1,15 @@
+# Building strings: allocation, and the reference counting that gives them
+# back. Every iteration makes three Strings that nothing keeps.
+class Main from IO
+  def main:
+    Int total = 0
+    Int i = 0
+    while i < 2000000:
+      String line = "row ${i} of the table"
+      total = total + line.len()
+      i = i + 1
+    end
+    out("${total}\n")
+    out("live objects at the end ${allocated()}\n")
+  end
+end

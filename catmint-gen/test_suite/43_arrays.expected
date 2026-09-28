@@ -1,0 +1,17 @@
+len 8
+zeroed 0
+set 200
+filled 1 1
+wrapped 44
+big 9000000000
+negative -5
+untouched 0
+total 8999999995
+filled 1.5
+root 1.41421
+empty 0
+caught Bytes index 8 is outside 0 to 7.
+caught Ints cannot have -1 elements.
+original 42 copy 7
+leaked 0
+done

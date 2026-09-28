@@ -1,0 +1,107 @@
+# finalize: what a class does when its last reference goes.
+#
+# `defer` covers a block scope, but an object that owns something outside the
+# language -- a C allocation, a handle -- has no hook when the last reference
+# to it goes, and freeing here is shallow. Without this the safe-wrapper
+# pattern the FFI is built around does not exist: every handle would leak or
+# need releasing by hand, which is the thing `unsafe` was supposed to keep to
+# one place.
+#
+# It is a field in the run-time type information rather than a virtual table
+# slot, so it renumbers nothing.
+
+link "m"
+
+extern class Libc
+  def Ptr malloc(Int size)
+  def Void free(Ptr block)
+end
+
+class Tracker
+  Int id = 0
+
+  constructor(Int n):
+    id = n
+  end
+
+  def Void finalize:
+    IO reporter
+    reporter.out("finalize ${id}\n")
+  end
+end
+
+# The wrapper the whole design exists for: the C allocation is taken in the
+# constructor and given back in finalize, and nothing outside writes unsafe.
+class Buffer
+  Ptr handle
+  Int size
+
+  constructor(Int bytes):
+    size = bytes
+    unsafe:
+      handle = Libc.malloc(bytes)
+    end
+  end
+
+  def Int ok:
+    if handle == null:
+      return 0
+    end
+    return 1
+  end
+
+  def Void finalize:
+    if handle == null:
+      out2("")
+    else
+      unsafe:
+        Libc.free(handle)
+      end
+      handle = null
+    end
+  end
+
+  # A bare `return` would read better here, and the grammar has no rule for
+  # one: adding it costs thirteen new shift/reduce conflicts, which
+  # catmint-lex/catmint.y explains at the rule.
+  def Void out2(String ignored):
+  end
+end
+
+# A subclass with no finalize of its own uses its parent's.
+class Counted from Tracker
+  constructor(Int n):
+    id = n
+  end
+end
+
+class Main from IO
+  def Void scope:
+    Tracker a = new Tracker(1)
+    Tracker b = new Tracker(2)
+    out("in scope\n")
+  end
+
+  # A subclass with no finalize of its own runs the one it inherited.
+  def Void subclassScope:
+    Counted c = new Counted(7)
+    out("in subclass scope\n")
+  end
+
+  def main:
+    scope()
+    out("after scope\n")
+
+    subclassScope()
+    out("after subclass\n")
+
+    Int before = allocated()
+    Int i = 0
+    while i < 300:
+      Buffer buf = new Buffer(128)
+      i = i + 1
+    end
+    out("leaked ${allocated() - before}\n")
+    out("done\n")
+  end
+end

@@ -13,6 +13,8 @@
 #include <FloatConstant.h>
 #include <StringConstant.h>
 #include <Attribute.h>
+#include <Block.h>
+#include <Method.h>
 #include <BinaryOperator.h>
 #include <Type.h>
 
@@ -35,9 +37,13 @@ public:
   ~TypeTable();
 
   /// \brief Get the type corresponding to \p name or throw an exception
-  Type *getType(const std::string &name) const;
+  /// \p at is the node that named the type, so that "not found" can say where.
+  Type *getType(const std::string &name, TreeNode *at = nullptr) const;
 
   Type *getIntType() const;
+  /// \brief Width in bits of an integer type, or 0 when \p name is not one.
+  ///        Int and Int32 are the same 32-bit type.
+  static int integerWidth(const std::string &name);
   Type *getVoidType() const;
   Type *getNullType() const;
   Type *getFloatType() const;
@@ -57,6 +63,19 @@ public:
   std::string getCommonTypeStr(std::string T, std::string U) const;
 
   bool isEqualOrImplicitlyConvertibleTo(Type *fromType, Type *toType);
+  /// \brief True when \p derived is \p base, inherits from it, or declares
+  ///        that it implements it.
+  bool isDerivedFrom(const std::string &derived, const std::string &base) const;
+  /// \brief True for a type declared with `interface`.
+  bool isInterface(const std::string &name) const;
+  /// \brief True for a type held as an object reference rather than a value.
+  bool isReferenceType(const std::string &name) const;
+
+  /// Whether \p name is registered, without throwing when it is not. For
+  /// asking before the pass that would report the error has run.
+  bool contains(const std::string &name) const {
+    return typeTable.count(name) != 0;
+  }
   bool isEqualOrImplicitlyConvertibleToStr(std::string from, std::string to);
 
   void setType(TreeNode *node, Type *type) { 
@@ -71,15 +90,20 @@ public:
   /// \brief Get the type of \p node or assert (we don't throw an exception
   ///        because we don't intend to catch semantic errors with this)
   Type *getType(TreeNode *node) {
-    // For integer/float/string nodes there is no type
-    if(dynamic_cast<catmint::IntConstant *>(node)) {
-      return new catmint::Type(strings::Int);
+    // Constants are typed by their kind. These must be the registered types,
+    // not fresh ones: a fresh Type carries no Class, so anything inferred from
+    // a literal -- `s = ""` and then `s.len()` -- would be rejected as a call
+    // on a non-class object. Returning fresh ones also leaked.
+    if(auto intConstant = dynamic_cast<catmint::IntConstant *>(node)) {
+      // A literal too large for an Int is an Int64; everything else is an Int.
+      return getType(std::string(intConstant->fitsInInt() ? strings::Int
+                                                          : strings::Int64));
     }
     if(dynamic_cast<catmint::StringConstant *>(node)) {
-      return new catmint::Type(strings::String);
+      return getType(std::string(strings::String));
     }
     if(dynamic_cast<catmint::FloatConstant *>(node)) {
-      return new catmint::Type(strings::Float);
+      return getType(std::string(strings::Float));
     }
     
 
@@ -161,6 +185,9 @@ private:
   void addTypes(Program *p);
   void addBuiltinTypes(Program *p);
   void addBuiltinClasses(Program *p);
+  /// Register one built-in class and hand its features to the program.
+  Type *addBuiltinClass(Program *p, const char *name, const char *parent,
+                        std::vector<Feature *> &methods);
   void buildInheritanceGraph(Program *p);
   void buildFeatureTable(Class *c);
 

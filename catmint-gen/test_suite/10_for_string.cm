@@ -1,0 +1,18 @@
+class Main from IO
+  def main:
+    String word = "cat"
+    for c in word:
+      out("[")
+      out(c)
+      out("]")
+    end
+    out("\n")
+    Int n = 0
+    for c in "mint":
+      n = n + 1
+    end
+    out("letters = ")
+    out(n)
+    out("\n")
+  end
+end

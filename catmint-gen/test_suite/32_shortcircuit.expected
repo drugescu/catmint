@@ -1,0 +1,14 @@
+1 and 1 = 1
+1 and 0 = 0
+0 and 1 = 0
+0 or 0 = 0
+0 or 1 = 1
+1 or 0 = 1
+calls after false and = 0
+taken
+calls after true or = 0
+null guard held
+present guard held
+range held
+3 & 1 = 1
+2 | 1 = 3

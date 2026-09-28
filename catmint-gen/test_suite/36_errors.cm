@@ -1,0 +1,203 @@
+# try, catch and throw.
+
+class Bank
+  Int balance
+
+  def Bank withdraw(Int amount):
+    if amount > balance:
+      throw "insufficient funds"
+    end
+    balance = balance - amount
+    return self
+  end
+end
+
+class Helper
+  # A return out of the middle of a try has to leave the handler stack as it
+  # found it, or the next throw goes somewhere that no longer exists.
+  def Int earlyReturn(Int n):
+    try:
+      if n > 0:
+        return n * 2
+      end
+      throw "not positive"
+    catch e:
+      return 0 - 1
+    end
+  end
+end
+
+class Main from IO
+  def main:
+    Bank b
+    b.balance = 100
+
+    try:
+      b.withdraw(30)
+      out("balance " + b.balance + "\n")
+      b.withdraw(1000)
+      out("not reached\n")
+    catch e:
+      out("caught " + e + "\n")
+    end
+    out("balance after " + b.balance + "\n")
+
+    # A runtime error is an ordinary throw, so it can be caught.
+    try:
+      Bank missing = null
+      missing.withdraw(1)
+    catch e:
+      out("runtime " + e + "\n")
+    end
+
+    # Nested, with the handler throwing on.
+    try:
+      try:
+        throw "inner"
+      catch e:
+        out("inner caught " + e + "\n")
+        throw "outer"
+      end
+    catch e:
+      out("outer caught " + e + "\n")
+    end
+
+    # A try that does not throw skips the handler entirely.
+    try:
+      out("quiet\n")
+    catch e:
+      out("not reached\n")
+    end
+
+    Helper h
+    out("early " + h.earlyReturn(21) + "\n")
+    out("early " + h.earlyReturn(0) + "\n")
+
+    # After a return out of a try, the handler stack is still sound.
+    try:
+      throw "still working"
+    catch e:
+      out("after returns " + e + "\n")
+    end
+
+    # A local changed inside the try must still read correctly in the
+    # handler. longjmp returns into the middle of this frame, so a value the
+    # optimiser had promoted to a register would otherwise be whatever it was
+    # when the try started. The compiler makes the locals of a function
+    # containing a try volatile for exactly this.
+    Int progress = 0
+    String note = "none"
+    try:
+      progress = 1
+      note = "started"
+      progress = 2
+      throw "stop"
+    catch e:
+      out("progress " + progress + " note " + note + "\n")
+    end
+
+    # Any object can be thrown, not only a String.
+    try:
+      throw b
+    catch e:
+      Bank caught = e
+      out("object " + caught.balance + "\n")
+    end
+
+    # What is thrown has to survive the jump. A computed String's only
+    # reference is the pool of the work being abandoned, and the throw closes
+    # exactly those pools on its way out -- so this used to hand the handler
+    # memory that had already gone. It survived by luck when the throw and
+    # the catch were in one method, and corrupted the heap when they were
+    # not.
+    try:
+      raiseComputed(7)
+    catch e:
+      String message = e
+      out("computed " + message + "\n")
+    end
+
+    # The same for the runtime's own errors, whose message is built the same
+    # way, in the frame that is about to be left.
+    try:
+      indexPastTheEnd()
+    catch e:
+      String message = e
+      out("runtime error caught across a frame\n")
+    end
+
+    # And the thrown value is still usable after the handler has run, because
+    # the handler's own pool owns it now.
+    Int total = 0
+    Int i = 0
+    while i < 200:
+      try:
+        raiseComputed(i)
+      catch e:
+        String message = e
+        total = total + message.len()
+      end
+      i = i + 1
+    end
+    out("repeated " + total + "\n")
+
+    # A throw gives back what the frames it abandoned were holding. The jump
+    # skips their scope-exit releases, so the pool has to do it: every
+    # reference-holding variable registers its slot, and unwinding releases
+    # what the slot holds. Counted here because nothing else can see it --
+    # the program is correct either way, it just used to lose memory on every
+    # throw, which for a loop is unbounded.
+    Int before = allocated()
+    Int k = 0
+    while k < 300:
+      try:
+        throughTwoFrames(k)
+      catch e:
+        String message = e
+      end
+      k = k + 1
+    end
+    out("leaked over 300 throws " + (allocated() - before) + "\n")
+
+    # Including what the catching frame's own try block was holding, which
+    # lives in a different pool from the frames below it.
+    before = allocated()
+    k = 0
+    while k < 300:
+      try:
+        Bytes inTry = new Bytes(32)
+        String alsoInTry = "in the try " + k
+        throw "out"
+      catch e:
+        String message = e
+      end
+      k = k + 1
+    end
+    out("leaked from the try block " + (allocated() - before) + "\n")
+
+    out("done\n")
+  end
+
+  # Two frames between the throw and the handler, each holding something.
+  def Void throughTwoFrames(Int n):
+    String note = "outer " + n
+    Bytes buffer = new Bytes(64)
+    innerFrame(n)
+  end
+
+  def Void innerFrame(Int n):
+    String label = "inner " + n
+    Bytes more = new Bytes(16)
+    throw "abandoning " + n
+  end
+
+  def Void raiseComputed(Int n):
+    throw "computed " + n
+  end
+
+  def Void indexPastTheEnd:
+    Bytes small = new Bytes(2)
+    Int value = small.get(5)
+    out("unreachable " + value + "\n")
+  end
+end

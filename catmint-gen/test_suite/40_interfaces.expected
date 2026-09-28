@@ -1,0 +1,10 @@
+circle of radius 1 has area 3.14159
+square of side 3 has area 9
+cube of side 2 has area 4
+total area 16.1416
+named circle
+circle is a Shape 1
+square is Named 0
+type through interface Circle
+caught Unable to convert Square into Named.
+done

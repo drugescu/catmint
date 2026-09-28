@@ -8,6 +8,7 @@
             "NodeID": 1,
             "LineNumber": 0,
             "Name": "Main",
+            "SourceFile": "./test_suite/static_dispatch.cm",
             "Features": [
                 {
                     "NodeType": "Method",

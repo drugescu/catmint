@@ -1,0 +1,28 @@
+# The Math class. Built in, like IO, and every method is static, so there is
+# no object to make first.
+
+class Main from IO
+  def main:
+    out("sqrt " + Math.sqrt(2.0) + "\n")
+    out("sqrt squared " + Math.sqrt(2.0) * Math.sqrt(2.0) + "\n")
+    out("pow " + Math.pow(2.0, 10.0) + "\n")
+    out("exp " + Math.exp(1.0) + "\n")
+    out("log " + Math.log(Math.exp(1.0)) + "\n")
+    out("log10 " + Math.log10(1000.0) + "\n")
+
+    out("sin " + Math.sin(0.0) + "\n")
+    out("cos " + Math.cos(0.0) + "\n")
+    out("atan2 " + Math.atan2(1.0, 1.0) + "\n")
+
+    out("floor " + Math.floor(3.7) + "\n")
+    out("ceil " + Math.ceil(3.2) + "\n")
+    out("round " + Math.round(2.5) + "\n")
+    out("absf " + Math.absf(0.0 - 4.5) + "\n")
+
+    out("abs " + Math.abs(0 - 7) + "\n")
+    out("min " + Math.min(3, 9) + "\n")
+    out("max " + Math.max(3, 9) + "\n")
+
+    out("pi " + Math.pi() + "\n")
+  end
+end

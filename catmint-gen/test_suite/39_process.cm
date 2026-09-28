@@ -1,0 +1,48 @@
+# Process: catmint's whole concurrency story. Another program, not another
+# thread, so nothing is shared and nothing about the object model changes.
+
+class Main from IO
+  def main:
+    # One command, waited for. The exit status comes back.
+    out("ok ${Process.run("exit 0")}\n")
+    out("failed ${Process.run("exit 3")}\n")
+
+    # Reading what a command prints, a line at a time.
+    Process listing
+    listing.open("printf 'alpha\\nbeta\\ngamma\\n'", "r")
+    while listing.eof() == 0:
+      out("line ${listing.readLine()}\n")
+    end
+    out("status ${listing.finish()}\n")
+
+    # Writing to a command's input. It is sent to a file rather than to the
+    # screen because a child shares this program's standard output but not
+    # its buffering, so the two would interleave unpredictably.
+    Process counter
+    counter.open("wc -l > /tmp/catmint_process_test.txt", "w")
+    counter.write("one\ntwo\nthree\n")
+    out("wc status ${counter.finish()}\n")
+
+    File counted
+    counted.open("/tmp/catmint_process_test.txt", "r")
+    out("counted ${counted.readLine().trim()}\n")
+    counted.close()
+    File.remove("/tmp/catmint_process_test.txt")
+
+    # Real parallelism: start several and collect them afterwards. Each runs
+    # beside this program, with its own memory.
+    Int first = Process.start("exit 4")
+    Int second = Process.start("exit 5")
+    Int third = Process.start("exit 6")
+    out("first ${Process.wait(first)}\n")
+    out("second ${Process.wait(second)}\n")
+    out("third ${Process.wait(third)}\n")
+
+    # Waiting for something that was never started says so rather than
+    # hanging or aborting.
+    out("nothing ${Process.wait(0)}\n")
+
+    out("have a pid ${Process.pid() > 0}\n")
+    out("done\n")
+  end
+end

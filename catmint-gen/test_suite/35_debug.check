@@ -1,0 +1,42 @@
+#!/bin/sh
+# Compile with -g and assert that the debug metadata says what it should.
+# Run by ctest.sh with the source file as $1, from catmint-gen.
+set -e
+source=$1
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v llvm-link 2>/dev/null || echo /opt/homebrew/opt/llvm@22/bin/llvm-link)")}
+export PATH="$LLVM_BIN:$PATH"
+
+../catmint-lex/bin/catmint-parser "$source" "$work/t.ast" >/dev/null 2>&1
+( cd "$work" && "$OLDPWD/bin/catmint-gen" -g t.ast t.sem >/dev/null 2>&1 )
+ir="$work/t.ast.ll"
+
+fail() { echo "35_debug.check: $1"; exit 1; }
+
+grep -q '!DICompileUnit' "$ir" || fail "no compile unit"
+grep -q 'producer: "catmint"' "$ir" || fail "compile unit is not ours"
+grep -q '!DIFile(filename: "35_debug.cm"' "$ir" || fail "wrong or missing file"
+
+# 'Counter.bump' is declared on line 8 and 'Main.main' on line 15.
+grep -q 'name: "Counter.bump".*line: 8' "$ir" || fail "Counter.bump is not at line 8"
+grep -q 'name: "Main.main".*line: 15' "$ir" || fail "Main.main is not at line 15"
+
+# The two out() calls are on lines 17 and 18, so both must appear as
+# locations; a single location for the whole function would not be useful.
+grep -q '!DILocation(line: 17' "$ir" || fail "no location for line 17"
+grep -q '!DILocation(line: 18' "$ir" || fail "no location for line 18"
+
+# And nothing may claim a line the file does not have.
+if grep -oE '!DILocation\(line: [0-9]+' "$ir" | grep -oE '[0-9]+' | sort -rn | head -1 | \
+   awk -v max="$(wc -l < "$source")" '{ exit ($1 <= max) ? 0 : 1 }'; then
+  :
+else
+  fail "a location points past the end of the file"
+fi
+
+# Without -g none of it is emitted, so a normal build is unchanged.
+( cd "$work" && "$OLDPWD/bin/catmint-gen" t.ast t.sem >/dev/null 2>&1 )
+grep -q 'DICompileUnit' "$ir" && fail "debug metadata emitted without -g"
+exit 0

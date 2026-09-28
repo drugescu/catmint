@@ -1,0 +1,113 @@
+# Dict: a String-keyed hash table, written in catmint on top of List.
+#
+# Nothing here needs the runtime. The one primitive it borrows is
+# String.at, which gives a character's code so the hash can be computed in
+# the language rather than in C.
+
+class DictEntry from Object
+  String k
+  Object v
+
+  constructor(String key, Object value):
+    k = key
+    v = value
+  end
+end
+
+class Dict from Object
+  List buckets
+  Int count
+
+  def Int bucketCount:
+    return 16
+  end
+
+  # An attribute initialiser is a single expression, so the buckets cannot be
+  # built there. They are built on first use instead.
+  def Void ensure:
+    if buckets.len() == 0:
+      Int i = 0
+      while i < bucketCount():
+        List b
+        buckets.append(b)
+        i = i + 1
+      end
+    end
+  end
+
+  # djb2. The multiply wraps at 32 bits, which is fine for a hash; the result
+  # is forced non-negative so it can index a bucket.
+  def Int hash(String key):
+    Int h = 5381
+    Int i = 0
+    while i < key.len():
+      h = h * 33 + key.at(i)
+      i = i + 1
+    end
+    if h < 0:
+      h = 0 - h
+    end
+    return h
+  end
+
+  def List bucketFor(String key):
+    ensure()
+    Int index = hash(key) % bucketCount()
+    return buckets.get(index)
+  end
+
+  def Int size:
+    return count
+  end
+
+  # Null when the key is absent. Use has() when null is a legal value.
+  def Object get(String key):
+    List bucket = bucketFor(key)
+    for e in bucket:
+      DictEntry entry = e
+      if entry.k == key:
+        return entry.v
+      end
+    end
+    return null
+  end
+
+  def Int has(String key):
+    List bucket = bucketFor(key)
+    for e in bucket:
+      DictEntry entry = e
+      if entry.k == key:
+        return 1
+      end
+    end
+    return 0
+  end
+
+  # Replaces the value when the key is already present.
+  def Dict put(String key, Object value):
+    List bucket = bucketFor(key)
+    for e in bucket:
+      DictEntry entry = e
+      if entry.k == key:
+        entry.v = value
+        return self
+      end
+    end
+    bucket.append(new DictEntry(key, value))
+    count = count + 1
+    return self
+  end
+
+  def List keyList:
+    ensure()
+    List out
+    for b in buckets:
+      List bucket = b
+      for e in bucket:
+        DictEntry entry = e
+        out.append(entry.k)
+      end
+    end
+    return out
+  end
+end

@@ -1,0 +1,148 @@
+#!/bin/sh
+# Inference has to reject what it cannot reconcile, rather than picking one
+# and letting the mismatch surface at run time. Run by ctest.sh from
+# catmint-gen with the source file as $1.
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+fail() { echo "47_inference.check: $1"; exit 1; }
+
+# Int and String have no common type. Before the stricter rule this compiled:
+# the general convertibility test allows boxing in either direction, so the
+# method inferred Int and died at run time with "Expected an Integer, found
+# String" -- the exact error inference is supposed to move to compile time.
+printf '%s' 'class Main from IO
+  def mixed(Int n):
+    if n > 0:
+      return 1
+    end
+    return "no"
+  end
+  def main:
+    out("${mixed(1)}\n")
+  end
+end
+' > "$work/bad.cm"
+if ../catmintc "$work/bad.cm" -o "$work/bad.bin" >"$work/log" 2>&1; then
+  fail "a method returning both Int and String was accepted"
+fi
+grep -q "returns both" "$work/log" || fail "rejected, but not for the right reason:
+$(cat "$work/log")"
+
+# Two integer widths settle on the wider, the way an expression mixing them
+# does; two classes settle on the ancestor they share.
+printf '%s' 'class Animal
+  def String noise:
+    return "..."
+  end
+end
+class Dog from Animal
+  def String noise:
+    return "woof"
+  end
+end
+class Main from IO
+  def widen(Int n):
+    if n > 0:
+      return 1
+    end
+    return 9000000000
+  end
+  def pick(Int n):
+    if n > 0:
+      return new Dog
+    end
+    return new Animal
+  end
+  def main:
+    Int64 w = widen(1)
+    Animal a = pick(1)
+    out("${w} ${a.noise()}\n")
+  end
+end
+' > "$work/ok.cm"
+../catmintc "$work/ok.cm" -o "$work/ok.bin" >"$work/oklog" 2>&1 \
+  || fail "widening and a shared ancestor were rejected:
+$(cat "$work/oklog")"
+[ "$("$work/ok.bin")" = "1 woof" ] || fail "inferred the wrong types: got '$("$work/ok.bin")'"
+# Inference must not depend on declaration order. It used to: the ordinary
+# pass fills in "auto" while visiting a body, so a caller visited *earlier*
+# than its callee still saw "auto", which the type table maps to Void. Three
+# things broke on that -- an argument's type, an override's signature, and an
+# interface's conformance check -- and all three worked if the declarations
+# were simply reversed. A pre-pass now settles every inferred return type
+# before anything is checked.
+accepts() {
+  printf '%s' "$2" > "$work/order.cm"
+  ../catmintc "$work/order.cm" -o "$work/order.bin" >"$work/olog" 2>&1 \
+    || fail "$1 was rejected:
+$(cat "$work/olog")"
+  [ "$("$work/order.bin")" = "$3" ] \
+    || fail "$1 produced '$("$work/order.bin")', wanted '$3'"
+}
+
+accepts "a caller declared above its callee" 'class Main from IO
+  def main:
+    show(value())
+  end
+  def Void show(String s):
+    out(s + "\n")
+  end
+  def value:
+    return "ok"
+  end
+end
+' "ok"
+
+accepts "one inferred method returning another" 'class Main from IO
+  def main:
+    show(outer())
+  end
+  def Void show(String s):
+    out(s + "\n")
+  end
+  def outer:
+    return inner()
+  end
+  def inner:
+    return "ok"
+  end
+end
+' "ok"
+
+accepts "an override whose base declares the type" 'class Base
+  def Int describe:
+    return 1
+  end
+end
+class Derived from Base
+  def describe:
+    return 2
+  end
+end
+class Main from IO
+  def main:
+    Derived d
+    out("${d.describe()}\n")
+  end
+end
+' "2"
+
+accepts "an interface satisfied by an inferred method" 'interface Sized
+  def Int size
+end
+class Box does Sized
+  def size:
+    return 7
+  end
+end
+class Main from IO
+  def main:
+    Box b
+    Sized s = b
+    out("${s.size()}\n")
+  end
+end
+' "7"
+
+exit 0

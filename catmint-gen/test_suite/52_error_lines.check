@@ -1,0 +1,54 @@
+#!/bin/sh
+# Under -g a runtime error says where; without it, it does not, and no
+# program pays for the bookkeeping. Run by ctest.sh from catmint-gen with the
+# source file as $1.
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+source=$1
+
+fail() { echo "52_error_lines.check: $1"; exit 1; }
+
+# A program that lets the error escape, so the message reaches stderr whole.
+cat > "$work/boom.cm" <<'INNER'
+class Main from IO
+  def main:
+    out("before\n")
+    Bytes b = new Bytes(4)
+    Int value = b.get(9)
+    out("after ${value}\n")
+  end
+end
+INNER
+
+# The failing access is on line 5.
+../catmintc -g "$work/boom.cm" -o "$work/boom.g" >"$work/log" 2>&1 \
+  || fail "could not compile with -g: $(cat "$work/log")"
+"$work/boom.g" >"$work/out.g" 2>&1
+grep -q "line 5" "$work/out.g" \
+  || fail "with -g the error does not say where:
+$(cat "$work/out.g")"
+grep -qi "index 9 is outside" "$work/out.g" \
+  || fail "with -g the error lost what went wrong:
+$(cat "$work/out.g")"
+
+# Without -g the message is the same minus the location, and nothing is
+# stored anywhere to produce it.
+../catmintc "$work/boom.cm" -o "$work/boom.n" >"$work/log" 2>&1 \
+  || fail "could not compile without -g: $(cat "$work/log")"
+"$work/boom.n" >"$work/out.n" 2>&1
+grep -q "line " "$work/out.n" \
+  && fail "without -g the error still carries a line:
+$(cat "$work/out.n")"
+grep -qi "index 9 is outside" "$work/out.n" \
+  || fail "without -g the error lost what went wrong:
+$(cat "$work/out.n")"
+
+# And the line store really is absent from the IR of an ordinary build.
+../catmint-lex/bin/catmint-parser "$work/boom.cm" "$work/b.ast" >/dev/null 2>&1
+( cd "$work" && "$OLDPWD/bin/catmint-gen" b.ast b.sem ) >/dev/null 2>&1
+grep -q "__cm_line" "$work/b.ast.ll" \
+  && fail "the line global is emitted without -g"
+( cd "$work" && "$OLDPWD/bin/catmint-gen" -g b.ast b.sem ) >/dev/null 2>&1
+grep -q "__cm_line" "$work/b.ast.ll" \
+  || fail "the line global is missing under -g"
+exit 0

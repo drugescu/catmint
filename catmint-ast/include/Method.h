@@ -54,6 +54,22 @@ public:
   std::string getName() { return name; }
   bool isMethod() const override { return true; }
 
+  /// A static method takes no receiver and gets no virtual table slot, so it
+  /// is called on the class rather than on an object.
+  bool isStatic() const { return staticMethod; }
+  void setStatic(bool value) { staticMethod = value; }
+
+  /// True for `abstract def`: a signature a subclass must supply. It takes a
+  /// virtual table slot like any other method, so a call through the base
+  /// type reaches the subclass's implementation; what it has no body of.
+  bool isAbstract() const { return abstractMethod; }
+  void setAbstract(bool value) { abstractMethod = value; }
+
+  /// True for `unsafe def`: the whole body counts as an unsafe block, so a
+  /// thin wrapper around a C call needs no block inside it.
+  bool isUnsafe() const { return unsafeMethod; }
+  void setUnsafe(bool value) { unsafeMethod = value; }
+
   /// @{
   /// \brief Iterate through the parameters
   iterator begin() const { return iterator(parameters.begin()); }
@@ -61,6 +77,10 @@ public:
   /// @}
 
   std::string getReturnType() const { return returnType; }
+  /// Set by the semantic pass when the declared type was "auto" and the body
+  /// returns a value. The generator reads the string, so the inference has to
+  /// land on the node rather than only in the type table.
+  void setReturnType(const std::string &type) { returnType = type; }
 
   Expression *getBody() const { return body.get(); }
   
@@ -71,6 +91,9 @@ public:
 private:
   std::string returnType;
   FormalParamsType parameters;
+  bool staticMethod = false;
+  bool abstractMethod = false;
+  bool unsafeMethod = false;
   
 public:
   std::unique_ptr<Expression> body;

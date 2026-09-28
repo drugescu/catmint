@@ -36,6 +36,12 @@ public:
     FirstComparison = LessThan,
     LastComparison = Equal,
 
+    // 'and' and 'or': these evaluate the right operand only when the left
+    // has not already decided, so they are not arithmetic and not
+    // comparisons -- the generator branches rather than computing both.
+    AndAlso,
+    OrElse,
+
     Invalid
   };
 
@@ -65,6 +71,11 @@ public:
     return operatorKind >= FirstComparison && operatorKind <= LastComparison;
   }
 
+  /// True for 'and' and 'or', which branch instead of evaluating both sides.
+  bool isShortCircuit() const {
+    return operatorKind == AndAlso || operatorKind == OrElse;
+  }
+
   std::string getName() const {
     switch (operatorKind) {
       case Add: return "+";
@@ -72,6 +83,8 @@ public:
       case Pow: return "**";
       case Or : return "Or";
       case And: return "And";
+      case AndAlso: return "and";
+      case OrElse: return "or";
       case Xor: return "Xor";
       case LShift: return "<<";
       case RShift: return ">>";

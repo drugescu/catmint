@@ -1,0 +1,140 @@
+# break and continue.
+#
+# The interesting part is not the branch. It is everything a break has to
+# unwind on its way out: the iteration's temporary pool, the deferred
+# expressions of every block it leaves, the scope releases for those blocks,
+# and the handler stack if it is leaving a try. This test exercises all four,
+# and counts live objects at the end so that a forgotten release is a failure
+# rather than a slow leak nobody sees.
+
+class Main from IO
+  # break out of a while
+  def Int firstDivisor(Int n):
+    Int i = 2
+    Int found = 0
+    while i < n:
+      if (n % i) == 0:
+        found = i
+        break
+      end
+      i = i + 1
+    end
+    return found
+  end
+
+  # continue in a for
+  def Int sumOdds(Int n):
+    Int total = 0
+    for i in n:
+      if (i % 2) == 0:
+        continue
+      end
+      total = total + i
+    end
+    return total
+  end
+
+  # break leaves the innermost loop only
+  def Int nested:
+    Int count = 0
+    for i in 4:
+      for j in 4:
+        if j == 2:
+          break
+        end
+        count = count + 1
+      end
+      count = count + 100
+    end
+    return count
+  end
+
+  # a loop that allocates on every path, left by both break and continue
+  def Void allocating:
+    Int n = 0
+    while n < 500:
+      String s = "item " + n
+      if s.len() > 0:
+        n = n + 1
+        continue
+      end
+      break
+    end
+    for i in 500:
+      String t = "row " + i
+      if t.len() > 3:
+        continue
+      end
+      break
+    end
+  end
+
+  # the deferred expressions of a block run when a break leaves it
+  def Int deferred:
+    Int total = 0
+    for i in 5:
+      defer out("d${i}")
+      if i == 2:
+        break
+      end
+      total = total + 1
+    end
+    out("\n")
+    return total
+  end
+
+  # break out of a try: the handler it jumps over has to be popped, or the
+  # next throw lands in a frame that has gone
+  def Int fromTry:
+    Int total = 0
+    for i in 10:
+      try:
+        if i == 3:
+          break
+        end
+        total = total + 1
+      catch e:
+        total = total + 1000
+      end
+    end
+    try:
+      throw "after"
+    catch e:
+      total = total + 10
+    end
+    return total
+  end
+
+  # continue from inside a try, which pops one handler and keeps looping
+  def Int continueFromTry:
+    Int total = 0
+    for i in 6:
+      try:
+        if (i % 2) == 0:
+          continue
+        end
+        total = total + i
+      catch e:
+        total = total + 1000
+      end
+    end
+    return total
+  end
+
+  def main:
+    out("divisor ${firstDivisor(91)}\n")
+    out("odds ${sumOdds(10)}\n")
+    out("nested ${nested()}\n")
+    out("deferred ${deferred()}\n")
+    out("fromTry ${fromTry()}\n")
+    out("continueFromTry ${continueFromTry()}\n")
+
+    # Sampled here rather than at the top of main: every interpolated `out`
+    # above leaves temporaries in this method's pool, which is not closed
+    # until main returns, so counting from the top would measure those and
+    # call them a leak.
+    Int before = allocated()
+    allocating()
+    out("leaked ${allocated() - before}\n")
+  end
+end

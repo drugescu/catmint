@@ -1,0 +1,22 @@
+# Separate compilation where a dependency is reached only through another
+# module.
+#
+# 13_separate imports both `shapes` and `square`, and lists `shapes` first, so
+# the order the driver produced happened to be right and a real bug in it went
+# unseen: modules were recorded *before* their own imports, so a program
+# importing only `square` got the order "square shapes" and compiled `square`
+# before `shapes` existed to import. The build failed with
+# "Type 'Shape' not found in Type Table."
+#
+# This file imports only `square`. `shapes` has to be found, ordered and
+# compiled first on its own account.
+
+using square
+
+class Main from IO
+  def main:
+    Square s
+    s.report()
+    out("area ${s.area()}\n")
+  end
+end

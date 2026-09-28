@@ -35,107 +35,274 @@ void TypeTable::addTypes(Program *p) {
   addBuiltinTypes(p);
 }
 
+int TypeTable::integerWidth(const std::string &name) {
+  if (name == strings::Int8)  return 8;
+  if (name == strings::Int16) return 16;
+  if (name == strings::Int || name == strings::Int32) return 32;
+  if (name == strings::Int64) return 64;
+  return 0;
+}
+
 void TypeTable::addBuiltinTypes(Program *p) {
   typeTable[strings::Int] = new Type(strings::Int);
   typeTable[strings::Null] = new Type(strings::Null);
   typeTable[strings::Void] = new Type(strings::Void);
   typeTable[strings::Float] = new Type(strings::Float);
-  
+  // An opaque machine pointer. Registered with no Class behind it, which is
+  // what makes isReferenceType answer no: nothing counts it, nothing frees
+  // it, and it never reaches the temporary pool. A value, like an Int.
+  typeTable[strings::Ptr] = new Type(strings::Ptr);
+
+  // `def name:` with no declared return type parses as the type "auto". Until
+  // real return-type inference exists, such a method returns nothing, so the
+  // spelling is an alias for Void. A method that returns a value must declare
+  // its type: `def Int square(Int n):`.
+  typeTable["auto"] = typeTable[strings::Void];
+
+  // The sized integers. Int32 is registered as an alias of Int rather than as
+  // a type of its own; the parser already folds the spelling away, and this
+  // keeps a .ast written by an older parser working.
+  typeTable[strings::Int8] = new Type(strings::Int8);
+  typeTable[strings::Int16] = new Type(strings::Int16);
+  typeTable[strings::Int64] = new Type(strings::Int64);
+  typeTable[strings::Int32] = typeTable[strings::Int];
+
   // Add additional types
   addBuiltinClasses(p);
 }
 
 bool TypeTable::isBuiltinType(Type *t) const {
-  return t == getIntType() || t == getNullType() || t == getVoidType() || t == getFloatType() ||
+  const std::string &name = t->getName();
+  return integerWidth(name) != 0 || name == strings::Null ||
+         name == strings::Void || name == strings::Float ||
          isBuiltinClass(t->getClass());
 }
 
 // Add 'Object', 'IO', 'String' classes
+namespace {
+
+/// One parameter of a built-in method: its name and its type.
+using Param = std::pair<const char *, const char *>;
+
+/// Declare a built-in method, in slot order.
+///
+/// Every call allocates its own parameters. That is the point of this
+/// helper: `Method` takes ownership of the `Attribute`s it is given, so
+/// sharing one vector between two methods handed the same object to two
+/// owners and double-freed it at startup. Declaring them here means it
+/// cannot happen again.
+Method *declare(std::vector<Feature *> &methods, const char *name,
+                const char *returnType,
+                std::initializer_list<Param> params = {}) {
+  std::vector<Attribute *> own;
+  own.reserve(params.size());
+  for (const auto &param : params) {
+    own.push_back(new Attribute(0, param.first, param.second));
+  }
+
+  auto *method = new Method(0, name, returnType, nullptr, own);
+  methods.push_back(method);
+  return method;
+}
+
+/// The same, for a method with no receiver: it takes no virtual table slot,
+/// so it is declared after every method that does.
+Method *declareStatic(std::vector<Feature *> &methods, const char *name,
+                      const char *returnType,
+                      std::initializer_list<Param> params = {}) {
+  auto *method = declare(methods, name, returnType, params);
+  method->setStatic(true);
+  return method;
+}
+
+} // namespace
+
+/// Register a built-in class and hand its features over to the program,
+/// which owns them from here.
+Type *TypeTable::addBuiltinClass(Program *p, const char *name,
+                                 const char *parent,
+                                 std::vector<Feature *> &methods) {
+  std::unique_ptr<Class> declared(new Class(0, name, parent, methods));
+  declared->setBuiltin(true);
+  Type *type = createNewType(declared.get());
+  p->addClass(std::move(declared));
+  methods.clear();
+  return type;
+}
+
+// Add the classes the compiler supplies. Declaration order here is virtual
+// table slot order in runtime.c, and the two must agree exactly: test 42
+// calls every one of these methods so that a disagreement is a failing test
+// rather than a call to the wrong function.
 void TypeTable::addBuiltinClasses(Program *p) {
-  std::vector<Feature *> builtinMethods;
-  //std::vector<FormalParam *> builtinMethodsParams;
-  std::vector<Attribute *> builtinMethodsParams;
+  std::vector<Feature *> methods;
 
-  // ---------------------------------------------------------------------------
-  // Add built-in class - 'Object'
-  // ---------------------------------------------------------------------------
-  
-  // Method(int, string &name, string &returnType, Expression* body, vector<...> &formalParameters
-  // Method - 'Obj_object.abort()' returning 'Void'
-  builtinMethods.push_back(new Method(0, strings::Abort, strings::Void, nullptr,
-                                      builtinMethodsParams));
+  // --- Object ---------------------------------------------------------
+  declare(methods, strings::Abort, strings::Void);
+  declare(methods, strings::TypeName, strings::String);
+  declare(methods, strings::Copy, strings::Object);
+  // Slots 3 to 5: reference counting. These sit on Object, so every class
+  // has them, and every subclass's own methods start at slot 6. There is no
+  // unconditional "free it now": the compiler counts references, so one
+  // would leave counted references pointing at freed memory.
+  declare(methods, "retain", strings::Object);
+  declare(methods, "release", strings::Void);
+  declare(methods, "refs", strings::Int);
+  addBuiltinClass(p, strings::Object, "", methods);
 
-  // Method - 'Obj_object.type()' returning obj of type 'String'
-  builtinMethods.push_back(new Method(0, strings::TypeName, strings::String,
-                                      nullptr, builtinMethodsParams));
+  // --- IO -------------------------------------------------------------
+  declare(methods, strings::In, strings::String);
+  declare(methods, strings::Out, strings::Io, {{strings::Message, strings::String}});
+  declare(methods, strings::ReadLine, strings::String);
+  declare(methods, strings::Eof, strings::Int);
+  // A seed for a random number generator: the only unpredictable thing the
+  // runtime supplies, since the generator itself is in lib/random.cmm.
+  declare(methods, strings::Entropy, strings::Int);
+  // Time. Only these three readings come from the runtime; turning a
+  // timestamp into a date is arithmetic and lives in lib/time.cmm.
+  declare(methods, strings::Ticks, strings::Int);
+  declare(methods, strings::Epoch, strings::Int64); // 64-bit, so past 2038
+  declare(methods, strings::LocalOffset, strings::Int);
+  declare(methods, strings::Sleep, strings::Io, {{"milliseconds", strings::Int}});
+  declare(methods, "args", strings::Int);
+  declare(methods, "arg", strings::String, {{"index", strings::Int}});
+  declare(methods, "err", strings::Io, {{strings::Message, strings::String}});
+  declare(methods, "exit", strings::Void, {{"code", strings::Int}});
+  declare(methods, "allocated", strings::Int);
+  addBuiltinClass(p, strings::Io, strings::Object, methods);
 
-  // Method - 'Obj_object.copy()' returning obj of type 'Object'
-  builtinMethods.push_back(new Method(0, strings::Copy, strings::Object,
-                                      nullptr, builtinMethodsParams));
-  
-  // Add these methods to class 'Object' with no parent, add class to typeTable,  park it in the program
-  std::unique_ptr<Class> objectClass(
-      new Class(0, strings::Object, "", builtinMethods));
-  (void)createNewType(objectClass.get());
-  p->addClass(std::move(objectClass)); // we're parking this in the program, so
-                                       // someone will have ownership of it, but
-                                       // it's not very nice of us...
+  // --- String ---------------------------------------------------------
+  declare(methods, strings::Length, strings::Int);
+  declare(methods, strings::ToInt, strings::Int);
+  declare(methods, strings::Substr, strings::String,
+          {{"start", strings::Int}, {"end", strings::Int}});
+  declare(methods, strings::Concat, strings::String, {{"other", strings::String}});
+  declare(methods, strings::Equals, strings::Int, {{"other", strings::String}});
+  // The character code at an index, which is what a hash needs.
+  declare(methods, strings::At, strings::Int, {{"index", strings::Int}});
+  declare(methods, "indexOf", strings::Int, {{"needle", strings::String}});
+  declare(methods, "trim", strings::String);
+  declare(methods, "upper", strings::String);
+  declare(methods, "lower", strings::String);
+  declare(methods, "split", strings::List, {{"separator", strings::String}});
+  declare(methods, "replace", strings::String,
+          {{"from", strings::String}, {"to", strings::String}});
+  declare(methods, "toFloat", strings::Float);
+  declare(methods, "toBytes", strings::Bytes);
+  // Static, and so after every slot-taking method: a character code does not
+  // belong to a particular String. Written String.chr(65).
+  declareStatic(methods, "chr", strings::String, {{"code", strings::Int}});
+  addBuiltinClass(p, strings::String, strings::Object, methods);
 
-  builtinMethods.clear();
-  builtinMethodsParams.clear();
+  // --- List, the one container the runtime provides -------------------
+  declare(methods, strings::Length, strings::Int);
+  declare(methods, strings::Get, strings::Object, {{"index", strings::Int}});
+  declare(methods, strings::Set, strings::Object,
+          {{"index", strings::Int}, {"value", strings::Object}});
+  declare(methods, strings::Append, strings::List, {{"value", strings::Object}});
+  declare(methods, strings::Slice, strings::List,
+          {{"start", strings::Int}, {"end", strings::Int}});
+  addBuiltinClass(p, strings::List, strings::Object, methods);
 
-  // ---------------------------------------------------------------------------
-  // Add built-in class - 'IO'
-  // ---------------------------------------------------------------------------
+  // --- Integer, the box that lets a number live in a List -------------
+  // No setter: small values are shared boxes, so changing one in place
+  // would change that number for everyone holding it.
+  declare(methods, strings::Get, strings::Int);
+  declare(methods, strings::GetLong, strings::Int64);
+  addBuiltinClass(p, strings::Integer, strings::Object, methods);
 
-  // Method - 'IO_object.in(String message)' returning obj of type 'String'
-  builtinMethods.push_back(new Method(0, strings::In, strings::String, nullptr,
-                                      builtinMethodsParams));
-  
-  // Method - 'IO_object.out(String message)' returning obj of type 'IO'
-  builtinMethodsParams.push_back(
-      // Attribute(int lineNum, const std::string &name, const std::string &type, catmint::Program::ExprType init = nullptr)
-      new Attribute(0, strings::Message, strings::String));
-  builtinMethods.push_back(
-      new Method(0, strings::Out, strings::Io, nullptr, builtinMethodsParams));
-  
-  // Add these methods to class 'IO' which inherits 'Object', add class to typeTable,  park it in the program
-  // Class(int, const std::string &name, const std::string &parentClassName, const std::vector<...> &features = {})
-  std::unique_ptr<Class> ioClass(
-      new Class(0, strings::Io, strings::Object, builtinMethods));
-  (void)createNewType(ioClass.get());
-  p->addClass(std::move(ioClass));
+  // --- File -----------------------------------------------------------
+  declare(methods, "open", strings::Int,
+          {{"path", strings::String}, {"mode", strings::String}});
+  declare(methods, strings::ReadLine, strings::String);
+  declare(methods, "readAll", strings::String);
+  declare(methods, "write", strings::File, {{"text", strings::String}});
+  declare(methods, strings::Eof, strings::Int);
+  declare(methods, "close", strings::File);
+  declare(methods, "isOpen", strings::Int);
+  declare(methods, "readBytes", strings::Int, {{"buffer", strings::Bytes}});
+  declare(methods, "writeBytes", strings::Int,
+          {{"buffer", strings::Bytes}, {"count", strings::Int}});
+  // These two are about a path, not about an open file.
+  declareStatic(methods, "exists", strings::Int, {{"path", strings::String}});
+  declareStatic(methods, "remove", strings::Int, {{"path", strings::String}});
+  addBuiltinClass(p, strings::File, strings::Object, methods);
 
-  builtinMethods.clear();
-  builtinMethodsParams.clear();
+  // --- Math -----------------------------------------------------------
+  // A shell over libm, with no state. Every method is static, so the class
+  // takes no virtual table slots at all and exists to name the functions.
+  for (const char *name : {"sqrt"}) declareStatic(methods, name, strings::Float, {{"x", strings::Float}});
+  declareStatic(methods, "pow", strings::Float, {{"x", strings::Float}, {"y", strings::Float}});
+  for (const char *name : {"exp", "log", "log10", "sin", "cos", "tan"})
+    declareStatic(methods, name, strings::Float, {{"x", strings::Float}});
+  declareStatic(methods, "atan2", strings::Float, {{"y", strings::Float}, {"x", strings::Float}});
+  for (const char *name : {"floor", "ceil", "round", "absf"})
+    declareStatic(methods, name, strings::Float, {{"x", strings::Float}});
+  declareStatic(methods, "abs", strings::Int, {{"x", strings::Int}});
+  for (const char *name : {"min", "max"})
+    declareStatic(methods, name, strings::Int, {{"a", strings::Int}, {"b", strings::Int}});
+  declareStatic(methods, "pi", strings::Float);
+  declareStatic(methods, "e", strings::Float);
+  addBuiltinClass(p, strings::Math, strings::Object, methods);
 
-  // ---------------------------------------------------------------------------
-  // Add built-in class - 'String'
-  // ---------------------------------------------------------------------------
+  // --- Process, another program running beside this one ---------------
+  declare(methods, "open", strings::Int,
+          {{"command", strings::String}, {"mode", strings::String}});
+  declare(methods, strings::ReadLine, strings::String);
+  declare(methods, "write", strings::Process, {{"text", strings::String}});
+  declare(methods, strings::Eof, strings::Int);
+  declare(methods, "finish", strings::Int);
+  declareStatic(methods, "run", strings::Int, {{"command", strings::String}});
+  declareStatic(methods, "start", strings::Int, {{"command", strings::String}});
+  declareStatic(methods, "wait", strings::Int, {{"pid", strings::Int}});
+  declareStatic(methods, "pid", strings::Int);
+  addBuiltinClass(p, strings::Process, strings::Object, methods);
 
-  // Method - 'String_object.len()' returning an 'Int'
-  builtinMethods.push_back(new Method(0, strings::Length, strings::Int, nullptr,
-                                      builtinMethodsParams));
-  // Method - 'String_object.toInt()' returning an 'Int'
-  builtinMethods.push_back(new Method(0, strings::ToInt, strings::Int, nullptr,
-                                      builtinMethodsParams));
-  
-  // Add these methods to class 'String' which inherits 'Object', add class to typeTable,  park it in the program
-  // Class(int, const std::string &name, const std::string &parentClassName, const std::vector<...> &features = {})
-  std::unique_ptr<Class> stringClass(
-      new Class(0, strings::String, strings::Object, builtinMethods));
-  (void)createNewType(stringClass.get());
-  p->addClass(std::move(stringClass));
+  // --- Bytes, Ints, Floats: numbers stored as numbers -----------------
+  //
+  // Three concrete classes rather than one generic one, because catmint has
+  // no generics. Each has the same four slot-taking methods in the same
+  // order, and a constructor, which takes no slot.
+  struct { const char *name; const char *element; } arrays[] = {
+      {strings::Bytes, strings::Int},
+      {strings::Ints, strings::Int64},
+      {strings::Floats, strings::Float},
+  };
+  for (const auto &array : arrays) {
+    declare(methods, strings::Init, strings::Void, {{"count", strings::Int}});
+    declare(methods, strings::Length, strings::Int);
+    declare(methods, strings::Get, array.element, {{"index", strings::Int}});
+    declare(methods, strings::Set, array.element,
+            {{"index", strings::Int}, {"value", array.element}});
+    declare(methods, strings::Fill, array.name, {{"value", array.element}});
+    // Only Bytes bridges to String and File, so only Bytes gets the two
+    // extra slots. Appended after the shared four, so Ints and Floats keep
+    // exactly the slot numbers they had.
+    if (array.name == std::string(strings::Bytes)) {
+      declare(methods, "toString", strings::String);
+      declare(methods, "slice", strings::Bytes,
+              {{"start", strings::Int}, {"end", strings::Int}});
+    }
+    addBuiltinClass(p, array.name, strings::Object, methods);
+  }
+
+  // --- Worker, a thread reached only through `spawn` ------------------
+  declareStatic(methods, "wait", strings::Int64, {{"handle", strings::Int}});
+  declareStatic(methods, "count", strings::Int);
+  addBuiltinClass(p, strings::Worker, strings::Object, methods);
 }
 
 bool TypeTable::isBuiltinClass(Class *c) const {
-  return c == getObjectType()->getClass() || c == getStringType()->getClass() ||
-         c == getIOType()->getClass();
+  // The class says so itself, set where it was declared. This used to be a
+  // list of names here, and a new built-in missing from it went down the
+  // user-class path, where its body-less methods were rejected with a
+  // confusing type error.
+  return c && c->isBuiltin();
 }
 
-Type *TypeTable::getType(const std::string &name) const {
+Type *TypeTable::getType(const std::string &name, TreeNode *at) const {
   if (!typeTable.count(name)) {
-    throw TypeNotFoundException(name);
+    throw TypeNotFoundException(name, at);
   }
   return typeTable.at(name);
 }
@@ -202,6 +369,15 @@ Type *TypeTable::getCommonType(Type *T, Type *U) const {
     return T;
   }
 
+  // Two integer types meet at the wider of the two.
+  const int widthT = integerWidth(TN);
+  const int widthU = integerWidth(UN);
+  if (widthT && widthU) {
+    return widthT >= widthU ? T : U;
+  }
+  if (widthT && widthT != 32) TN = strings::Int;
+  if (widthU && widthU != 32) UN = strings::Int;
+
   // Implicit potential conversions
   if (TN == strings::Int) {
     // Promotion to float if any are float
@@ -215,6 +391,27 @@ Type *TypeTable::getCommonType(Type *T, Type *U) const {
     if (UN == strings::Int) return getFloatType();
   }
 
+  if (TN == strings::String && (UN == strings::Int || UN == strings::Float)) {
+    return getStringType();
+  }
+
+  // null belongs to every reference type, so a branch returning null and one
+  // returning an object agree on the object's type rather than on nothing.
+  if (TN == strings::Null && isReferenceType(UN)) return U;
+  if (UN == strings::Null && isReferenceType(TN)) return T;
+
+  // Two classes meet at their nearest shared ancestor. Object is the root, so
+  // any two classes have one.
+  if (isReferenceType(TN) && isReferenceType(UN)) {
+    for (auto *c = getType(TN)->getClass(); c;) {
+      if (isDerivedFrom(UN, c->getName())) {
+        return getType(c->getName());
+      }
+      auto parent = parentTable.find(c);
+      c = parent == parentTable.end() ? nullptr : parent->second;
+    }
+  }
+
   return getVoidType();
 }
 
@@ -223,6 +420,29 @@ std::string TypeTable::getCommonTypeStr(std::string T, std::string U) const {
   // Any object - try to walk hierarchy here as well
   if (T == U)
     return T;
+
+  // Two integer types meet at the wider of the two, so mixing an Int with an
+  // Int64 gives an Int64 and the narrower operand is sign-extended.
+  const int widthT = integerWidth(T);
+  const int widthU = integerWidth(U);
+  if (widthT && widthU) {
+    return widthT >= widthU ? T : U;
+  }
+  // Every integer type converts to a Float and prints as a String, and the
+  // rules below are written for Int, so widen the question to it.
+  if (widthT && widthT != 32) T = strings::Int;
+  if (widthU && widthU != 32) U = strings::Int;
+  if (T == U)
+    return T;
+
+  // A Ptr meets null and nothing else. That is the whole of its arithmetic:
+  // it can be compared with null, assigned null, and passed back to C. It
+  // does not convert to an Int in either direction, because a pointer that
+  // can be arrived at by arithmetic is a pointer nobody can reason about.
+  if ((T == strings::Ptr && U == strings::Null) ||
+      (T == strings::Null && U == strings::Ptr)) {
+    return strings::Ptr;
+  }
 
   // Implicit potential conversions
   if (T == strings::Int) {
@@ -234,12 +454,69 @@ std::string TypeTable::getCommonTypeStr(std::string T, std::string U) const {
 
   if (T == strings::Float) {
     if (U == strings::Int) return strings::Float;
+    // Printing a Float goes through the same conversion as printing an Int;
+    // the generator inserts __cm_floatToString.
+    if (U == strings::String) return strings::String;
   }
+
+  // The numeric-to-String rules were only written one way round, so
+  // '1 + "a"' was allowed and '"a" + 1' was not.
+  if (T == strings::String &&
+      (U == strings::Int || U == strings::Float)) {
+    return strings::String;
+  }
+
+  if (T == strings::Null && isReferenceType(U)) return U;
+  if (U == strings::Null && isReferenceType(T)) return T;
 
   return strings::Void;
 }
 
 // Careful here
+bool TypeTable::isDerivedFrom(const std::string &derived,
+                              const std::string &base) const {
+  if (derived == base) {
+    return true;
+  }
+  auto it = typeTable.find(derived);
+  if (it == typeTable.end()) {
+    return false;
+  }
+  for (Class *c = it->second->getClass(); c;) {
+    if (c->getName() == base) {
+      return true;
+    }
+    // An interface is not in the parent chain, so a class reaches one by
+    // having said `does`. Checking at every step means a subclass inherits
+    // what its parent promised.
+    for (const auto &implemented : c->getInterfaces()) {
+      if (implemented == base) {
+        return true;
+      }
+    }
+    auto parent = parentTable.find(c);
+    c = parent == parentTable.end() ? nullptr : parent->second;
+  }
+  return false;
+}
+
+bool TypeTable::isInterface(const std::string &name) const {
+  auto it = typeTable.find(name);
+  if (it == typeTable.end() || !it->second->getClass()) {
+    return false;
+  }
+  return it->second->getClass()->isInterface();
+}
+
+bool TypeTable::isReferenceType(const std::string &name) const {
+  if (integerWidth(name) != 0 || name == strings::Float ||
+      name == strings::Void) {
+    return false;
+  }
+  auto it = typeTable.find(name);
+  return it != typeTable.end() && it->second->getClass() != nullptr;
+}
+
 bool TypeTable::isEqualOrImplicitlyConvertibleTo(Type *fromType, Type *toType) {
   
   // Cover case of void and void, though why this would happen beats me
@@ -249,11 +526,31 @@ bool TypeTable::isEqualOrImplicitlyConvertibleTo(Type *fromType, Type *toType) {
   
   if (getCommonTypeStr(fromType->getName(), toType->getName()) != strings::Void)
     return true;
-  else
-  {
-    return false;
+
+  // Null stands in for any object.
+  if (from == strings::Null && isReferenceType(to)) {
+    return true;
   }
-  
+
+  // An Int boxes into an Integer wherever object references are held, and
+  // unboxes on the way back out. This is what lets a List hold numbers in a
+  // language with no generics; the generator inserts the conversion.
+  if (integerWidth(from) && isReferenceType(to)) {
+    return true;
+  }
+  if (isReferenceType(from) && integerWidth(to)) {
+    return true;
+  }
+
+  // Up the hierarchy is free. Down it is allowed too, and checked at run time
+  // by the generated cast, so that a value taken out of an Object-typed
+  // container can be assigned to a variable of its real type without cast
+  // syntax.
+  if (isReferenceType(from) && isReferenceType(to)) {
+    return isDerivedFrom(from, to) || isDerivedFrom(to, from);
+  }
+
+  return false;
 }
 
 bool TypeTable::isEqualOrImplicitlyConvertibleToStr(std::string from, std::string to) {

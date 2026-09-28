@@ -1,0 +1,78 @@
+# abstract methods: a base class that leaves a method to its subclasses.
+#
+# An interface cannot cover this case. An interface has no state and no
+# implemented methods, and what a base class often wants is both: shared
+# fields, shared methods written once, and one method each subclass must
+# supply. Without `abstract` the base has to provide a body that does
+# nothing, and a subclass that forgets to override silently inherits it.
+
+class Shape
+  String label = "shape"
+
+  abstract def Int area
+  abstract def Int scaled(Int factor)
+
+  # An ordinary method may call an abstract one: the subclass supplies it,
+  # and the call goes through the virtual table like any other.
+  def String describe:
+    return label + " area " + area()
+  end
+end
+
+class Square from Shape
+  Int side = 0
+
+  constructor(Int s):
+    side = s
+    label = "square"
+  end
+
+  def Int area:
+    return side * side
+  end
+
+  def Int scaled(Int factor):
+    return side * factor
+  end
+end
+
+class Rect from Shape
+  Int w = 0
+  Int h = 0
+
+  constructor(Int a, Int b):
+    w = a
+    h = b
+    label = "rect"
+  end
+
+  def Int area:
+    return w * h
+  end
+
+  def Int scaled(Int factor):
+    return (w + h) * factor
+  end
+end
+
+class Main from IO
+  def main:
+    Square s = new Square(3)
+    Rect r = new Rect(2, 5)
+    out("${s.describe()}\n")
+    out("${r.describe()}\n")
+    out("${s.scaled(10)} ${r.scaled(10)}\n")
+
+    # Through the base type, which is where an abstract method earns its
+    # keep: the caller knows only Shape.
+    List shapes
+    shapes.append(s)
+    shapes.append(r)
+    Int total = 0
+    for item in shapes:
+      Shape sh = item
+      total = total + sh.area()
+    end
+    out("total ${total}\n")
+  end
+end

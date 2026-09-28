@@ -1,0 +1,17 @@
+# Every escape a string literal can contain. These used to be decoded by
+# accident, because the AST passes through JSON and JSON happens to spell \n
+# and \t the same way. A quote or a backslash produced an AST file the
+# compiler could not read back.
+class Main from IO
+  def main:
+    out("newline[\n]")
+    out("tab[\t]\n")
+    out("quote[\"]\n")
+    out("backslash[\\]\n")
+    out("unknown[\q]\n")
+    String s = "a\"b\\c"
+    out("len ")
+    out(s.len())
+    out("\n")
+  end
+end

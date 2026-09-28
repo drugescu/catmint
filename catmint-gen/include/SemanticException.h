@@ -105,7 +105,8 @@ public:
   InvalidMethodSignatureException(Class *c, Method *m)
       : SemanticException("Signature of method '" + m->getName() + "' in class '" +
                           c->getName() +
-                          "' doesn't match that of overriden method."),
+                          "' doesn't match that of overriden method.",
+                          m),
         cls(c), method(m) {}
 
   Class *cls;
@@ -159,8 +160,10 @@ public:
 
 class UnknownVariableException : public SemanticException {
 public:
-  UnknownVariableException(const std::string &name)
-      : SemanticException("Variable '" + name + "' not found in symbol table, has it been declared?"),
+  UnknownVariableException(const std::string &name, TreeNode *node = nullptr)
+      : SemanticException("Variable '" + name +
+                              "' not found in symbol table, has it been declared?",
+                          node),
         name(name) {}
 
   std::string name;
@@ -170,15 +173,20 @@ public:
 ///        object
 class DispatchOnInvalidObjException : public SemanticException {
 public:
-  DispatchOnInvalidObjException(const std::string &name, Type *obj)
+  DispatchOnInvalidObjException(const std::string &name, Type *obj,
+                                TreeNode *node = nullptr)
       : SemanticException("Trying to call method '" + name +
-                          "' on a non-class object of type '" + obj->getName() + "'."),
+                              "' on a non-class object of type '" +
+                              obj->getName() + "'.",
+                          node),
         methodName(name), objType(obj), castedType(nullptr) {}
 
   DispatchOnInvalidObjException(const std::string &name, Type *obj,
-                                Type *castedObj)
+                                Type *castedObj, TreeNode *node = nullptr)
       : SemanticException("Trying to call method '" + castedObj->getName() +
-                          "::" + name + "' on object of type '" + obj->getName() + "'."),
+                              "::" + name + "' on object of type '" +
+                              obj->getName() + "'.",
+                          node),
         methodName(name), objType(obj), castedType(castedObj) {}
 
   std::string methodName;
@@ -188,9 +196,11 @@ public:
 
 class AttributeNotFoundException : public SemanticException {
 public:
-  AttributeNotFoundException(const std::string &name, Class *c)
+  AttributeNotFoundException(const std::string &name, Class *c,
+                             TreeNode *node = nullptr)
       : SemanticException("Attribute '" + name + "' not found in class '" +
-                          c->getName() + "'."),
+                              c->getName() + "'.",
+                          node),
         name(name), cls(c) {}
 
   std::string name;
@@ -199,9 +209,11 @@ public:
 
 class MethodNotFoundException : public SemanticException {
 public:
-  MethodNotFoundException(const std::string &name, Class *c)
+  MethodNotFoundException(const std::string &name, Class *c,
+                          TreeNode *node = nullptr)
       : SemanticException("Method '" + name + "' not found in class '" +
-                          c->getName() + "'"),
+                              c->getName() + "'",
+                          node),
         name(name), cls(c) {}
 
   std::string name;
@@ -210,8 +222,8 @@ public:
 
 class TypeNotFoundException : public SemanticException {
 public:
-  TypeNotFoundException(const std::string &name)
-      : SemanticException("Type '" + name + "' not found in Type Table."),
+  TypeNotFoundException(const std::string &name, TreeNode *node = nullptr)
+      : SemanticException("Type '" + name + "' not found in Type Table.", node),
         name(name) {}
 
   std::string name;

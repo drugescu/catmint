@@ -67,7 +67,14 @@ public:
     std::cout << "Inserted node " << v->getName()[0] << std::endl;
   }
 
-  TreeNode *lookup(const std::string &name) const;
+  /// \p at is the node the name was written on, so that "not declared" can
+  /// say where. Optional, because the lookups the compiler makes for itself
+  /// -- "self", say -- have no source location and cannot fail usefully.
+  TreeNode *lookup(const std::string &name, TreeNode *at = nullptr) const;
+
+  /// \brief Whether \p name resolves to a variable, without throwing.
+  ///        A class name used as the receiver of a static call does not.
+  bool contains(const std::string &name) const;
 
 private:
   void insert(TreeNode *v, const std::string &name);

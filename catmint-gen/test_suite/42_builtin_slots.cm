@@ -1,0 +1,179 @@
+# Every built-in method, called once, on every built-in class.
+#
+# A built-in's virtual table slot is fixed by runtime.c and mirrored by its
+# declaration order in TypeTable::addBuiltinClasses. If the two ever disagree
+# a call goes to the wrong function with no error anywhere, so this test
+# exists to make that a failure rather than a mystery. It is not a test of
+# what the methods do -- the other tests cover that -- it is a test that each
+# one is the function it claims to be.
+
+class Main from IO
+  def main:
+    # Object: abort is not called, for obvious reasons.
+    Object o = new Object
+    out("Object.type ${o.type()}\n")
+    Object copy = o.copy()
+    out("Object.copy ${copy.type()}\n")
+    o.retain()
+    out("Object.refs ${o.refs()}\n")
+    o.release()
+
+    # IO. input and readLine and eof read stdin, which is empty here.
+    out("IO.out works\n")
+    out("IO.input [${input()}]\n")
+    out("IO.readLine [${readLine()}]\n")
+    out("IO.eof ${eof()}\n")
+    out("IO.entropy in range ${entropy() >= 0}\n")
+    out("IO.ticks not negative ${ticks() >= 0}\n")
+    out("IO.epoch past 2020 ${epoch() > 1577836800}\n")
+    out("IO.localOffset in range ${localOffset() > 0 - 90000}\n")
+    sleep(1)
+    out("IO.sleep returned\n")
+    out("IO.args ${args() >= 1}\n")
+    out("IO.arg empty beyond ${arg(999) == ""}\n")
+    err("")
+    out("IO.err returned\n")
+    out("IO.allocated ${allocated() > 0}\n")
+
+    # String.
+    String s = "Hello"
+    out("String.len ${s.len()}\n")
+    out("String.toInt ${"42".toInt()}\n")
+    out("String.substr ${s.substr(1, 3)}\n")
+    out("String.concat ${s.concat("!")}\n")
+    out("String.equals ${s.equals("Hello")}\n")
+    out("String.at ${s.at(0)}\n")
+    out("String.indexOf ${s.indexOf("llo")}\n")
+    out("String.trim [${"  x  ".trim()}]\n")
+    out("String.upper ${s.upper()}\n")
+    out("String.lower ${s.lower()}\n")
+    out("String.split ${"a,b,c".split(",").len()}\n")
+    out("String.replace ${s.replace("l", "L")}\n")
+    out("String.toFloat ${"2.5".toFloat()}\n")
+    out("String.chr ${String.chr(65)}\n")
+
+    # List.
+    List items
+    items.append(10)
+    items.append(20)
+    out("List.len ${items.len()}\n")
+    Int first = items.get(0)
+    out("List.get ${first}\n")
+    items.set(1, 99)
+    Int second = items.get(1)
+    out("List.set ${second}\n")
+    out("List.append returned a list ${items.len()}\n")
+    out("List.slice ${items.slice(0, 1).len()}\n")
+
+    # Integer, reached by boxing.
+    List boxes
+    boxes.append(7)
+    Object box = boxes.get(0)
+    Integer n = box
+    out("Integer.get ${n.get()}\n")
+    out("Integer.getLong ${n.getLong()}\n")
+
+    # File.
+    String path = "/tmp/catmint_slot_test.txt"
+    File f
+    out("File.open ${f.open(path, "w")}\n")
+    f.write("one\n")
+    out("File.write returned\n")
+    f.close()
+    out("File.close returned\n")
+    File r
+    r.open(path, "r")
+    out("File.isOpen ${r.isOpen()}\n")
+    out("File.eof ${r.eof()}\n")
+    out("File.readLine ${r.readLine()}\n")
+    r.close()
+    File whole
+    whole.open(path, "r")
+    out("File.readAll ${whole.readAll().len()}\n")
+    whole.close()
+    out("File.exists ${File.exists(path)}\n")
+    out("File.remove ${File.remove(path)}\n")
+
+    # Math.
+    out("Math.sqrt ${Math.sqrt(16.0)}\n")
+    out("Math.pow ${Math.pow(2.0, 3.0)}\n")
+    out("Math.exp ${Math.exp(0.0)}\n")
+    out("Math.log ${Math.log(1.0)}\n")
+    out("Math.log10 ${Math.log10(100.0)}\n")
+    out("Math.sin ${Math.sin(0.0)}\n")
+    out("Math.cos ${Math.cos(0.0)}\n")
+    out("Math.tan ${Math.tan(0.0)}\n")
+    out("Math.atan2 ${Math.atan2(0.0, 1.0)}\n")
+    out("Math.floor ${Math.floor(2.7)}\n")
+    out("Math.ceil ${Math.ceil(2.1)}\n")
+    out("Math.round ${Math.round(2.5)}\n")
+    out("Math.absf ${Math.absf(0.0 - 3.5)}\n")
+    out("Math.abs ${Math.abs(0 - 4)}\n")
+    out("Math.min ${Math.min(3, 9)}\n")
+    out("Math.max ${Math.max(3, 9)}\n")
+    out("Math.pi ${Math.pi() > 3.14}\n")
+    out("Math.e ${Math.e() > 2.71}\n")
+
+    # Process.
+    Process p
+    out("Process.open ${p.open("printf 'x\n'", "r")}\n")
+    out("Process.eof ${p.eof()}\n")
+    out("Process.readLine ${p.readLine()}\n")
+    out("Process.finish ${p.finish()}\n")
+    Process w
+    w.open("cat > /dev/null", "w")
+    w.write("ignored\n")
+    out("Process.write returned ${w.finish()}\n")
+    out("Process.run ${Process.run("exit 2")}\n")
+    Int child = Process.start("exit 5")
+    out("Process.start and wait ${Process.wait(child)}\n")
+    out("Process.pid ${Process.pid() > 0}\n")
+
+    # Worker.
+    Int h = spawn Helper.twice(21)
+    out("Worker.wait ${Worker.wait(h)}\n")
+    out("Worker.count ${Worker.count() >= 1}\n")
+
+    # Bytes, Ints and Floats, and the bridge from Bytes to String and File.
+    Bytes by = new Bytes(4)
+    out("Bytes.len ${by.len()}\n")
+    out("Bytes.fill ${by.fill(7).get(0)}\n")
+    out("Bytes.set ${by.set(1, 9)}\n")
+    out("Bytes.get ${by.get(1)}\n")
+    out("Bytes.toString ${by.toString().len()}\n")
+    out("Bytes.slice ${by.slice(1, 3).len()}\n")
+
+    Ints ns = new Ints(3)
+    out("Ints.len ${ns.len()}\n")
+    out("Ints.fill ${ns.fill(5).get(2)}\n")
+    out("Ints.set ${ns.set(0, 11)}\n")
+    out("Ints.get ${ns.get(0)}\n")
+
+    Floats fs = new Floats(2)
+    out("Floats.len ${fs.len()}\n")
+    out("Floats.fill ${fs.fill(1.5).get(1)}\n")
+    out("Floats.set ${fs.set(0, 2.5)}\n")
+    out("Floats.get ${fs.get(0)}\n")
+
+    out("String.toBytes ${"abc".toBytes().len()}\n")
+    String bpath = "/tmp/catmint_slots_bytes.bin"
+    File bw
+    bw.open(bpath, "w")
+    out("File.writeBytes ${bw.writeBytes("xyz".toBytes(), 3)}\n")
+    bw.close()
+    File br
+    br.open(bpath, "r")
+    Bytes buf = new Bytes(8)
+    out("File.readBytes ${br.readBytes(buf)}\n")
+    br.close()
+    File.remove(bpath)
+
+    out("done\n")
+  end
+end
+
+class Helper
+  static def Int64 twice(Int64 n):
+    return n * 2
+  end
+end

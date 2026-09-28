@@ -56,6 +56,14 @@ bool ASTVisitor::visit(Method *M) {
 bool ASTVisitor::visit(FormalParam *F) { return true; }
 
 bool ASTVisitor::visit(Expression *E) {
+  // Several nodes have optional children: a bare call has no object, a
+  // built-in method has no body, a return may carry nothing. Walking into one
+  // of those used to reach the "unknown expression kind" assertion at the
+  // bottom, which is a confusing way to say "there was nothing here".
+  if (!E) {
+    return true;
+  }
+
   if (auto IntCt = dynamic_cast<IntConstant *>(E)) {
     return visit(IntCt);
   } else if (auto FloatCt = dynamic_cast<FloatConstant *>(E)) {
@@ -84,6 +92,18 @@ bool ASTVisitor::visit(Expression *E) {
     return visit(SDispatch);
   } else if (auto New = dynamic_cast<NewObject *>(E)) {
     return visit(New);
+  } else if (auto Field = dynamic_cast<FieldAccess *>(E)) {
+    return visit(Field);
+  } else if (auto Try = dynamic_cast<TryStatement *>(E)) {
+    return visit(Try);
+  } else if (auto Throw = dynamic_cast<ThrowStatement *>(E)) {
+    return visit(Throw);
+  } else if (auto Defer = dynamic_cast<DeferStatement *>(E)) {
+    return visit(Defer);
+  } else if (auto Loop = dynamic_cast<LoopControl *>(E)) {
+    return visit(Loop);
+  } else if (auto Spawn = dynamic_cast<SpawnStatement *>(E)) {
+    return visit(Spawn);
   } else if (auto If = dynamic_cast<IfStatement *>(E)) {
     return visit(If);
   } else if (auto While = dynamic_cast<WhileStatement *>(E)) {
@@ -155,7 +175,44 @@ bool ASTVisitor::visit(StaticDispatch *SD) {
   return visit(SD->getObject());
 }
 
-bool ASTVisitor::visit(NewObject *NO) { return true; }
+bool ASTVisitor::visit(NewObject *NO) {
+  for (auto Arg : *NO) {
+    if (!visit(Arg)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool ASTVisitor::visit(TryStatement *Try) {
+  if (!visit(Try->getBody())) {
+    return false;
+  }
+  return Try->getHandler() ? visit(Try->getHandler()) : true;
+}
+
+bool ASTVisitor::visit(ThrowStatement *Throw) {
+  return visit(Throw->getValue());
+}
+
+bool ASTVisitor::visit(DeferStatement *Defer) {
+  return visit(Defer->getAction());
+}
+
+/// `break` and `continue` have no children, so there is nothing to walk into.
+bool ASTVisitor::visit(LoopControl *LC) { return LC != nullptr; }
+
+bool ASTVisitor::visit(SpawnStatement *Spawn) {
+  return visit(Spawn->getCall());
+}
+
+bool ASTVisitor::visit(FieldAccess *FA) {
+  if (!visit(FA->getObject())) {
+    return false;
+  }
+  return FA->getValue() ? visit(FA->getValue()) : true;
+}
 
 bool ASTVisitor::visit(IfStatement *If) {
   if (!visit(If->getCond())) {

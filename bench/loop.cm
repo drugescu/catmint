@@ -1,0 +1,12 @@
+# Integer arithmetic in a tight loop.
+class Main from IO
+  def main:
+    Int64 total = 0
+    Int64 i = 0
+    while i < 100000000:
+      total = total + (i % 7)
+      i = i + 1
+    end
+    out("${total}\n")
+  end
+end

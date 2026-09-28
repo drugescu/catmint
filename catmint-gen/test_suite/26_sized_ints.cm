@@ -1,0 +1,56 @@
+# Int8, Int16, Int32 and Int64. Int is Int32.
+
+class Holder
+  Int64 total
+  Int8 flag
+end
+
+class Main
+  def Int64 twice(Int64 n):
+    return n * 2
+  end
+
+  def main:
+    IO io
+
+    Int8 a = 100
+    Int16 b = 30000
+    Int32 c = 2000000000
+    Int64 d = 9000000000
+
+    io.out("a " + a + "\n")
+    io.out("b " + b + "\n")
+    io.out("c " + c + "\n")
+    io.out("d " + d + "\n")
+
+    # Mixed widths promote to the wider of the two.
+    Int64 big = c
+    big = big * 4
+    io.out("big " + big + "\n")
+
+    # Narrowing truncates, as it does in C.
+    Int8 small = 300
+    io.out("small " + small + "\n")
+
+    # Comparison across widths.
+    if d > c:
+      io.out("d > c\n")
+    end
+
+    # A 64-bit field and a 64-bit parameter.
+    Holder h
+    h.total = 10000000000
+    h.flag = 7
+    io.out("total " + h.total + "\n")
+    io.out("twice " + twice(h.total) + "\n")
+    io.out("flag " + h.flag + "\n")
+
+    # Int is still 32 bits and still the default.
+    Int plain = 5
+    io.out("sum " + (plain + a) + "\n")
+
+    # The clock is 64-bit, so it is good past 2038.
+    Int64 seconds = 2147483648
+    io.out("after 2038 " + seconds + "\n")
+  end
+end

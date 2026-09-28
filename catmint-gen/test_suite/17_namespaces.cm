@@ -1,0 +1,34 @@
+using geo2d as flat
+using geo3d as space
+using vector as v
+
+# Opening a namespace lets its classes be named without the prefix. The
+# qualified name keeps working, and a name that two opened namespaces both
+# declare stays ambiguous and must be qualified.
+using namespace v
+
+class Main from IO
+  def main:
+    flat::Point a
+    space::Point b
+    a.show()
+    out(" ")
+    b.show()
+    out("\n")
+
+    # Vector rather than v::Vector, because its namespace is open.
+    Vector names
+    names.push("cat")
+    names.push("mint")
+    out("size ${names.size()}\n")
+
+    # The qualified spelling still means the same class.
+    v::Vector same = names
+    out("same size ${same.size()}\n")
+
+    # Point is declared in two namespaces, so it stays qualified.
+    flat::Point c
+    c.show()
+    out("\n")
+  end
+end

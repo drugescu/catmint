@@ -1,0 +1,47 @@
+using dict as d
+
+class Main from IO
+  def main:
+    d::Dict m
+
+    # More keys than buckets, so collisions are exercised.
+    Int i = 0
+    while i < 40:
+      m.put("key" + i, i * i)
+      i = i + 1
+    end
+
+    out("size ")
+    out(m.size())
+    out("\n")
+
+    out("key7 -> ")
+    Int v = m.get("key7")
+    out(v)
+    out("\n")
+
+    out("key39 -> ")
+    Int w = m.get("key39")
+    out(w)
+    out("\n")
+
+    # Replacing a key must not grow the table.
+    m.put("key7", 1000)
+    out("after replace size ")
+    out(m.size())
+    out(" key7 -> ")
+    Int z = m.get("key7")
+    out(z)
+    out("\n")
+
+    out("has key0 ")
+    out(m.has("key0"))
+    out("  has nope ")
+    out(m.has("nope"))
+    out("\n")
+
+    out("keys ")
+    out(m.keyList().len())
+    out("\n")
+  end
+end

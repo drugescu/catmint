@@ -1,0 +1,21 @@
+[Hello, Catmint World]
+upper HELLO, CATMINT WORLD
+lower hello, catmint world
+indexOf Cat 9
+indexOf zzz -1
+indexOf empty 0
+replace Hello, catmint World
+words 3
+<Hello,><Catmint><World>
+one 1
+chr ABC
+roundtrip 90 Z
+toFloat 3.5
+toInt 42
+join Hello,-Catmint-World
+repeat ababab
+padLeft [0007]
+padRight [7...]
+startsWith 1
+endsWith 1
+words 3

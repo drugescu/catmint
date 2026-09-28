@@ -1,0 +1,15 @@
+class Main from IO
+  def Int twice(Int n):
+    return n + n
+  end
+
+  def main:
+    # An operator applied to calls, as a statement. This could not be parsed
+    # before: a bare dispatch was a statement, but a dispatch inside a larger
+    # expression was not.
+    Int r = twice(3) * twice(4)
+    out("twice(3) * twice(4) = ")
+    out(r)
+    out("\n")
+  end
+end

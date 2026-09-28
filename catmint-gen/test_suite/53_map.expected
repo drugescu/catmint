@@ -1,0 +1,9 @@
+strings 2 10 2
+numbers 50 7 0
+points 2 replaced
+absent 0
+mixed 2 a string a number
+keys 2
+rejected an unhashable key
+leaked 0
+done

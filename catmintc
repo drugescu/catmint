@@ -1,0 +1,244 @@
+#!/bin/sh
+# catmintc - compile a .cm program to a native executable.
+#
+#   ./catmintc examples/tour.cm            -> ./tour
+#   ./catmintc -I lib app.cm               -> also search ./lib for modules
+#   ./catmintc --separate -I lib app.cm    -> compile each module to its own
+#                                             object and link them
+#   ./catmintc examples/tour.cm -o mytour  -> ./mytour
+#   ./catmintc --run examples/tour.cm      -> compile, then run it
+#   ./catmintc -O0 app.cm                  -> no optimisation, for debugging
+#   ./catmintc -g -O0 app.cm               -> line numbers a debugger can use
+#   ./catmintc --asan app.cm               -> build under AddressSanitizer
+#   ./catmintc -lSDL2 -L/opt/lib app.cm    -> link against another library
+#
+# A program can also name its own libraries, so that plain `catmintc app.cm`
+# works: a line `link "SDL2"` anywhere in a .cm or .cmm becomes -lSDL2. The
+# compiler never sees the line -- the preprocessor removes it -- so there is
+# no grammar rule and no AST node behind it.
+#
+# Set LLVM_BIN if llvm-link/clang are not on PATH.
+set -e
+
+ROOT=$(cd "$(dirname "$0")" && pwd)
+PARSER="$ROOT/catmint-lex/bin/catmint-parser"
+GEN="$ROOT/catmint-gen/bin/catmint-gen"
+GENDIR="$ROOT/catmint-gen"
+
+LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v llvm-link 2>/dev/null || echo /opt/homebrew/opt/llvm@22/bin/llvm-link)")}
+LLVM_LINK="$LLVM_BIN/llvm-link"
+CLANG="$LLVM_BIN/clang"
+# Exported so build-runtime.sh compiles the runtime with the same clang that
+# compiles the program. It must not look the compiler up on PATH by itself:
+# one clang's front end can emit a function attribute another clang's back end
+# refuses. Apple clang marks large frames "probe-stack"="__chkstk_darwin",
+# which LLVM 22's AArch64 back end rejects outright -- every program then dies
+# with "Unsupported stack probing method" in a function the programmer never
+# wrote.
+export LLVM_BIN
+
+RUN=0
+OUT=""
+SRC=""
+INCLUDES=""
+SEPARATE=0
+# The level clang compiles the linked bitcode at. It is not a nicety: at -O0
+# clang uses the fast register allocator, which spills every value to the
+# stack, and a counted loop runs more than twice as slowly for it.
+OPT=-O2
+# -g asks the generator for line numbers and clang to keep them.
+DEBUG=""
+# --asan instruments the linked bitcode, which is the program *and* the
+# runtime, since the runtime is linked as IR rather than as an object. That is
+# what makes it the check to run after touching reference counting: a release
+# too many shows up as a use-after-free here and as nothing at all otherwise.
+SAN=""
+# Libraries and library directories, from -l/-L on the command line and from
+# `link "..."` lines in the sources. -lm starts the list rather than being
+# hardcoded on the link line, so a program that says `link "m"` does not make
+# the linker warn about a duplicate. On macOS libm is part of libSystem and
+# the flag does nothing; on Linux it does not.
+LIBS="-lm"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --run) RUN=1; shift ;;
+    --separate) SEPARATE=1; shift ;;
+    -O0|-O1|-O2|-O3) OPT="$1"; shift ;;
+    -g) DEBUG=1; shift ;;
+    --asan) SAN=-fsanitize=address; shift ;;
+    -o)    OUT="$2"; shift 2 ;;
+    -l)    LIBS="$LIBS -l$2"; shift 2 ;;
+    -l*)   LIBS="$LIBS $1"; shift ;;
+    -L)    LIBS="$LIBS -L$2"; shift 2 ;;
+    -L*)   LIBS="$LIBS $1"; shift ;;
+    -I)    INCLUDES="$INCLUDES -I $2"; shift 2 ;;
+    -I*)   INCLUDES="$INCLUDES -I ${1#-I}"; shift ;;
+    -*)    echo "catmintc: unknown option $1" >&2; exit 2 ;;
+    *)     SRC="$1"; shift ;;
+  esac
+done
+
+if [ -z "$SRC" ]; then
+  echo "usage: catmintc [--run] [--separate] [-g] [--asan] [-O0|-O1|-O2|-O3] [-o output] [-I moduledir]... [-l lib]... [-L dir]... <program.cm>" >&2
+  exit 2
+fi
+for tool in "$PARSER" "$GEN"; do
+  [ -x "$tool" ] || { echo "catmintc: $tool is missing - run 'make' in catmint-lex and catmint-gen first" >&2; exit 1; }
+done
+
+BASE=$(basename "$SRC" .cm)
+[ -n "$OUT" ] || OUT="./$BASE"
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+# Where a module named <m> lives: the source directory, then each -I directory.
+find_module() {
+  name=$1
+  for dir in $(dirname "$SRC") $(echo "$INCLUDES" | tr -s " " "\n" | grep -v "^-I$" | grep -v "^$") .; do
+    if [ -f "$dir/$name.cmm" ]; then echo "$dir/$name.cmm"; return 0; fi
+  done
+  return 1
+}
+
+# The modules a file imports, transitively, deepest first, each listed once.
+# Compiling in this order means a module is always built before whatever
+# imports it.
+#
+# A module is *recorded after* its own imports, not before: appending first
+# gave "A B" where A imports B, so --separate compiled A before B existed and
+# could not resolve it. Two lists are needed for that, because MODULE_ORDER
+# can no longer double as the visited set -- MODULE_SEEN is marked on the way
+# down, which is what stops a cycle, and MODULE_ORDER is appended on the way
+# back up, which is what gets the order right.
+MODULE_ORDER=""
+MODULE_SEEN=""
+collect_modules() {
+  for name in $(sed -n 's/^[[:space:]]*using[[:space:]]\{1,\}\([A-Za-z_][A-Za-z_0-9]*\)[[:space:]]*$/\1/p' "$1"); do
+    case " $MODULE_SEEN " in *" $name "*) continue ;; esac
+    MODULE_SEEN="$MODULE_SEEN $name"
+    path=$(find_module "$name") || {
+      echo "catmintc: cannot find module $name" >&2; exit 1; }
+    # Through a helper, because a shell variable is global and the recursion
+    # below would clobber $name before it could be recorded -- which it did,
+    # producing "shapes shapes" where "shapes square" was meant. Positional
+    # parameters are the one thing each invocation keeps to itself.
+    collect_after_its_imports "$name" "$path"
+  done
+}
+
+collect_after_its_imports() {
+  collect_modules "$2"
+  MODULE_ORDER="$MODULE_ORDER $1"
+}
+
+# The libraries the sources ask for. Collected the same way the modules are,
+# by reading the text: a `link "SDL2"` line becomes -lSDL2. Listed once each,
+# so two modules asking for the same library do not repeat it.
+collect_links() {
+  for file in "$@"; do
+    [ -f "$file" ] || continue
+    for lib in $(sed -n 's/^[[:space:]]*link[[:space:]]*"\([^"]*\)"[[:space:]]*$/\1/p' "$file"); do
+      case " $LIBS " in *" -l$lib "*) continue ;; esac
+      LIBS="$LIBS -l$lib"
+    done
+  done
+}
+
+parse_one() {
+  # parse_one <source> <output.ast> <extra parser flags...>
+  src=$1; out=$2; shift 2
+  # shellcheck disable=SC2086
+  "$PARSER" $INCLUDES "$@" "$src" "$out" >"$WORK/parse.log" 2>&1 || {
+    echo "catmintc: parse failed for $src" >&2; cat "$WORK/parse.log" >&2; exit 1; }
+  [ -s "$out" ] || {
+    echo "catmintc: parse produced no AST for $src" >&2
+    tail -20 "$WORK/parse.log" >&2; exit 1; }
+}
+
+generate_one() {
+  # generate_one <name> <extra catmint-gen flags...>
+  name=$1; shift
+  [ -n "$DEBUG" ] && set -- -g "$@"
+
+  # catmint-gen writes <input>.ll beside its input, so run it in the work dir.
+  ( cd "$WORK" && "$GEN" "$@" "$name.ast" "$name.sem" >"gen.$name.log" 2>"gen.$name.err" ) || {
+    echo "catmintc: compilation failed for $name" >&2
+    cat "$WORK/gen.$name.err" >&2; exit 1; }
+  # Anything the compiler said while succeeding is a warning, and a warning
+  # nobody sees is not one. This used to be kept in the log and shown only
+  # when the build failed, which meant the width warning was invisible in
+  # exactly the case it exists for.
+  # An `if`, not `[ -s ... ] && cat`: that form is the last command in this
+  # function, so its status becomes the function's, and an empty warning file
+  # then failed every build that had nothing to warn about.
+  if [ -s "$WORK/gen.$name.err" ]; then
+    cat "$WORK/gen.$name.err" >&2
+  fi
+}
+
+# Which libraries the sources ask for. collect_modules only records names, so
+# running it here is harmless in both build modes and idempotent if the
+# separate path runs it again.
+collect_modules "$SRC"
+MODULE_FILES=""
+for name in $MODULE_ORDER; do
+  MODULE_FILES="$MODULE_FILES $(find_module "$name")"
+done
+# shellcheck disable=SC2086
+collect_links "$SRC" $MODULE_FILES
+
+OBJECTS=""
+
+if [ "$SEPARATE" -eq 1 ]; then
+  # Separate compilation. Each module becomes its own LLVM module; the program
+  # sees only their declarations, through --import.
+  collect_modules "$SRC"
+  IMPORTS=""
+  for name in $MODULE_ORDER; do
+    path=$(find_module "$name")
+    parse_one "$path" "$WORK/$name.ast" --no-expand --module
+  done
+  # Build deepest-last so each unit can import the ones it depends on.
+  for name in $MODULE_ORDER; do
+    # shellcheck disable=SC2086
+    generate_one "$name" --module $IMPORTS
+    IMPORTS="$IMPORTS --import $name.ast"
+    OBJECTS="$OBJECTS $WORK/$name.ast.ll"
+  done
+  parse_one "$SRC" "$WORK/$BASE.ast" --no-expand
+  # shellcheck disable=SC2086
+  generate_one "$BASE" $IMPORTS
+else
+  # Default: `using` is expanded textually, so the whole program is one unit.
+  parse_one "$SRC" "$WORK/$BASE.ast"
+  generate_one "$BASE"
+fi
+OBJECTS="$OBJECTS $WORK/$BASE.ast.ll"
+
+# Link against the runtime, compiled for this host from runtime.c.
+"$GENDIR/build-runtime.sh" "$WORK/runtime.host.ll"
+# shellcheck disable=SC2086
+"$LLVM_LINK" $OBJECTS "$WORK/runtime.host.ll" -o "$WORK/$BASE.bc"
+
+# Bitcode -> native executable. -lm for the Math class; on macOS libm is part
+# of libSystem and the flag is a no-op, on Linux it is not. -pthread is
+# there for Worker.
+if [ -n "$DEBUG" ]; then
+  # Two steps, because macOS does not put DWARF in the executable: it leaves
+  # it in the object file and records a debug map pointing there, which
+  # dsymutil then collects into a .dSYM. Compiling and linking in one command
+  # would delete the object before dsymutil could read it, which is why
+  # `clang -g one.c -o one` gives an executable a debugger cannot read either.
+  "$CLANG" -Wno-override-module "$OPT" $SAN -g -c "$WORK/$BASE.bc" -o "$WORK/$BASE.o"
+  "$CLANG" "$OPT" $SAN -g -pthread "$WORK/$BASE.o" -o "$OUT" $LIBS
+  if [ "$(uname)" = "Darwin" ] && command -v dsymutil >/dev/null 2>&1; then
+    dsymutil "$OUT" >/dev/null 2>&1 || \
+      echo "catmintc: warning: dsymutil could not collect debug information" >&2
+  fi
+else
+  "$CLANG" -Wno-override-module "$OPT" $SAN -pthread "$WORK/$BASE.bc" -o "$OUT" $LIBS
+fi
+echo "catmintc: wrote $OUT"
+
+[ "$RUN" -eq 1 ] && exec "$OUT"
+exit 0

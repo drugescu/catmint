@@ -1,0 +1,26 @@
+class Counter from IO
+  Int value = 0
+
+  def Int bump(Int by):
+    value = value + by
+    return value
+  end
+
+  def Int get:
+    return value
+  end
+end
+
+class Main from IO
+  def main:
+    Counter c
+    out("start ")
+    out(c.get())
+    out("\n")
+    c.bump(5)
+    c.bump(7)
+    out("after ")
+    out(c.get())
+    out("\n")
+  end
+end

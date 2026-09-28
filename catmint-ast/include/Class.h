@@ -45,6 +45,36 @@ public:
   std::string getName() const { return name; }
   std::string getParent() const { return parentClassName; }
 
+  /// The source file this class was written in. A module spliced in by the
+  /// preprocessor keeps its own name here, so debug information points at the
+  /// file the programmer wrote rather than at the concatenated text.
+  std::string getFile() const { return fileName; }
+  void setFile(const std::string &file) { fileName = file; }
+
+  /// The interfaces this class declares it implements, with `does`. An
+  /// interface itself implements none.
+  const std::vector<std::string> &getInterfaces() const { return interfaces; }
+  void setInterfaces(const std::vector<std::string> &names) {
+    interfaces = names;
+  }
+
+  /// True for a class declared with `interface`: a set of method signatures
+  /// with no bodies, no attributes and no instances.
+  bool isInterface() const { return interfaceDeclaration; }
+  void setInterface(bool value) { interfaceDeclaration = value; }
+
+  /// True for a class the compiler supplies rather than one the program
+  /// wrote: Object, IO, String and the rest. Set where they are declared, so
+  /// that nothing has to keep a list of their names in step.
+  bool isBuiltin() const { return builtinDeclaration; }
+  void setBuiltin(bool value) { builtinDeclaration = value; }
+
+  /// True for `extern class`: a list of C functions, with no bodies, no
+  /// fields and no instances. Its methods keep their names unmangled,
+  /// because the symbol already exists in some library.
+  bool isExtern() const { return externDeclaration; }
+  void setExtern(bool value) { externDeclaration = value; }
+
   /// \brief Add a feature and take ownership of it
   void addFeature(std::unique_ptr<Feature> F) {
     features.push_back(std::move(F));
@@ -78,6 +108,11 @@ public:
 private:
   std::string name;
   std::string parentClassName;
+  std::string fileName;
+  std::vector<std::string> interfaces;
+  bool interfaceDeclaration = false;
+  bool builtinDeclaration = false;
+  bool externDeclaration = false;
   FeaturesType features;
   Symbol self;
 };

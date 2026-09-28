@@ -1,0 +1,67 @@
+# Worker: a thread, through a door narrow enough that nothing else in the
+# runtime has to become thread-safe.
+#
+# A worker runs a static method taking one number and returning one, and the
+# compiler refuses to spawn anything that could allocate, throw or touch an
+# object. So a worker never reaches a reference count, the temporary pool or
+# the handler stack, and those stay as cheap as they are for a program with
+# no threads at all.
+
+class Sum
+  # Add up the numbers in one chunk of a range. Arithmetic and a loop: this
+  # is the whole of what a worker may do.
+  static def Int64 chunk(Int64 index):
+    Int64 first = index * 1000000
+    Int64 total = 0
+    Int64 i = 0
+    while i < 1000000:
+      total = total + first + i
+      i = i + 1
+    end
+    return total
+  end
+
+  # A worker may call another static method, as long as that one is safe too.
+  static def Int64 doubled(Int64 n):
+    return twice(n)
+  end
+
+  static def Int64 twice(Int64 n):
+    return n * 2
+  end
+end
+
+class Main from IO
+  def main:
+    # Four chunks at once, then collect them.
+    Int a = spawn Sum.chunk(0)
+    Int b = spawn Sum.chunk(1)
+    Int c = spawn Sum.chunk(2)
+    Int d = spawn Sum.chunk(3)
+
+    Int64 total = Worker.wait(a) + Worker.wait(b) + Worker.wait(c) + Worker.wait(d)
+    out("total ${total}\n")
+
+    # The same sum in one thread, to show the answer is the same.
+    Int64 alone = Sum.chunk(0) + Sum.chunk(1) + Sum.chunk(2) + Sum.chunk(3)
+    out("matches ${total == alone}\n")
+
+    # A worker may call another static method.
+    Int e = spawn Sum.doubled(21)
+    out("doubled ${Worker.wait(e)}\n")
+
+    # Handles are reused once every worker has been collected, so a loop can
+    # spawn as many as it likes.
+    Int64 running = 0
+    Int round = 0
+    while round < 3:
+      Int h = spawn Sum.twice(round)
+      running = running + Worker.wait(h)
+      round = round + 1
+    end
+    out("rounds ${running}\n")
+
+    out("cores at least one ${Worker.count() >= 1}\n")
+    out("done\n")
+  end
+end

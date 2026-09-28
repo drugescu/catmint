@@ -5,18 +5,28 @@ find_package(LLVM REQUIRED CONFIG)
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
-include(CheckCXXCompilerFlag)
-set(CXX14_FLAG "-std=c++14" CACHE STRING "Compiler flag to enable C++ 14")
-CHECK_CXX_COMPILER_FLAG(${CXX14_FLAG} HAVE_CXX14)
-if (HAVE_CXX14)
-  add_definitions(${CXX14_FLAG})
-else()
-  message(FATAL_ERROR
-    "The compiler doesn't seem to have C++ 14 support (try setting the C++14 flag manually?)")
-endif()
+# Nothing to declare for zlib and zstd here, though it looks like there
+# should be. LLVMSupport as Debian and Ubuntu build it names ZLIB::ZLIB and
+# zstd::libzstd_shared in its link interface, and CMake refuses to generate
+# without those imported targets -- but LLVMConfig.cmake defines them itself,
+# from its own Findzstd.cmake, provided zlib1g-dev and libzstd-dev are
+# installed. When they are not, the error names LLVMExports.cmake and says
+# nothing about a missing package, and it cannot be caught here because the
+# failure happens inside find_package(LLVM) above. COMPILING.md lists them.
+
+# LLVM 16+ headers require C++17, so the whole project is built at C++17.
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(INCLUDE_DIR include)
 include_directories(${INCLUDE_DIR})
+
+# LLVM headers are keg-only on Homebrew and not on the default include path,
+# so pull them in explicitly from the LLVMConfig.cmake that find_package found.
+include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
+separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND "${LLVM_DEFINITIONS}")
+add_definitions(${LLVM_DEFINITIONS_LIST})
 
 set(AST_FILES
   # Add the header files too, so they can be seen in IDE projects

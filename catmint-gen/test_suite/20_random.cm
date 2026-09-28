@@ -1,0 +1,49 @@
+using random as rnd
+
+class Main from IO
+  def main:
+    rnd::Random a
+    rnd::Random b
+    a.seed(42)
+    b.seed(42)
+
+    # The same seed must give the same sequence, which is what makes a
+    # generator written in the language testable at all.
+    Int same = 1
+    Int i = 0
+    while i < 20:
+      if a.next() != b.next():
+        same = 0
+      end
+      i = i + 1
+    end
+    out("deterministic ")
+    out(same)
+    out("\n")
+
+    rnd::Random r
+    r.seed(7)
+    Int inRange = 1
+    Int n = 0
+    while n < 50:
+      Int v = r.below(10)
+      if v < 0:
+        inRange = 0
+      end
+      if v > 9:
+        inRange = 0
+      end
+      Int b2 = r.between(5, 8)
+      if b2 < 5:
+        inRange = 0
+      end
+      if b2 > 8:
+        inRange = 0
+      end
+      n = n + 1
+    end
+    out("in range ")
+    out(inRange)
+    out("\n")
+  end
+end

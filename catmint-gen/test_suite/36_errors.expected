@@ -1,0 +1,18 @@
+balance 70
+caught insufficient funds
+balance after 70
+runtime Calling a method of a void object.
+inner caught inner
+outer caught outer
+quiet
+early 42
+early -1
+after returns still working
+progress 2 note started
+object 70
+computed computed 7
+runtime error caught across a frame
+repeated 2290
+leaked over 300 throws 0
+leaked from the try block 0
+done

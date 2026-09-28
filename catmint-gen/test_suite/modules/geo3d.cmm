@@ -1,0 +1,15 @@
+class Point from IO
+  Int x = 3
+  Int y = 4
+  Int z = 5
+
+  def Void show:
+    out("3d(")
+    out(x)
+    out(",")
+    out(y)
+    out(",")
+    out(z)
+    out(")")
+  end
+end

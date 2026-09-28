@@ -1,0 +1,49 @@
+# The string library beyond len, at, substr, concat and equals, and the
+# Text module that composes those primitives.
+
+using text as tx
+
+class Main from IO
+  def main:
+    String s = "  Hello, Catmint World  "
+
+    out("[" + s.trim() + "]\n")
+    out("upper " + s.trim().upper() + "\n")
+    out("lower " + s.trim().lower() + "\n")
+
+    out("indexOf Cat " + s.indexOf("Cat") + "\n")
+    out("indexOf zzz " + s.indexOf("zzz") + "\n")
+    out("indexOf empty " + s.indexOf("") + "\n")
+
+    out("replace " + s.trim().replace("Catmint", "catmint") + "\n")
+
+    List words = s.trim().split(" ")
+    out("words " + words.len() + "\n")
+    for w in words:
+      String word = w
+      out("<" + word + ">")
+    end
+    out("\n")
+
+    # split on a separator that is not there gives the whole string back
+    List one = "abc".split(",")
+    out("one " + one.len() + "\n")
+
+    # A character code back to a string, which is what case conversion and
+    # any encoder needs. The receiver is not used.
+    out("chr " + String.chr(65) + String.chr(66) + String.chr(67) + "\n")
+    out("roundtrip " + "Z".at(0) + " " + String.chr("Z".at(0)) + "\n")
+
+    out("toFloat " + "3.5".toFloat() + "\n")
+    out("toInt " + "42".toInt() + "\n")
+
+    tx::Text t
+    out("join " + t.join(words, "-") + "\n")
+    out("repeat " + t.repeat("ab", 3) + "\n")
+    out("padLeft [" + t.padLeft("7", 4, "0") + "]\n")
+    out("padRight [" + t.padRight("7", 4, ".") + "]\n")
+    out("startsWith " + t.startsWith("catmint", "cat") + "\n")
+    out("endsWith " + t.endsWith("catmint", "mint") + "\n")
+    out("words " + t.words("  a  b   c ").len() + "\n")
+  end
+end

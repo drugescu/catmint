@@ -1,0 +1,15 @@
+class Main from IO
+  def main:
+    Int a = 10
+    a = a + 5
+    out("a = ")
+    out(a)
+    out("\n")
+    String s = "catmint"
+    out("s = ")
+    out(s)
+    out(" len ")
+    out(s.len())
+    out("\n")
+  end
+end

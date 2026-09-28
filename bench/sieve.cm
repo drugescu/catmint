@@ -1,0 +1,31 @@
+# A sieve of Eratosthenes over a Bytes array: one allocation, and an indexed
+# load per element. The same program written with List was seven times
+# slower, because a List holds object references and every flag was a
+# separately allocated box.
+class Main from IO
+  def main:
+    Int limit = 5000000
+    Bytes flags = new Bytes(limit)
+    flags.fill(1)
+
+    Int p = 2
+    while p * p < limit:
+      if flags.get(p) == 1:
+        Int m = p * p
+        while m < limit:
+          flags.set(m, 0)
+          m = m + p
+        end
+      end
+      p = p + 1
+    end
+
+    Int count = 0
+    Int n = 2
+    while n < limit:
+      count = count + flags.get(n)
+      n = n + 1
+    end
+    out("${count}\n")
+  end
+end

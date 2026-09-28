@@ -1,0 +1,14 @@
+ok 0
+failed 3
+line alpha
+line beta
+line gamma
+status 0
+wc status 0
+counted 3
+first 4
+second 5
+third 6
+nothing -1
+have a pid 1
+done
