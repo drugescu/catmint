@@ -9,11 +9,15 @@
 # anywhere on the path -- and checks the executables keep the hardening the
 # compiler driver used to supply.
 set -e
+# The host's build outputs are left behind rather than copied and deleted:
+# they are the wrong platform, and a host build running at the same time
+# would change them under the copy.
 rm -rf /tmp/cm
-cp -a /catmint /tmp/cm
+mkdir -p /tmp/cm
+tar -C /catmint --exclude=./catmint-ast/build --exclude=./catmint-lex/bin \
+    --exclude=./catmint-gen/bin --exclude='*.o' --exclude=./.git -cf - . |
+  tar -C /tmp/cm -xf -
 cd /tmp/cm
-rm -rf catmint-ast/build catmint-lex/bin catmint-gen/bin
-find . -name '*.o' -delete
 (cd catmint-ast && make -f GNUmakefile build LLVM_CONFIG="$LLVM_CONFIG") >/tmp/build.log 2>&1
 (cd catmint-lex && make LLVM_CONFIG="$LLVM_CONFIG") >>/tmp/build.log 2>&1
 (cd catmint-gen && make LLVM_CONFIG="$LLVM_CONFIG") >>/tmp/build.log 2>&1 || {
