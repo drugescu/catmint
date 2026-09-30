@@ -17,6 +17,13 @@
 #   milestone 6 -- an opponent: every 3.5 s the enemy spawns, usually the
 #                  counter to the player's most common kind; a game ends when
 #                  a base falls, and Play again (or R) starts another.
+#   milestone 7 -- commands: everything a player does to the battle becomes a
+#                  command stamped with the step it takes effect on, units
+#                  are named by id, and the battle advances in fixed steps
+#                  however fast the frames come. A recording of the commands
+#                  replays a game exactly, which is also what a second
+#                  machine needs to play along: the ground lockstep
+#                  multiplayer stands on.
 #
 # A game starts, as the prototype's does, with two bases and 90 gold each.
 # Controls: 1 2 3 or the buttons spawn rock, paper, scissors for 30 gold.
@@ -32,6 +39,11 @@
 #   --dump         with --frames: every unit's exact state, for check.sh
 #   --play FILE    feed FILE's input to the steps (see tests/*.play)
 #   --shot F.bmp   save the first frame drawn and exit
+#   --record FILE  write every command applied to FILE (see Orders)
+#   --replay FILE  play FILE back; nothing else reaches the battle
+#   --delay N      apply the player's commands N steps after they are given,
+#                  as a networked game will
+#   --state        with --frames: the whole simulation state, for replay.sh
 #
 # SDL comes from the standard library: lib/sdl.cmm, over lib/sdl2.cmm, which
 # tools/bindgen.py generates from SDL's headers. No C is compiled.
@@ -425,8 +437,11 @@ interface Drawable
 end
 
 # What units and bases have in common: a place, a side, health. team: 0 the
-# player, 1 the enemy. flash counts down from the moment of a hit.
+# player, 1 the enemy. flash counts down from the moment of a hit. id is how
+# a command names it: handed out in creation order and never reused, so every
+# machine that plays the same commands gives each entity the same one.
 class Entity does Drawable
+  Int id
   Int team
   Int isBase
   Float x
@@ -462,6 +477,9 @@ class Unit from Entity
   Int ordered
   Float tx
   Float ty
+  # The viewer's, not the battle's: drawing and input read it, the simulation
+  # never does -- a command names the units it orders. replay.sh holds this
+  # to account, since a replay selects nothing and must still match.
   Int selected
 
   constructor(Int t, Int k, Float px, Float py):
@@ -603,6 +621,152 @@ class Effect from Object
   end
 end
 
+# One thing a player does to the battle, and the only way anything outside
+# the simulation changes it. Input becomes commands; each is stamped with the
+# step it takes effect on, and a step applies its commands before it moves
+# anything. So a recording of the commands is the whole game, and a second
+# machine given the same ones plays the same battle -- lockstep, the way
+# real-time strategy games have been networked since there were any.
+#
+# Everything in a command is an integer, because it has to survive being
+# written out and read back exactly. Units are named by id, and a point is in
+# 1/1024ths of a tile: a power of two, so turning it back into a Float is
+# exact. The rounding happens where the command is made, so the machine that
+# issues it applies the same point as every other one.
+class Command from Object
+  Int tick
+  Int team
+  # 0 buy, 1 move, 2 attack, 3 restart.
+  Int verb
+  # buy: the kind; attack: the target's id.
+  Int arg
+  # move: the point, in 1/1024ths of a tile.
+  Int x
+  Int y
+  # move and attack: the ids of the units ordered.
+  Ints units = null
+
+  static def Command buy(Int team, Int kind):
+    Command c = new Command()
+    c.team = team
+    c.verb = 0
+    c.arg = kind
+    return c
+  end
+
+  static def Command move(Int team, Ints ids, Float wx, Float wy):
+    Command c = new Command()
+    c.team = team
+    c.verb = 1
+    c.units = ids
+    c.x = wx * 1024.0
+    c.y = wy * 1024.0
+    return c
+  end
+
+  static def Command attack(Int team, Ints ids, Int target):
+    Command c = new Command()
+    c.team = team
+    c.verb = 2
+    c.arg = target
+    c.units = ids
+    return c
+  end
+
+  static def Command restart(Int team):
+    Command c = new Command()
+    c.team = team
+    c.verb = 3
+    return c
+  end
+
+  # The inverse of line(), from its words.
+  static def Command parse(List words):
+    Command c = new Command()
+    String w0 = words.get(0)
+    String w1 = words.get(1)
+    String name = words.get(2)
+    c.tick = w0.toInt()
+    c.team = w1.toInt()
+    Int first = 4
+    if name == "buy":
+      c.verb = 0
+    elif name == "move":
+      c.verb = 1
+      String wx = words.get(3)
+      String wy = words.get(4)
+      c.x = wx.toInt()
+      c.y = wy.toInt()
+      first = 5
+    elif name == "attack":
+      c.verb = 2
+    elif name == "restart":
+      c.verb = 3
+    else
+      throw "unknown command '${name}' in a recording"
+    end
+    if c.verb == 0 or c.verb == 2:
+      String w3 = words.get(3)
+      c.arg = w3.toInt()
+    end
+    if c.verb == 1 or c.verb == 2:
+      c.units = new Ints(words.len() - first)
+      Int i = first
+      while i < words.len():
+        String w = words.get(i)
+        c.units.set(i - first, w.toInt())
+        i = i + 1
+      end
+    end
+    return c
+  end
+
+  def Float pointX:
+    return x / 1024.0
+  end
+
+  def Float pointY:
+    return y / 1024.0
+  end
+
+  # 1 if this command orders the unit with this id.
+  def Int names(Int id):
+    Int found = 0
+    if units != null:
+      Int i = 0
+      while i < units.len() and found == 0:
+        if units.get(i) == id:
+          found = 1
+        end
+        i = i + 1
+      end
+    end
+    return found
+  end
+
+  # One line of a recording: "<step> <team> <verb> <numbers>".
+  def String line:
+    String s = "${tick} ${team} "
+    if verb == 0:
+      s = s + "buy ${arg}"
+    elif verb == 1:
+      s = s + "move ${x} ${y}"
+    elif verb == 2:
+      s = s + "attack ${arg}"
+    else
+      s = s + "restart"
+    end
+    if units != null:
+      Int i = 0
+      while i < units.len():
+        s = s + " ${units.get(i)}"
+        i = i + 1
+      end
+    end
+    return s
+  end
+end
+
 # The battlefield and its rules. `things` is in creation order and that order
 # is the simulation's: separation and targeting walk it, so it must not depend
 # on how the frame is drawn. The painter's sort therefore works on `order`, a
@@ -622,6 +786,15 @@ class World from Object
   # The opponent: off in the fixed skirmish, on in a game.
   Int skirmish = 0
   Float aiTimer
+  # Steps taken since the program started. Neither this nor the ids go back
+  # to 0 when a game is restarted, so a command meant for the last game can
+  # never land on a unit of the next one.
+  Int tick = 0
+  Int lastId = 0
+  # What the random generator starts from: every machine in a game must agree.
+  Int seed = 7
+  # Whose orders get the rings that answer them: the side at this screen.
+  Int viewer = 0
 
   # A fresh game, or the fixed skirmish the tests are written for. Called
   # again by Play again, so it resets everything a game changes; the random
@@ -635,7 +808,7 @@ class World from Object
     gold.set(1, 90.0)
     if rng == null:
       rng = new Random()
-      rng.seed(7)
+      rng.seed(seed)
     end
     List noThings
     List noEffects
@@ -643,20 +816,68 @@ class World from Object
     fx = noEffects
 
     if skirmish == 1:
-      things.append(new Unit(0, 0, 3.2, 3.0))
-      things.append(new Unit(0, 1, 3.4, 4.5))
-      things.append(new Unit(0, 2, 3.2, 6.0))
-      things.append(new Unit(0, 0, 2.6, 5.2))
-      things.append(new Unit(1, 2, 10.8, 3.2))
-      things.append(new Unit(1, 0, 10.6, 4.6))
-      things.append(new Unit(1, 1, 10.8, 6.1))
-      things.append(new Unit(1, 1, 11.4, 5.0))
+      add(new Unit(0, 0, 3.2, 3.0))
+      add(new Unit(0, 1, 3.4, 4.5))
+      add(new Unit(0, 2, 3.2, 6.0))
+      add(new Unit(0, 0, 2.6, 5.2))
+      add(new Unit(1, 2, 10.8, 3.2))
+      add(new Unit(1, 0, 10.6, 4.6))
+      add(new Unit(1, 1, 10.8, 6.1))
+      add(new Unit(1, 1, 11.4, 5.0))
     end
-    playerBase = new Base(0, 1.5, 4.5)
-    enemyBase = new Base(1, 12.5, 4.5)
-    things.append(playerBase)
-    things.append(enemyBase)
+    playerBase = add(new Base(0, 1.5, 4.5))
+    enemyBase = add(new Base(1, 12.5, 4.5))
     rebuildOrder()
+  end
+
+  # Puts e on the field, last in the simulation's order, under the next id.
+  def Entity add(Entity e):
+    lastId = lastId + 1
+    e.id = lastId
+    things.append(e)
+    return e
+  end
+
+  # The entity with this id, or null once it is gone.
+  def Entity find(Int id):
+    Entity found = null
+    for item in things:
+      Entity e = item
+      if e.id == id:
+        found = e
+      end
+    end
+    return found
+  end
+
+  # Everything a command can do, and the only way input changes the battle.
+  # A command that no longer makes sense -- a target that has died, units
+  # that have -- does whatever part still does, the same on every machine;
+  # one that never made sense, a side or a kind that does not exist, does
+  # nothing, since a command may one day come from somewhere else.
+  def Void apply(Command c):
+    if c.team == 0 or c.team == 1:
+      if c.verb == 0:
+        if c.arg >= 0 and c.arg <= 2:
+          trySpawn(c.team, c.arg)
+        end
+      elif c.verb == 1:
+        moveTo(c)
+      elif c.verb == 2:
+        attack(c)
+      elif c.verb == 3:
+        start(skirmish)
+      end
+    end
+  end
+
+  # 1 if e is one of the living units c orders. Only a side's own units: a
+  # command naming someone else's is ignored rather than trusted.
+  def Int obeys(Command c, Entity e):
+    if e.isBase == 0 and e.team == c.team and e.alive() == 1 and c.names(e.id) == 1:
+      return 1
+    end
+    return 0
   end
 
   # The prototype's aiTick: every 3.5 s, count the player's units by kind,
@@ -696,7 +917,10 @@ class World from Object
         Float r = chance() * 3.0
         pick = r
       end
-      trySpawn(1, pick)
+      # The opponent plays by the player's rules, through a command, applied
+      # where the prototype spawned. It is not recorded: the AI runs inside
+      # the simulation, from the same seed, on every machine.
+      apply(Command.buy(1, pick))
     end
   end
 
@@ -724,11 +948,11 @@ class World from Object
       end
       Float sx = b.x + dir * (0.9 + chance() * 0.4)
       Float sy = b.y + (chance() - 0.5) * 1.6
-      Unit made = new Unit(team, kind, sx, sy)
+      Unit u = new Unit(team, kind, sx, sy)
       # A new unit's first blow comes a little late, at random, as in the
       # prototype's spawn(), so a squad bought together does not strike as one.
-      made.cd = chance() * 0.3
-      things.append(made)
+      u.cd = chance() * 0.3
+      add(u)
       rebuildOrder()
       made = 1
     end
@@ -739,6 +963,8 @@ class World from Object
     fx.append(new Effect(x, y, life, kind, team))
   end
 
+  # The selection is the viewer's (see Unit.selected): these three are for
+  # drawing and input, and nothing the simulation does calls them.
   def Int selectedCount:
     Int n = 0
     for item in things:
@@ -762,26 +988,56 @@ class World from Object
     end
   end
 
-  # Selected units go for `target` and nothing else until it is dead.
-  def Void orderAttack(Entity target):
+  # The selected units' ids, in the simulation's order, for a command.
+  def Ints selectedIds:
+    Ints ids = new Ints(selectedCount())
+    Int i = 0
     for item in things:
       Entity e = item
       if e.isBase == 0:
         Unit u = e
         if u.selected == 1:
-          u.target = target
-          u.ordered = 0
+          ids.set(i, u.id)
+          i = i + 1
         end
       end
     end
-    effect(target.x, target.y, 0.4, 1, 0)
+    return ids
   end
 
-  # Selected units walk to (wx, wy), spread on a circle so they do not all
-  # want the same spot -- radius 0.3 * sqrt(n), as in the prototype.
-  def Void orderMove(Float wx, Float wy):
-    Int n = selectedCount()
+  # The command's units go for its target and nothing else until it is dead.
+  def Void attack(Command c):
+    Entity target = find(c.arg)
+    if target != null and target.alive() == 1 and target.team != c.team:
+      Int n = 0
+      for item in things:
+        Entity e = item
+        if obeys(c, e) == 1:
+          Unit u = e
+          u.target = target
+          u.ordered = 0
+          n = n + 1
+        end
+      end
+      if n > 0 and c.team == viewer:
+        effect(target.x, target.y, 0.4, 1, c.team)
+      end
+    end
+  end
+
+  # The command's units walk to its point, spread on a circle so they do not
+  # all want the same spot -- radius 0.3 * sqrt(n), as in the prototype. They
+  # take their places in the simulation's order rather than the command's,
+  # so how a command lists its units cannot change where they end up.
+  def Void moveTo(Command c):
+    Int n = 0
+    for item in things:
+      Entity e = item
+      n = n + obeys(c, e)
+    end
     if n > 0:
+      Float wx = c.pointX()
+      Float wy = c.pointY()
       Float r = 0.0
       if n > 1:
         r = 0.3 * Math.sqrt(n)
@@ -789,19 +1045,19 @@ class World from Object
       Int i = 0
       for item in things:
         Entity e = item
-        if e.isBase == 0:
+        if obeys(c, e) == 1:
           Unit u = e
-          if u.selected == 1:
-            Float a = i * 2.0 * Math.pi() / n
-            u.tx = clampTo(wx + Math.cos(a) * r, 0.3, cols - 0.3)
-            u.ty = clampTo(wy + Math.sin(a) * r, 0.3, rows - 0.3)
-            u.ordered = 1
-            u.target = null
-            i = i + 1
-          end
+          Float a = i * 2.0 * Math.pi() / n
+          u.tx = clampTo(wx + Math.cos(a) * r, 0.3, cols - 0.3)
+          u.ty = clampTo(wy + Math.sin(a) * r, 0.3, rows - 0.3)
+          u.ordered = 1
+          u.target = null
+          i = i + 1
         end
       end
-      effect(wx, wy, 0.5, 0, 0)
+      if c.team == viewer:
+        effect(wx, wy, 0.5, 0, c.team)
+      end
     end
   end
 
@@ -991,6 +1247,9 @@ class World from Object
         over = 2
       end
     end
+    # Counted on the end screen too, so a restart given there still lands on
+    # a step every machine agrees about.
+    tick = tick + 1
   end
 
   # Insertion sort of `order` on depth. It is nearly in order from one frame
@@ -1050,6 +1309,36 @@ class World from Object
     Int64 g1 = gold.get(1) * 1000000000.0
     s = s + "bases ${b0} ${b1}\ngold ${g0} ${g1}\nover ${over}\n"
     return s
+  end
+
+  # Everything the simulation is and nothing the viewer is: what two runs
+  # that ought to be one game are compared on, and what two machines playing
+  # one will compare to notice they have drifted apart. Beyond dump(), it has
+  # what may not have shown yet -- targets, orders, cooldowns, the generator
+  # -- and every Float is kept to 2^-50, which is every bit of a value from 4
+  # up and all but a few below.
+  def String state:
+    String s = "tick ${tick} ids ${lastId} rng ${rng.state} over ${over} ai ${fixed(aiTimer)}\n"
+    s = s + "gold ${fixed(gold.get(0))} ${fixed(gold.get(1))}\n"
+    for item in things:
+      Entity e = item
+      s = s + "${e.id} team ${e.team} at ${fixed(e.x)} ${fixed(e.y)} hp ${fixed(e.hp)} flash ${fixed(e.flash)}"
+      if e.isBase == 0:
+        Unit u = e
+        Int target = 0
+        if u.target != null:
+          target = u.target.id
+        end
+        s = s + " kind ${u.kind} cd ${fixed(u.cd)} target ${target} ordered ${u.ordered} to ${fixed(u.tx)} ${fixed(u.ty)}"
+      end
+      s = s + "\n"
+    end
+    return s
+  end
+
+  def Int64 fixed(Float v):
+    Int64 f = v * 1125899906842624.0
+    return f
   end
 
   # One line: who is left of each kind, the bases, gold and selection.
@@ -1261,10 +1550,14 @@ end
 
 # Mouse and keyboard, turned into the prototype's gestures: a press and
 # release in one place is a tap, one that moved more than 10 pixels is a box.
+# Nothing here changes the battle itself. What the player does to it becomes
+# a Command, handed to `orders`; the selection and the drag are the viewer's
+# own, and stay here.
 class Controls from Object
   World world = null
   Camera cam = null
   Hud hud = null
+  Orders orders = null
   Int dragging = 0
   Int boxing = 0
   Int x0
@@ -1272,10 +1565,11 @@ class Controls from Object
   Int x
   Int y
 
-  constructor(World w, Camera c, Hud h):
+  constructor(World w, Camera c, Hud h, Orders o):
     world = w
     cam = c
     hud = h
+    orders = o
   end
 
   # Handles every event waiting. 0 once the player has asked to quit.
@@ -1306,7 +1600,7 @@ class Controls from Object
     if k == 114 and world.over != 0:
       restart()
     elif k >= 49 and k <= 51:
-      world.trySpawn(0, k - 49)
+      orders.issue(Command.buy(0, k - 49), world)
     elif k == 97:
       world.selectAll(1)
     elif k == 27:
@@ -1320,7 +1614,7 @@ class Controls from Object
   def Void restart:
     dragging = 0
     boxing = 0
-    world.start(world.skirmish)
+    orders.issue(Command.restart(0), world)
   end
 
   def Void press(Int mx, Int my):
@@ -1330,7 +1624,7 @@ class Controls from Object
         restart()
       end
     elif b >= 0:
-      world.trySpawn(0, b)
+      orders.issue(Command.buy(0, b), world)
     else
       dragging = 1
       boxing = 0
@@ -1404,9 +1698,9 @@ class Controls from Object
         u.selected = 1 - u.selected
       elif world.selectedCount() > 0:
         if e != null and e.team == 1:
-          world.orderAttack(e)
+          orders.issue(Command.attack(0, world.selectedIds(), e.id), world)
         else
-          world.orderMove(cam.worldX(sx, sy), cam.worldY(sx, sy))
+          orders.issue(Command.move(0, world.selectedIds(), cam.worldX(sx, sy), cam.worldY(sx, sy)), world)
         end
       end
     end
@@ -1448,6 +1742,118 @@ class Controls from Object
       g.dashed(x, y0, x, y)
       g.dashed(x, y, x0, y)
       g.dashed(x0, y, x0, y0)
+    end
+  end
+end
+
+# The commands waiting for their step, and the record of those applied.
+#
+# issue() stamps a command with the step it will take effect on: the current
+# one plus `delay`. On one machine the delay is 0, and a key pressed before a
+# step lands in that step, exactly where it did when input called the world
+# directly. Across a network it will be the few steps a command needs to
+# reach the other machine before both apply it.
+#
+# apply() runs every command that is due, the player's side before the
+# opponent's and each side's in the order given, so two machines holding the
+# same commands apply them the same way.
+#
+# A recording holds the two things that decide a game before anyone does
+# anything, then the commands, each stamped with the step it was applied on:
+#
+#   seed 7
+#   skirmish 1
+#   42 0 buy 2                   step 42: the player buys a scissors
+#   90 0 move 6144 4608 3 5      units 3 and 5 walk to (6, 4.5)
+#   120 0 attack 11 3 5          units 3 and 5 go after unit 11
+#   800 0 restart
+#
+# The opponent's AI is not in it: the AI is part of the simulation, and a
+# replay makes the same decisions again from the same seed.
+class Orders from Object
+  List pending
+  Int delay = 0
+  # 1 while playing a recording back: it is the only input there is.
+  Int locked = 0
+  # What a loaded recording says to start from.
+  Int seed = 7
+  Int skirmish = 0
+  File record = null
+
+  def Void issue(Command c, World w):
+    if locked == 0:
+      c.tick = w.tick + delay
+      pending.append(c)
+    end
+  end
+
+  def Void apply(World w):
+    if pending.len() > 0:
+      Int team = 0
+      while team < 2:
+        for item in pending:
+          Command c = item
+          if c.team == team and c.tick <= w.tick:
+            c.tick = w.tick
+            w.apply(c)
+            if record != null:
+              record.write(c.line() + "\n")
+            end
+          end
+        end
+        team = team + 1
+      end
+      List later
+      for item in pending:
+        Command c = item
+        if c.tick > w.tick:
+          later.append(c)
+        end
+      end
+      pending = later
+    end
+  end
+
+  # From here on, every command applied is written to `path`, after the
+  # world's seed and kind of game.
+  def Void recordTo(String path, World w):
+    File f
+    if f.open(path, "w") == 0:
+      throw "cannot write ${path}"
+    end
+    f.write("seed ${w.seed}\nskirmish ${w.skirmish}\n")
+    record = f
+  end
+
+  # Queues every command in a recording, and shuts out all other input.
+  def Void load(String path):
+    File f
+    if f.open(path, "r") == 0:
+      throw "cannot open ${path}"
+    end
+    while f.eof() == 0:
+      String line = f.readLine().trim()
+      if line.len() > 0:
+        List words = line.split(" ")
+        String first = words.get(0)
+        if first == "seed":
+          String s = words.get(1)
+          seed = s.toInt()
+        elif first == "skirmish":
+          String k = words.get(1)
+          skirmish = k.toInt()
+        elif first != "#":
+          pending.append(Command.parse(words))
+        end
+      end
+    end
+    f.close()
+    locked = 1
+  end
+
+  def Void finish:
+    if record != null:
+      record.close()
     end
   end
 end
@@ -1559,12 +1965,15 @@ class Main from IO
     Gfx gfx = new Gfx(view, cam)
     World world = new World()
     Hud hud = new Hud(windowW, windowH)
-    Controls controls = new Controls(world, cam, hud)
+    Orders orders = new Orders()
+    Controls controls = new Controls(world, cam, hud, orders)
 
     Int frames = 0
     Int dump = 0
+    Int showState = 0
     Int fixedBattle = 0
     String shot = ""
+    String recording = ""
     Script script = null
     Int a = 1
     while a < args():
@@ -1582,11 +1991,33 @@ class Main from IO
         script = new Script()
         script.load(arg(a + 1))
         a = a + 1
+      elif arg(a) == "--record":
+        recording = arg(a + 1)
+        a = a + 1
+      elif arg(a) == "--replay":
+        orders.load(arg(a + 1))
+        a = a + 1
+      elif arg(a) == "--delay":
+        orders.delay = arg(a + 1).toInt()
+        a = a + 1
+      elif arg(a) == "--state":
+        showState = 1
       end
       a = a + 1
     end
 
+    # A recording says how its game began, whatever the command line says.
+    if orders.locked == 1:
+      fixedBattle = orders.skirmish
+      world.seed = orders.seed
+    end
     world.start(fixedBattle)
+    if recording.len() > 0:
+      orders.recordTo(recording, world)
+    end
+
+    # The battle only ever moves in steps of this.
+    Float dt = 1.0 / 60.0
 
     # Fixed steps first: input from the script, if there is one, then the
     # simulation, exactly as the interactive loop does it but without drawing
@@ -1599,7 +2030,8 @@ class Main from IO
         script.push(step, sdl, cam)
       end
       keep = controls.pump(sdl)
-      world.update(1.0 / 60.0)
+      orders.apply(world)
+      world.update(dt)
       step = step + 1
     end
     if frames > 0:
@@ -1607,23 +2039,43 @@ class Main from IO
       if dump == 1:
         out(world.dump())
       end
+      if showState == 1:
+        out(world.state())
+      end
       if script != null:
         out(world.units())
       end
     end
 
+    # Then frames, each taking as many whole steps as the time since the last
+    # one covers. Steps are what the battle is made of and frames are only
+    # how often it is looked at: a slow frame makes the battle catch up in the
+    # same steps a fast machine takes, rather than one long stride, which is
+    # what lets two machines play one game.
     Int last = sdl.ticks()
+    Float owed = 0.0
     while keep == 1:
       keep = controls.pump(sdl)
 
       Int now = sdl.ticks()
-      Float dt = (now - last) / 1000.0
+      owed = owed + (now - last) / 1000.0
       last = now
-      if dt > 0.05:
-        dt = 0.05
+      # After a stall -- a window dragged, a debugger -- it catches up a
+      # quarter of a second at most, not a burst of battle nobody saw.
+      if owed > 0.25:
+        owed = 0.25
       end
+      # Frame times come in whole milliseconds, 16 then 17 then 17, so what
+      # is owed straddles a step: taken strictly, one frame in three would
+      # take none and the next two, and the battle would stutter. So a step
+      # is taken once all but 2 ms of it is owed. Owing a little afterwards
+      # changes nothing over time, since each step still pays exactly 1/60 s.
       if shot.len() == 0:
-        world.update(dt)
+        while owed > dt - 0.002:
+          orders.apply(world)
+          world.update(dt)
+          owed = owed - dt
+        end
       end
 
       view.clear(35, 42, 51)
@@ -1639,6 +2091,7 @@ class Main from IO
       sdl.delay(16)
     end
 
+    orders.finish()
     out("closed cleanly\n")
   end
 end
