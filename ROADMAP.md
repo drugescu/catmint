@@ -351,7 +351,37 @@ is only worth it if Windows becomes a first-class target.
   compiler's standard error was kept in a log and printed only when the build
   failed, so a diagnostic from a successful compile was invisible.
 
-## Phase 5 — C structs, a prebuilt runtime, LLVM-only builds, as designed
+## Phase 5 — C structs, a prebuilt runtime, LLVM-only builds — **done**
+
+All five parts, with the design below built as written. A user's path is now
+catmint-parser, catmint-gen, llvm-link, opt, llc and lld: `catmintc` was run
+with an LLVM directory containing no clang, on macOS and in the Linux
+container, and built working programs. SDL is in the standard library with no
+C anywhere: `lib/sdl2.cmm` generated from SDL's headers, `lib/sdl.cmm` the
+safe layer, and the game that found all this uses it with no `unsafe` of its
+own. Worth recording:
+
+- **Every one of SDL's 80 records laid out by catmint's rule matched clang**:
+  the generated bindings assert each size and offset, and they compile. The
+  layout rule was not tuned to make that happen.
+- **One `runtime.ll` had never served every host.** Built on macOS it calls
+  Darwin's `\01_fputs` and `__maskrune`; it only ever worked on Linux because
+  `build-runtime.sh` quietly recompiled `runtime.c` there. Hence one bitcode
+  file per OS, each built by LLVM 16 and read by 22.
+- **The parser suite had been failing silently.** `wtest.sh` exited 0 with a
+  test failing -- the float-literal fix had left one reference stale -- and
+  `test.sh` printed an empty section and said "everything passed".
+- **The portability check passed while checking nothing**, grepping a
+  `runtime.ll` that had been deleted. It now fails on a missing runtime.
+- **Swapping clang for opt, llc and lld cost nothing**: `bench/run.sh` was the
+  same or faster, once llc was told the CPU clang had assumed (`apple-m1`).
+- **The game's polygon fill, ported from the C shim to catmint, drew a
+  byte-identical frame.**
+- Still open: `String.chr(0)` gives an empty String rather than one holding
+  a NUL. Found writing the NUL-refusal test; a runtime fix, which means
+  rebuilding both runtimes, so it waits for the next runtime change.
+
+## Phase 5 — as designed
 
 Found by writing a real program against a real C library: an SDL2 game
 (`examples/rps-rts`). Everything the FFI could not say had to be said in a C
@@ -580,7 +610,7 @@ suites (`check.sh`, `play.sh`) are what say the move changed nothing.
 
 ## What is left
 
-Phase 5, above. Nothing else on any of these lists. The last item -- a throw leaking what the
+`String.chr(0)`, recorded under Phase 5. Nothing else on any of these lists. The last item -- a throw leaking what the
 abandoned frame had stored -- is fixed: the pool now holds the *addresses* of
 reference-holding variables as well as objects, and releases them when a
 throw unwinds it. The ordinary path is untouched, because a slot entry is

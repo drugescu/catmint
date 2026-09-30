@@ -1,0 +1,347 @@
+# SDL2 for catmint: windows, a renderer to draw with, input and a clock.
+#
+#   using sdl
+#   Sdl sdl = new Sdl()
+#   Window win = new Window(sdl, "title", 960, 640)
+#   Renderer view = new Renderer(win)
+#
+# Build with `catmintc -I lib app.cm`, adding `-L <prefix>/lib` if SDL2 is not
+# on the linker's default path (Homebrew on Apple silicon: -L /opt/homebrew/lib).
+# SDL2 itself must be installed; sdl2-compat over SDL3 works.
+#
+# Two layers, as Rust's sdl2-sys and sdl2 are. sdl2.cmm is generated from
+# SDL's own headers by tools/bindgen.py -- every struct with its layout
+# asserted, every function, every constant -- and is regenerated, never
+# edited. This file is the part written by hand: classes a program uses
+# without writing `unsafe`, with `finalize` giving each SDL handle back when
+# the last reference to its wrapper goes. No C is involved anywhere.
+#
+# Lifetime is the whole design. SDL needs a renderer destroyed before its
+# window and the window before SDL_Quit, and calling them in another order
+# aborts inside SDL. So each wrapper holds a strong reference to what it
+# depends on -- Renderer to Window, Window to Sdl -- and the reference counts
+# run `finalize` in dependency order whatever order the program lets go in.
+
+using sdl2
+
+# An int C writes through a pointer: SDL_GetRendererOutputSize's out-params.
+extern struct SdlInt
+  Int32 value
+end
+
+# The library itself: SDL_Init on construction, SDL_Quit when the last window
+# and renderer built on it are gone, and the event queue and clock, which
+# belong to no window.
+class Sdl from Object
+  SDL_Event event
+
+  constructor():
+    Int status = 0
+    unsafe:
+      status = SDL2.SDL_Init(SDL2C.SDL_INIT_VIDEO())
+    end
+    if status != 0:
+      throw "could not initialise SDL"
+    end
+  end
+
+  # 1 while there is an event to look at; isQuit, key and the mouse
+  # methods then describe it.
+  def Int poll:
+    unsafe:
+      return SDL2.SDL_PollEvent(event)
+    end
+  end
+
+  def Int isQuit:
+    if event.type == SDL2C.SDL_QUIT():
+      return 1
+    end
+    return 0
+  end
+
+  def Int isKeyDown:
+    if event.type == SDL2C.SDL_KEYDOWN():
+      return 1
+    end
+    return 0
+  end
+
+  def Int key:
+    return event.key.keysym.sym
+  end
+
+  def Int isMouseDown:
+    if event.type == SDL2C.SDL_MOUSEBUTTONDOWN():
+      return 1
+    end
+    return 0
+  end
+
+  def Int isMouseUp:
+    if event.type == SDL2C.SDL_MOUSEBUTTONUP():
+      return 1
+    end
+    return 0
+  end
+
+  def Int isMouseMove:
+    if event.type == SDL2C.SDL_MOUSEMOTION():
+      return 1
+    end
+    return 0
+  end
+
+  # Window coordinates of the last mouse event, whichever kind it was.
+  def Int mouseX:
+    if isMouseMove() == 1:
+      return event.motion.x
+    end
+    return event.button.x
+  end
+
+  def Int mouseY:
+    if isMouseMove() == 1:
+      return event.motion.y
+    end
+    return event.button.y
+  end
+
+  # 1 left, 2 middle, 3 right.
+  def Int mouseButton:
+    return event.button.button
+  end
+
+  # Queue an input event as though it had come from the system, so a script
+  # drives the same code a person does. kind: 0 press, 1 release, 2 motion.
+  def Int pushMouse(Int kind, Int x, Int y, Int button):
+    SDL_Event e = new SDL_Event()
+    if kind == 2:
+      e.type = SDL2C.SDL_MOUSEMOTION()
+      e.motion.x = x
+      e.motion.y = y
+    else
+      if kind == 0:
+        e.type = SDL2C.SDL_MOUSEBUTTONDOWN()
+        e.button.state = SDL2C.SDL_PRESSED()
+      else
+        e.type = SDL2C.SDL_MOUSEBUTTONUP()
+        e.button.state = SDL2C.SDL_RELEASED()
+      end
+      e.button.x = x
+      e.button.y = y
+      e.button.button = button
+      e.button.clicks = 1
+    end
+    unsafe:
+      return SDL2.SDL_PushEvent(e)
+    end
+  end
+
+  def Int pushKey(Int key):
+    SDL_Event e = new SDL_Event()
+    e.type = SDL2C.SDL_KEYDOWN()
+    e.key.state = SDL2C.SDL_PRESSED()
+    e.key.keysym.sym = key
+    unsafe:
+      return SDL2.SDL_PushEvent(e)
+    end
+  end
+
+  def Void delay(Int ms):
+    unsafe:
+      SDL2.SDL_Delay(ms)
+    end
+  end
+
+  # Milliseconds since SDL started.
+  def Int64 ticks:
+    unsafe:
+      return SDL2.SDL_GetTicks()
+    end
+  end
+
+  def Void finalize:
+    unsafe:
+      SDL2.SDL_Quit()
+    end
+  end
+end
+
+class Window from Object
+  Sdl sdl = null
+  SDL_Window handle = null
+
+  constructor(Sdl s, String title, Int w, Int h):
+    sdl = s
+    Int centered = SDL2C.SDL_WINDOWPOS_CENTERED()
+    unsafe:
+      handle = SDL2.SDL_CreateWindow(title, centered, centered, w, h,
+                                     SDL2C.SDL_WINDOW_SHOWN())
+    end
+    if handle == null:
+      throw "could not create window"
+    end
+  end
+
+  def Void finalize:
+    if handle != null:
+      unsafe:
+        SDL2.SDL_DestroyWindow(handle)
+      end
+    end
+  end
+end
+
+class Renderer from Object
+  Window window = null
+  SDL_Renderer handle = null
+  SDL_Rect rect
+  # Scratch for fillQuad's scanlines: the span one row covers so far.
+  Int lo
+  Int hi
+  Int have
+
+  constructor(Window w):
+    window = w
+    unsafe:
+      handle = SDL2.SDL_CreateRenderer(w.handle, 0 - 1,
+                                       SDL2C.SDL_RENDERER_ACCELERATED() | SDL2C.SDL_RENDERER_PRESENTVSYNC())
+    end
+    if handle == null:
+      throw "could not create renderer"
+    end
+    # Blending on, so a colour's alpha means something: fading effects and
+    # the translucent bar behind a health bar. Opaque drawing is unaffected.
+    unsafe:
+      SDL2.SDL_SetRenderDrawBlendMode(handle, SDL2C.SDL_BLENDMODE_BLEND())
+    end
+  end
+
+  def Void clear(Int r, Int g, Int b):
+    unsafe:
+      SDL2.SDL_SetRenderDrawColor(handle, r, g, b, 255)
+      SDL2.SDL_RenderClear(handle)
+    end
+  end
+
+  def Void present:
+    unsafe:
+      SDL2.SDL_RenderPresent(handle)
+    end
+  end
+
+  # The colour set here stays current for the fill and line calls until it
+  # is changed again, the way SDL_SetRenderDrawColor itself works -- so a
+  # shape wants one setColor before it, not a colour on every call.
+  def Void setColor(Int r, Int g, Int b):
+    unsafe:
+      SDL2.SDL_SetRenderDrawColor(handle, r, g, b, 255)
+    end
+  end
+
+  # a is opacity, 0 to 255; blending is on for every renderer.
+  def Void setColorA(Int r, Int g, Int b, Int a):
+    unsafe:
+      SDL2.SDL_SetRenderDrawColor(handle, r, g, b, a)
+    end
+  end
+
+  # Exactly w x h pixels from (x, y).
+  def Void fillRect(Int x, Int y, Int w, Int h):
+    rect.x = x
+    rect.y = y
+    rect.w = w
+    rect.h = h
+    unsafe:
+      SDL2.SDL_RenderFillRect(handle, rect)
+    end
+  end
+
+  def Void line(Int x0, Int y0, Int x1, Int y1):
+    unsafe:
+      SDL2.SDL_RenderDrawLine(handle, x0, y0, x1, y1)
+    end
+  end
+
+  # Where edge (ax, ay)-(bx, by) crosses row y, folded into the row's span.
+  # The range is half-open, [ay, by), so a row through a shared corner is
+  # not counted twice; a flat edge crosses nothing.
+  def Void edge(Int ax, Int ay, Int bx, Int by, Int y):
+    if ay != by:
+      if (y >= ay and y < by) or (y >= by and y < ay):
+        Int x = ax + (bx - ax) * (y - ay) / (by - ay)
+        if have == 0:
+          lo = x
+          hi = x
+          have = 1
+        else
+          if x < lo:
+            lo = x
+          end
+          if x > hi:
+            hi = x
+          end
+        end
+      end
+    end
+  end
+
+  # A convex quadrilateral, filled one horizontal line per row -- the iso
+  # tiles and the flat-shaded faces units are drawn as. SDL2's own polygon
+  # fill, SDL_RenderGeometry, wants an array of vertex structs; this needs
+  # nothing but lines.
+  def Void fillQuad(Int x0, Int y0, Int x1, Int y1, Int x2, Int y2, Int x3, Int y3):
+    Int top = Math.min(Math.min(y0, y1), Math.min(y2, y3))
+    Int bottom = Math.max(Math.max(y0, y1), Math.max(y2, y3))
+    Int y = top
+    while y <= bottom:
+      have = 0
+      edge(x0, y0, x1, y1, y)
+      edge(x1, y1, x2, y2, y)
+      edge(x2, y2, x3, y3, y)
+      edge(x3, y3, x0, y0, y)
+      if have == 1:
+        line(lo, y, hi, y)
+      end
+      y = y + 1
+    end
+  end
+
+  # A triangle is a quad with its last corner said twice: the zero-height
+  # edge that leaves is skipped.
+  def Void fillTri(Int x0, Int y0, Int x1, Int y1, Int x2, Int y2):
+    fillQuad(x0, y0, x1, y1, x2, y2, x2, y2)
+  end
+
+  # Writes the frame drawn so far as a BMP; call before present. 1 on
+  # success. This is how a run can be looked at without a screen grab.
+  def Int saveBMP(String path):
+    SdlInt w
+    SdlInt h
+    Int ok = 0
+    unsafe:
+      SDL2.SDL_GetRendererOutputSize(handle, w, h)
+      Int format = SDL2C.SDL_PIXELFORMAT_ARGB8888()
+      SDL_Surface surface = SDL2.SDL_CreateRGBSurfaceWithFormat(0, w.value, h.value, 32, format)
+      if surface != null:
+        if SDL2.SDL_RenderReadPixels(handle, null, format, surface.pixels, surface.pitch) == 0:
+          SDL_RWops file = SDL2.SDL_RWFromFile(path, "wb")
+          if file != null and SDL2.SDL_SaveBMP_RW(surface, file, 1) == 0:
+            ok = 1
+          end
+        end
+        SDL2.SDL_FreeSurface(surface)
+      end
+    end
+    return ok
+  end
+
+  def Void finalize:
+    if handle != null:
+      unsafe:
+        SDL2.SDL_DestroyRenderer(handle)
+      end
+    end
+  end
+end

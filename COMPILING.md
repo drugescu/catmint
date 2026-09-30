@@ -95,6 +95,26 @@ runs the whole suite, then compiles programs with no clang anywhere on the
 path and checks the executables are position independent, have read-only
 relocations bound at load, and a stack that cannot be executed.
 
+### Binding a C library
+
+`tools/bindgen.py` writes catmint bindings from a library's own headers, the
+way Rust's bindgen does, and like it is a developer's tool: it needs clang,
+its output is committed, and a program using the bindings never runs it.
+
+```sh
+tools/bindgen.py SDL2/SDL.h --match '^SDL_' --constants-match '^(SDL_|SDLK_|KMOD_)' \
+  --from /SDL2/ --class SDL2 --constants SDL2C --link SDL2 \
+  -I /opt/homebrew/include > lib/sdl2.cmm
+```
+
+Declarations come from clang's JSON AST, layouts from clang's own record
+layout dump -- written into the output as `@` assertions the catmint
+compiler checks against its layout rule -- and every constant's value from
+clang evaluating it. What cannot be bound (a variadic function, a struct by
+value, a bitfield) is listed at the top of the output with the reason.
+`tools/bindgen_test/run.sh` checks it against a C library built from a test
+header, and `test.sh` runs that.
+
 ## 2. Build the compiler
 
 Three components, built in dependency order. The second and third build the

@@ -390,7 +390,14 @@ nothing downstream writes `unsafe` at all. A subclass without one inherits it.
 ## The standard library
 
 Written in catmint, in `lib/`: `Vector`, `Dict` (a hash table keyed by
-String), `Map` (keyed by anything that says how), `Random`, `Time`, `Text`.
+String), `Map` (keyed by anything that says how), `Random`, `Time`, `Text`,
+and `sdl` -- windows, drawing, input and a clock, over SDL2.
+
+`using sdl` gives `Sdl`, `Window` and `Renderer`, with no `unsafe` to write
+and every handle released by `finalize`. Underneath is `sdl2.cmm`, SDL's whole
+API as extern structs, functions and constants, generated from SDL's own
+headers by `tools/bindgen.py` and never edited by hand. Nothing in either is
+C. Needs SDL2 installed; on Homebrew build with `-L /opt/homebrew/lib`.
 
 A `Map` key may be a String, an Int, or a class that `does Hashable` --
 `def Int hash` and `def Int equalTo(Object other)`. String and Int are
@@ -443,5 +450,9 @@ so no reference count has to be atomic.
   lines, which is the answer to "can something non-trivial be written in it".
 - `examples/wordcount.cm` — a real program: a filename from the command line,
   a file read line by line, a hash table, usage and an exit status.
+- `examples/rps-rts/` — a real-time rock-paper-scissors strategy game over
+  SDL: an iso board, units, a simulation checked bit for bit against an
+  independent port (`check.sh`), and input tests that drive it with real SDL
+  events (`play.sh`).
 - `bench/` — the same five problems in catmint, C and C++; `bench/run.sh`
   builds, checks they agree, and times them.
