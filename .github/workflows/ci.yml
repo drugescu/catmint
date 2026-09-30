@@ -35,7 +35,13 @@ jobs:
           wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh "$LLVM_VERSION"
-          sudo apt-get install -y "llvm-$LLVM_VERSION-dev" "clang-$LLVM_VERSION"
+          # lld links every program: catmintc runs LLVM's tools and no C
+          # compiler. clang is here for the developer's side -- rebuilding
+          # the runtime, and the sanitizer run -- and clang-16 because the
+          # shipped runtime is built by the oldest LLVM catmint supports, so
+          # build-runtime.sh --check can reproduce it.
+          sudo apt-get install -y "llvm-$LLVM_VERSION-dev" "clang-$LLVM_VERSION" \
+                                  "lld-$LLVM_VERSION" clang-16 llvm-16
           echo "/usr/lib/llvm-$LLVM_VERSION/bin" >> "$GITHUB_PATH"
 
       - name: Versions
@@ -58,6 +64,10 @@ jobs:
       # against C, and 300 mutants through the front end.
       - name: Test
         run: ./test.sh --no-build --thorough
+
+      # The shipped runtime-linux.bc has to be what runtime.c builds to.
+      - name: Runtime reproduces
+        run: catmint-gen/build-runtime.sh --check
 
       - name: Portability
         run: ./portability.sh
@@ -94,12 +104,15 @@ jobs:
 
       - name: Install LLVM and bison
         run: |
-          brew install llvm@22 bison flex
+          brew install llvm@22 llvm@16 lld bison flex
           echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
 
       - name: Build and test
         run: ./test.sh --thorough
+
+      - name: Runtime reproduces
+        run: catmint-gen/build-runtime.sh --check
 
       - name: Portability
         run: ./portability.sh

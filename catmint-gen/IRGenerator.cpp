@@ -1019,6 +1019,13 @@ void IRGenerator::emitProgramMain() {
   Builder.SetInsertPoint(Entry);
   beginDebugScope(F, MainCI, "main", MainCI->AST->getLineNumber());
 
+  // The ABI stamp, read volatile so that no optimisation can drop the
+  // reference: a runtime that does not define this exact symbol is one this
+  // compiler does not agree with, and must not link.
+  auto *Stamp = Module.getOrInsertGlobal(
+      "__catmint_abi_" + std::to_string(CatmintAbi), I32);
+  Builder.CreateLoad(I32, Stamp, /*isVolatile=*/true, "abi");
+
   auto SetArgs = Module.getOrInsertFunction(
       "__cm_setArgs",
       llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {I32, Ptr},

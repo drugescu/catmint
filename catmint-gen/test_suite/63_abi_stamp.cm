@@ -1,0 +1,11 @@
+# The runtime and the generated code agree on object layouts and virtual table
+# slots by convention, and a disagreement is a silent miscompile. So the
+# runtime carries a stamp, `__catmint_abi_N`, and every program refers to it:
+# a runtime from a compiler with another N fails to link. The .check builds
+# such a runtime and makes sure it is refused.
+
+class Main from IO
+  def main:
+    out("stamped\n")
+  end
+end

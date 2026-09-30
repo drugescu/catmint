@@ -132,6 +132,11 @@ struct ClassInfo {
 };
 
 /// \brief Lowers a semantically analysed catmint program to an LLVM module.
+/// The ABI stamp: must equal CATMINT_ABI in runtime.c. Every program refers
+/// to `__catmint_abi_<this>`, so a runtime built for another agreement on
+/// layouts and slots fails to link rather than miscompiling.
+constexpr int CatmintAbi = 1;
+
 class IRGenerator {
 public:
   IRGenerator(llvm::StringRef ModuleName, Program *P, const TypeTable &ASTTypes,
