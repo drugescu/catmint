@@ -980,7 +980,7 @@ Method *SemanticAnalysis::externMethod(Class *c, const std::string &name) {
 /// error rather than a crash.
 void SemanticAnalysis::checkExternSignature(Class *c, Method *m) {
   auto allowed = [&](const std::string &type) {
-    return TypeTable::integerWidth(type) || type == strings::Float ||
+    return TypeTable::integerWidth(type) || TypeTable::floatWidth(type) ||
            type == strings::Ptr || type == strings::Void ||
            type == strings::String || type == strings::Bytes ||
            type == strings::Ints || type == strings::Floats;

@@ -15,7 +15,11 @@ const auto Int8 = "Int8";
 const auto Int16 = "Int16";
 const auto Int32 = "Int32";
 const auto Int64 = "Int64";
+// Float is the 64-bit double; Float64 is another spelling of it, folded into
+// it by the parser as Int32 is into Int. Float32 is the one extra name that
+// reaches the generator.
 const auto Float = "Float";
+const auto Float32 = "Float32";
 
 const auto Self = "self";
 const auto MainClass = "Main";
