@@ -8,23 +8,17 @@ for a range of frame counts and compares every unit's state bit for bit.
     replica.py FRAMES      prints "team kind x y hp" per surviving unit, with
                            x and y scaled by 1e12 and hp by 1e9 as integers
 
-Every Float literal in the catmint source is a float32 widened to a double --
-FloatConstant stores a `float` -- so 3.2 arrives as 3.2000000476837158 and
-1e12 as 999999995904. `f32` reproduces that; when literals become doubles,
-delete it and this file gets simpler. Values built from literals at run time
-(1.0 / 60.0, 1.0 / 3.0) are ordinary double arithmetic and are left alone.
+A catmint Float and every float literal are IEEE doubles, the same as a
+Python float, so the two agree bit for bit with no adjustment.
 """
 import math
-import struct
 import sys
 
-f32 = lambda v: struct.unpack('f', struct.pack('f', v))[0]
-
-SPEED, UNIT_HP, DMG, HIT_EVERY = f32(1.7), 40.0, 8.0, 0.5
-RANGE, AGGRO, BASE_HP = f32(0.85), f32(2.2), 150.0
+SPEED, UNIT_HP, DMG, HIT_EVERY = 1.7, 40.0, 8.0, 0.5
+RANGE, AGGRO, BASE_HP = 0.85, 2.2, 150.0
 COLS, ROWS = 14, 10
-SEPARATION = f32(0.45)
-EDGE = f32(0.3)
+SEPARATION = 0.45
+EDGE = 0.3
 BEATS = {0: 2, 2: 1, 1: 0}            # rock beats scissors beats paper beats rock
 
 
@@ -34,7 +28,7 @@ class Entity:
 
 def unit(team, kind, x, y):
     u = Entity()
-    u.team, u.kind, u.x, u.y = team, kind, f32(x), f32(y)
+    u.team, u.kind, u.x, u.y = team, kind, x, y
     u.hp, u.cd, u.target, u.base = UNIT_HP, 0.0, None, False
     return u
 
@@ -104,7 +98,7 @@ def update(dt):
         for j in range(i + 1, n):
             a, b = units[i], units[j]
             dx, dy = b.x - a.x, b.y - a.y
-            d = math.sqrt(dx * dx + dy * dy) or f32(0.001)
+            d = math.sqrt(dx * dx + dy * dy) or 0.001
             if d < SEPARATION:
                 p = (SEPARATION - d) / 2
                 nx, ny = dx / d * p, dy / d * p
@@ -124,5 +118,5 @@ def update(dt):
 for _ in range(int(sys.argv[1])):
     update(1.0 / 60.0)
 for u in units:
-    print("%d %d %d %d %d" % (u.team, u.kind, int(u.x * f32(1e12)),
-                              int(u.y * f32(1e12)), int(u.hp * f32(1e9))))
+    print("%d %d %d %d %d" % (u.team, u.kind, int(u.x * 1e12),
+                              int(u.y * 1e12), int(u.hp * 1e9)))
