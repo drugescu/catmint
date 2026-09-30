@@ -1,0 +1,147 @@
+#!/bin/sh
+# Each case must fail to compile, and say what it says. A refusal that
+# compiled, or failed for another reason, is a failure here.
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+failed=0
+
+refuse() {
+  name=$1; want=$2
+  cat > "$work/$name.cm"
+  if ../catmintc "$work/$name.cm" -o "$work/$name" > "$work/$name.log" 2>&1; then
+    echo "$name: compiled, and should have been refused"
+    failed=1
+  elif ! grep -qF -- "$want" "$work/$name.log"; then
+    echo "$name: refused, but not saying \"$want\":"
+    grep -i "error" "$work/$name.log" | head -2
+    failed=1
+  fi
+}
+
+refuse wrong_offset "is at offset 4 by C's layout rule, and the declaration says 8" <<'CM'
+extern struct P @ 8
+  Int32 a @ 0
+  Int32 b @ 8
+end
+class Main from IO
+  def main:
+    P p
+  end
+end
+CM
+
+refuse wrong_size "is 8 bytes by C's layout rule, and the declaration says 12" <<'CM'
+extern struct P @ 12
+  Int32 a
+  Int32 b
+end
+class Main from IO
+  def main:
+    P p
+  end
+end
+CM
+
+refuse string_field "which has no C layout" <<'CM'
+extern struct P
+  String name
+end
+class Main from IO
+  def main:
+    P p
+  end
+end
+CM
+
+refuse holds_itself "holds itself by value" <<'CM'
+extern struct P
+  Int32 a
+  P again
+end
+class Main from IO
+  def main:
+    P p
+  end
+end
+CM
+
+refuse opaque_by_value "holds an opaque" <<'CM'
+extern struct Handle
+end
+extern struct P
+  Handle h
+end
+class Main from IO
+  def main:
+    P p
+  end
+end
+CM
+
+refuse new_opaque "is opaque" <<'CM'
+extern struct Handle
+end
+class Main from IO
+  def main:
+    Handle h = new Handle()
+  end
+end
+CM
+
+refuse at_outside_unsafe "needs 'unsafe:'" <<'CM'
+extern struct P
+  Int32 a
+end
+class Main from IO
+  def main:
+    Ptr raw = null
+    P p = P.at(raw)
+  end
+end
+CM
+
+refuse no_methods "has no methods" <<'CM'
+extern struct P
+  Int32 a
+end
+class Main from IO
+  def main:
+    Int n = P.size()
+  end
+end
+CM
+
+refuse float_to_int "takes an integer as 'x' and is given a Float" <<'CM'
+extern class Libc
+  def Int abs(Int x)
+end
+class Main from IO
+  def main:
+    unsafe:
+      Libc.abs(2.5)
+    end
+  end
+end
+CM
+
+refuse uint_in_catmint "is a C type, for extern declarations only; in catmint code use Int64" <<'CM'
+class Main from IO
+  def main:
+    UInt32 x = 5
+  end
+end
+CM
+
+refuse whole_array "is an array of 4; use it an element at a time" <<'CM'
+extern struct P
+  UInt8 bytes[4]
+end
+class Main from IO
+  def main:
+    P p
+    out("${p.bytes}\n")
+  end
+end
+CM
+
+exit $failed

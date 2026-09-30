@@ -82,6 +82,14 @@ public:
   /// land on the node rather than only in the type table.
   void setReturnType(const std::string &type) { returnType = type; }
 
+  /// For an extern function, the C return type as written when it differs
+  /// from getReturnType() -- `UInt32`, which catmint code sees as an Int64.
+  std::string getCReturnType() const {
+    return cReturnType.empty() ? returnType : cReturnType;
+  }
+  void setCReturnType(const std::string &type) { cReturnType = type; }
+  bool hasCReturnType() const { return !cReturnType.empty(); }
+
   Expression *getBody() const { return body.get(); }
   
   std::unique_ptr<Expression> getBodyFull() { return std::move(body); }
@@ -90,6 +98,7 @@ public:
 
 private:
   std::string returnType;
+  std::string cReturnType;
   FormalParamsType parameters;
   bool staticMethod = false;
   bool abstractMethod = false;

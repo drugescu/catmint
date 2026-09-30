@@ -116,6 +116,11 @@ bool SemanticAnalysis::visit(Class *c) {
     return true;
   }
 
+  if (c->isCStruct()) {
+    checkCStruct(c);
+    return true;
+  }
+
   checkImplementedInterfaces(c);
 
   if (typeTable.isBuiltinClass(c)) {// visiting builtin classes is a lot simpler than user classes, because we
@@ -273,6 +278,7 @@ void SemanticAnalysis::checkFeatures(Class *c) {
 bool SemanticAnalysis::visit(Feature *f) { return ASTVisitor::visit(f); }
 
 bool SemanticAnalysis::visit(Attribute *a) {
+  refuseCBoundaryType(a->getType(), a);
   auto attrType = typeTable.getType(a->getType(), a);
   // Record the type on the node: a Symbol that resolves to this attribute (or
   // to this method parameter) asks the type table for the definition's type.
@@ -349,6 +355,7 @@ bool SemanticAnalysis::visit(Method *m) {
     symbolTable.insert(param);
   }
 
+  refuseCBoundaryType(m->getReturnType(), m);
   auto returnType = typeTable.getType(m->getReturnType(), m);
   auto body = m->getBody();
   if (currentClass && currentClass->isExtern()) {
@@ -644,6 +651,44 @@ bool SemanticAnalysis::visit(Dispatch *d) {
 
   // A call on a class name rather than on an object.
   if (auto staticClass = staticReceiverClass(d)) {
+    // `S.at(p)` is the one call an extern struct answers: a view of the bytes
+    // at p, which C owns. Making one is the promise that p is valid and stays
+    // valid while the view is used, so it is made inside `unsafe`.
+    if (staticClass->isCStruct()) {
+      if (d->getName() != "at") {
+        throw SemanticException("an extern struct has no methods; '" +
+                                    staticClass->getName() +
+                                    ".at(pointer)' is the one call it answers",
+                                d);
+      }
+      if (unsafeDepth == 0) {
+        throw SemanticException("'" + staticClass->getName() +
+                                    ".at' makes a view of memory C owns, which "
+                                    "promises the pointer is valid; it needs "
+                                    "'unsafe:'",
+                                d);
+      }
+      int count = 0;
+      for (auto arg : *d) {
+        if (!visit(arg)) {
+          return false;
+        }
+        auto argType = typeTable.getType(arg)->getName();
+        if (argType != strings::Ptr && argType != strings::Null) {
+          throw SemanticException("'" + staticClass->getName() +
+                                      ".at' takes a Ptr, not a " + argType,
+                                  d);
+        }
+        ++count;
+      }
+      if (count != 1) {
+        throw SemanticException("'" + staticClass->getName() +
+                                    ".at' takes exactly one Ptr",
+                                d);
+      }
+      typeTable.setType(d, typeTable.getType(staticClass->getName()));
+      return true;
+    }
     auto method = typeTable.getMethod(staticClass, d->getName());
     if (!method || !method->isStatic()) {
       throw MethodNotFoundException(d->getName(), staticClass, d);
@@ -660,7 +705,7 @@ bool SemanticAnalysis::visit(Dispatch *d) {
               "the call or 'unsafe def' on the method doing it",
           d);
     }
-    if (!checkDispatchArgs(d, method)) {
+    if (!checkDispatchArgs(d, method, staticClass->isExtern())) {
       return false;
     }
     typeTable.setType(d, typeTable.getType(method->getReturnType()));
@@ -684,8 +729,21 @@ bool SemanticAnalysis::visit(Dispatch *d) {
 
   if (obj) {
     std::cout << "  Object exists in dispatch and visiting.\n";
-    if (!visit(obj)) {
+    auto field = dynamic_cast<FieldAccess *>(obj);
+    if (field && (d->getName() == "get" || d->getName() == "set")) {
+      cArrayContext = field;
+    }
+    const bool visited = visit(obj);
+    cArrayContext = nullptr;
+    if (!visited) {
       return false;
+    }
+    bool handled = false;
+    if (field && !visitCArrayAccess(d, handled)) {
+      return false;
+    }
+    if (handled) {
+      return true;
     }
   } else {
     std::cout << "  Object does not exist, supposing it is 'self'.\n";
@@ -983,7 +1041,8 @@ void SemanticAnalysis::checkExternSignature(Class *c, Method *m) {
     return TypeTable::integerWidth(type) || TypeTable::floatWidth(type) ||
            type == strings::Ptr || type == strings::Void ||
            type == strings::String || type == strings::Bytes ||
-           type == strings::Ints || type == strings::Floats;
+           type == strings::Ints || type == strings::Floats ||
+           cStructClass(type) != nullptr;
   };
 
   if (m->getBody()) {
@@ -1008,6 +1067,103 @@ void SemanticAnalysis::checkExternSignature(Class *c, Method *m) {
           m);
     }
   }
+}
+
+Class *SemanticAnalysis::cStructClass(const std::string &typeName) {
+  try {
+    auto type = typeTable.getType(typeName);
+    auto c = type ? type->getClass() : nullptr;
+    return (c && c->isCStruct()) ? c : nullptr;
+  } catch (const SemanticException &) {
+    return nullptr;
+  }
+}
+
+void SemanticAnalysis::refuseCBoundaryType(const std::string &type,
+                                           TreeNode *where) {
+  if (type == "UInt8" || type == "UInt16" || type == "UInt32" ||
+      type == "UInt64") {
+    const std::string use =
+        (type == "UInt8" || type == "UInt16") ? "Int" : "Int64";
+    throw SemanticException(type + " is a C type, for extern declarations "
+                                   "only; in catmint code use " +
+                                use,
+                            where);
+  }
+}
+
+void SemanticAnalysis::checkCStruct(Class *c) {
+  for (auto f : *c) {
+    auto a = dynamic_cast<Attribute *>(f);
+    if (!a) {
+      throw SemanticException("an extern struct holds fields only, and '" +
+                                  c->getName() + "' declares '" +
+                                  f->getName() + "'",
+                              f);
+    }
+    const std::string ct = a->getCType();
+    Class *nested = cStructClass(ct);
+    const bool numeric = TypeTable::integerWidth(ct) ||
+                         TypeTable::floatWidth(ct) || ct == "UInt8" ||
+                         ct == "UInt16" || ct == "UInt32" || ct == "UInt64";
+    if (!numeric && ct != strings::Ptr && !nested) {
+      throw SemanticException(
+          "'" + c->getName() + "." + a->getName() + "' is a " + ct +
+              ", which has no C layout; an extern struct holds numbers, Ptr "
+              "and other extern structs",
+          a);
+    }
+    if (nested && nested->isOpaque()) {
+      throw SemanticException("'" + c->getName() + "." + a->getName() +
+                                  "' holds an opaque '" + ct +
+                                  "' by value, and it has no size; hold a Ptr "
+                                  "to it instead",
+                              a);
+    }
+  }
+}
+
+/// `s.pad[i]` reads an element; `s.pad[i] = v` writes one, and the parser has
+/// already turned it into set(i, v). The field itself was visited in array
+/// context and typed as its element.
+bool SemanticAnalysis::visitCArrayAccess(Dispatch *d, bool &handled) {
+  auto field = dynamic_cast<FieldAccess *>(d->getObject());
+  auto objType = typeTable.getType(field->getObject());
+  auto objClass = objType ? objType->getClass() : nullptr;
+  if (!objClass || !objClass->isCStruct()) {
+    return true;
+  }
+  auto attribute = typeTable.getAttribute(objClass, field->getField());
+  if (!attribute || attribute->getArrayLength() == 0) {
+    return true;
+  }
+  handled = true;
+
+  std::vector<Expression *> args;
+  for (auto arg : *d) {
+    if (!visit(arg)) {
+      return false;
+    }
+    args.push_back(arg);
+  }
+  const size_t want = d->getName() == "set" ? 2 : 1;
+  if (args.size() != want) {
+    throw SemanticException("an element of '" + field->getField() +
+                                "' is reached with one index",
+                            d);
+  }
+  if (!TypeTable::integerWidth(typeTable.getType(args[0])->getName())) {
+    throw SemanticException("an index into '" + field->getField() +
+                                "' must be an integer",
+                            d);
+  }
+  auto elementType = typeTable.getType(attribute->getType());
+  if (want == 2 && !typeTable.isEqualOrImplicitlyConvertibleTo(
+                       typeTable.getType(args[1]), elementType)) {
+    throw WrongTypeException(typeTable.getType(args[1]), elementType, d);
+  }
+  typeTable.setType(d, elementType);
+  return true;
 }
 
 void SemanticAnalysis::warnNarrowWidening(const std::string &declaredType,
@@ -1081,6 +1237,15 @@ bool SemanticAnalysis::visit(NewObject *n) {
 
   if (!type->getClass()) {
     throw WrongTypeException(type, n);
+  }
+
+  // An opaque extern struct is known only by pointer: nobody here knows how
+  // many bytes it has, so there is nothing to make.
+  if (type->getClass()->isOpaque()) {
+    throw SemanticException("'" + type->getName() +
+                                "' is opaque -- no fields and no size -- so it "
+                                "comes only from C, never from 'new'",
+                            n);
   }
 
   // A class that still has an abstract method has no body to run for it, so
@@ -1158,6 +1323,17 @@ bool SemanticAnalysis::visit(FieldAccess *fa) {
   auto attribute = typeTable.getAttribute(objClass, fa->getField());
   if (!attribute) {
     throw AttributeNotFoundException(fa->getField(), objClass, fa);
+  }
+
+  // An array field of an extern struct is reached one element at a time,
+  // which is how its bounds get checked.
+  if (objClass->isCStruct() && attribute->getArrayLength() > 0 &&
+      (fa != cArrayContext || fa->getValue())) {
+    throw SemanticException("'" + fa->getField() + "' is an array of " +
+                                std::to_string(attribute->getArrayLength()) +
+                                "; use it an element at a time, as " +
+                                fa->getField() + "[i]",
+                            fa);
   }
 
   auto fieldType = typeTable.getType(attribute->getType());
@@ -1560,6 +1736,7 @@ bool SemanticAnalysis::visit(ReturnExpression *r) {
 }
 
 bool SemanticAnalysis::visit(LocalDefinition *local) {
+  refuseCBoundaryType(local->getType(), local);
   // The initialiser is analysed before the name is bound. `x = expr` parses as
   // a definition with the type "auto", so binding first would make `a = a + 1`
   // resolve the right-hand `a` to the new, still-untyped definition instead of

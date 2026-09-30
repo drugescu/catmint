@@ -1,0 +1,166 @@
+# C structs and unions, laid out as C lays them out, checked against libc.
+#
+# An owned struct is a counted catmint object whose payload is the C bytes,
+# zeroed; a view points at bytes C owns and never frees them. `@ n` asserts a
+# size or an offset, and the compiler checks it against its own layout.
+# UInt8, UInt16, UInt32 and UInt64 exist only at the C boundary: read, they
+# become the smallest catmint integer that holds every value.
+
+link "m"
+
+extern struct Pair @ 8
+  Int32 a @ 0
+  Int32 b @ 4
+end
+
+extern struct Mixed @ 24
+  UInt8 flag @ 0
+  Int32 count @ 4
+  Float value @ 8
+  Int16 small @ 16
+  UInt16 wide @ 18
+  Float32 ratio @ 20
+end
+
+# A Pair (size 8, aligned 4) then a Mixed (aligned 8): the Mixed moves to 8.
+extern struct Nested @ 32
+  Pair p @ 0
+  Mixed m @ 8
+end
+
+extern union Word @ 8
+  UInt32 low @ 0
+  UInt8 bytes[8] @ 0
+  Int64 whole @ 0
+  Float real @ 0
+end
+
+# struct tm on LP64 glibc and macOS alike: nine ints, a long, a char *.
+extern struct Tm @ 56
+  Int32 sec
+  Int32 min
+  Int32 hour
+  Int32 mday
+  Int32 mon
+  Int32 year
+  Int32 wday
+  Int32 yday
+  Int32 isdst
+  Int64 gmtoff @ 40
+  Ptr zone @ 48
+end
+
+extern struct TimeBox
+  Int64 t
+end
+
+extern struct IntBox
+  Int32 value
+end
+
+extern struct Opaque
+end
+
+extern class Libc
+  def Ptr memset(Ptr dest, Int value, UInt64 count)
+  def Tm gmtime_r(TimeBox t, Tm out)
+  def Float frexp(Float x, Ptr exponent)
+  def UInt64 strlen(String s)
+end
+
+class Main from IO
+  def main:
+    # Owned, zeroed, read and written.
+    Pair p
+    out("pair zero ${p.a} ${p.b}\n")
+    p.a = 7
+    p.b = 0 - 3
+    out("pair ${p.a} ${p.b}\n")
+
+    # Every byte 0xFF: each field reads by its own C type.
+    Mixed m = new Mixed()
+    unsafe:
+      Libc.memset(m, 255, 24)
+    end
+    out("mixed flag ${m.flag} count ${m.count} small ${m.small} wide ${m.wide}\n")
+    m.value = 2.5
+    m.ratio = 0.5
+    out("mixed value ${m.value} ratio ${m.ratio}\n")
+
+    # Nested by value: one offset, and a copy when used whole.
+    Nested n
+    n.p.a = 5
+    n.m.count = 9
+    out("nested ${n.p.a} ${n.m.count}\n")
+    Pair copy = n.p
+    copy.a = 1
+    out("copy ${copy.a} original ${n.p.a}\n")
+    n.p = copy
+    out("assigned ${n.p.a}\n")
+
+    # A union: every member at offset 0, little-endian on every target.
+    Word w
+    w.whole = 72623859790382856
+    out("word low ${w.low} first ${w.bytes[0]} last ${w.bytes[7]}\n")
+    w.bytes[3] = 255
+    out("word low ${w.low}\n")
+    w.real = 1.0
+    out("word real bits ${w.whole}\n")
+    try:
+      out("${w.bytes[8]}\n")
+    catch e:
+      out("bytes[8] refused\n")
+    end
+
+    # A view: gmtime_r returns the pointer it was given, so r and out are
+    # two catmint objects over one struct tm.
+    TimeBox tb
+    tb.t = 31554000
+    Tm result = new Tm()
+    Tm r = null
+    unsafe:
+      r = Libc.gmtime_r(tb, result)
+    end
+    out("tm ${r.year} ${r.mon} ${r.mday} ${r.hour} wday ${r.wday} yday ${r.yday}\n")
+    r.hour = 6
+    out("through the view ${result.hour}\n")
+
+    # An out-parameter: a one-field struct passed where C takes int *.
+    IntBox e
+    Float f = 0.0
+    unsafe:
+      f = Libc.frexp(8.0, e)
+    end
+    out("frexp ${f} ${e.value}\n")
+
+    Int64 len = 0
+    unsafe:
+      len = Libc.strlen("hello")
+      Tm none = Tm.at(null)
+      if none == null:
+        out("at(null) is null\n")
+      end
+    end
+    out("strlen ${len}\n")
+
+    Opaque o
+    if o == null:
+      out("opaque declared null\n")
+    end
+
+    # C would see "a" and stop: refused rather than truncated. (Built from
+    # Bytes, which keeps the NUL; String.chr(0) gives an empty string.)
+    Bytes raw = "a-b".toBytes()
+    raw.set(1, 0)
+    String bad = raw.toString()
+    try:
+      unsafe:
+        Libc.strlen(bad)
+      end
+      out("NUL passed\n")
+    catch err:
+      out("NUL refused\n")
+    end
+    out("done\n")
+  end
+end

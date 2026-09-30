@@ -616,6 +616,28 @@ no message. An `Object`, a `List` or a user class in an extern signature is a
 compile error, since what would cross is the catmint object, type information
 and reference count and all.
 
+**C structs and unions.** `extern struct` and `extern union` are classes
+with `Class::isCStruct()`, fields only (the `c_field` rule), and the
+generator gives them their own shape: `{ rtti, refs, ptr view, [n x i8] }`.
+An owned instance has a null `view` and its bytes inline; a view (an extern
+function returning the struct type, or `S.at(ptr)`) has C's pointer there.
+`dataPointer` picks between them with one select, so nothing else ever tells
+them apart, and `Object.copy` is right for both without special handling.
+The layout is `layoutCStruct`: C's natural-alignment rule, which is the same
+on every target catmint supports; every `@ n` is checked there. Because a
+view's pointer is a plain `ptr` field with no entry in the RTTI's list of
+reference fields, `object_free` never touches C's memory.
+
+The unsigned C types are rewritten **in the parser**: `cBoundaryType` turns
+`UInt8`/`UInt16` into `Int` and `UInt32`/`UInt64` into `Int64` for everything
+downstream, and keeps the C type as `Attribute::getCType` and
+`Method::getCReturnType` for the generator's `lowerCType`, `loadCScalar` and
+`storeCScalar`, which zero-extend and truncate at the real width. So the
+semantic pass and `staticTypeOf` never see a `UInt`, and a `UInt` anywhere
+else is refused by `refuseCBoundaryType`. Extern calls go through
+`emitExternCall`, not `emitStaticCall`'s ordinary path, because what C
+receives is decided by the C signature (`externFunctionType`).
+
 `link "SDL2"` names a library. The preprocessor removes the line, so there is
 no grammar rule and no AST node; `catmintc` greps the sources for it, as it
 already does for `using`, and turns each into a `-l`. `-l` and `-L` on the
@@ -861,13 +883,24 @@ Each of these produced a crash or a silent miscompile during development.
   current expression or begins a new one, and it resolves every such case by
   shifting -- the longest expression wins. `Int c = a` followed by `- b` on
   the next line computes `a - b`; `twice` followed by `(x)` is a call. That
-  accounts for all ten shift/reduce conflicts, on `(`, `[`, `.`, `::`, `-`,
+  accounts for all twelve shift/reduce conflicts, on `(`, `[`, `.`, `::`, `-`,
   `:` and IDENTIFIER, and `bison -Wcounterexamples` prints the derivations.
+  Two of them came with `s.pad[i]`, subscripting a field: `a.b` followed by
+  `[` on the next line now continues it. The only statement that begins
+  with `[` is a bare list literal whose value is thrown away, so no program
+  that means something changed meaning.
   Like the `%` precedence this is **settled, not open**: making newlines
   significant would change what existing programs mean. The one remaining
   reduce/reduce conflict is `type_name -> IDENTIFIER` against
   `rvalue_identifier_expression -> IDENTIFIER`, the declaration-versus-
   expression ambiguity, resolved in favour of the earlier rule.
+- ~~**`wtest.sh` exited 0 with a test failing.**~~ **Fixed.** It printed its
+  failures and exited 0, and `test.sh` trusted the status, so the parser
+  suite printed nothing at all and the run still said "everything passed" --
+  for as long as the float-literal fix had left `class_test.cm.ref` stale.
+  `wtest.sh` now exits 1, and `test.sh` also requires the "All N tests
+  passed" line. **When a section of `test.sh` prints nothing, it has not
+  passed.**
 - **String escapes are decoded in the lexer**, not by the AST's JSON round
   trip. They used to be decoded by accident, because JSON spells `\n` and
   `\t` the same way; a quote or a backslash then produced an AST file the
