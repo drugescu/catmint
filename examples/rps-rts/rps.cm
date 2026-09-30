@@ -27,7 +27,8 @@
 #   --play FILE    feed FILE's input to the steps (see tests/*.play)
 #   --shot F.bmp   save the first frame drawn and exit
 #
-# The SDL binding is sdl.cmm; its C side is sdl_shim.c, built by build.sh.
+# SDL comes from the standard library: lib/sdl.cmm, over lib/sdl2.cmm, which
+# tools/bindgen.py generates from SDL's headers. No C is compiled.
 
 using sdl
 using random

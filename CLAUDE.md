@@ -638,6 +638,24 @@ else is refused by `refuseCBoundaryType`. Extern calls go through
 `emitExternCall`, not `emitStaticCall`'s ordinary path, because what C
 receives is decided by the C signature (`externFunctionType`).
 
+**Bindings are generated, not written.** `tools/bindgen.py` reads a C
+library's headers through clang -- declarations from the JSON AST, layouts
+from `-fdump-record-layouts-complete`, constant values from clang evaluating
+each one as an enumerator initialiser -- and writes a `.cmm` of extern
+structs with every `@` asserted, one extern class of functions, and a class
+of constants as static methods. `lib/sdl2.cmm` is its output for SDL2 and is
+**never edited by hand**; the command is in its header. `lib/sdl.cmm` is the
+hand-written safe layer on top. When the generator gets something wrong the
+compile fails on an `@` assertion rather than corrupting memory, which is
+the point of writing clang's offsets out. Two things it has already got wrong
+and now handles: a typedef of a function pointer whose parameters mention a
+struct is not that struct (only the typedef's own type counts), and a record
+with a bitfield or an anonymous member becomes an array of integers of the
+record's alignment, so records holding it still lay out right.
+`tools/bindgen_test/run.sh` binds a test header against a C library built
+from it; `test.sh` runs it and says "skipped: needs clang" rather than
+nothing when it cannot.
+
 `link "SDL2"` names a library. The preprocessor removes the line, so there is
 no grammar rule and no AST node; `catmintc` greps the sources for it, as it
 already does for `using`, and turns each into a `-l`. `-l` and `-L` on the
