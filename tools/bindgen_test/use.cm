@@ -1,0 +1,65 @@
+# Uses what bindgen.py generated from sample.h, against the C library built
+# from sample.c: catmint must read and write every field where C does.
+
+using sample
+
+# int32_t * is a Ptr in the bindings; an out-parameter is a one-field struct.
+extern struct Count
+  Int32 value
+end
+
+class Main from IO
+  def main:
+    SampleRecord r
+    unsafe:
+      Sample.sample_fill(r)
+    end
+    out("tag ${r.tag} at ${r.at.x} ${r.at.y} weight ${r.weight} id ${r.id}\n")
+    out("name ${r.name[0]} ${r.name[4]} ${r.name[5]} ratio ${r.ratio} color ${r.color}\n")
+
+    Int total = 0
+    unsafe:
+      total = Sample.sample_sum(r)
+    end
+    out("sum ${total}\n")
+    r.tag = 1
+    r.at.x = 0
+    unsafe:
+      total = Sample.sample_sum(r)
+    end
+    out("sum after writing ${total}\n")
+
+    SampleThing thing = null
+    Int id = 0
+    unsafe:
+      thing = Sample.sample_make(77)
+      id = Sample.sample_id(thing)
+      Sample.sample_free(thing)
+    end
+    out("thing ${id}\n")
+
+    SampleBits bits
+    bits.bytes[0] = 1
+    bits.bytes[1] = 2
+    Int64 word = 0
+    Int64 length = 0
+    unsafe:
+      word = Sample.sample_word(bits)
+      length = Sample.sample_length("four")
+    end
+    out("word ${word} length ${length}\n")
+
+    SampleHolder holder
+    holder.last = 99
+    Count c
+    Int last = 0
+    unsafe:
+      last = Sample.sample_holder_last(holder)
+      Sample.sample_count(c)
+    end
+    out("holder ${last} count ${c.value}\n")
+
+    out("constants ${SampleC.SAMPLE_FLAG()} ${SampleC.SAMPLE_BIG()} ${SampleC.SAMPLE_NEG()} ${SampleC.SAMPLE_CENTERED()}\n")
+    out("colors ${SampleC.SAMPLE_RED()} ${SampleC.SAMPLE_GREEN()} ${SampleC.SAMPLE_BLUE()}\n")
+  end
+end

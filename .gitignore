@@ -109,6 +109,7 @@ difftest/failures/
 fuzz/failures/
 .fuzz.log
 .portability.log
+.bindgen.log
 
 # Compiled programs and the intermediates that make them. Four of these were
 # committed by accident early on -- two arm64 binaries among them -- and had

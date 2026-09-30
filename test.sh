@@ -92,6 +92,19 @@ if [ -n "$THOROUGH" ]; then
   fi
 fi
 
+# The binding generator is a developer's tool and needs clang, as it does;
+# without clang this says so rather than printing nothing.
+printf "\n${BOLD}binding generator${NC}\n"
+if [ ! -x "${LLVM_BIN:-/nonexistent}/clang" ] && ! command -v clang >/dev/null 2>&1; then
+  printf "  skipped: needs clang\n"
+elif "$ROOT/tools/bindgen_test/run.sh" > "$ROOT/.bindgen.log" 2>&1; then
+  printf "  bindings agree with C\n"
+else
+  printf "  ${RED}failed${NC} - see .bindgen.log\n"
+  tail -5 "$ROOT/.bindgen.log" | sed 's/^/  /'
+  failed=1
+fi
+
 printf "\n${BOLD}examples${NC}\n"
 for source in "$ROOT"/examples/*.cm; do
   name=$(basename "$source" .cm)
