@@ -1,0 +1,39 @@
+# An attribute of a class that is declared later in the file.
+#
+# Building Holder's initialiser constructs its attribute, which calls
+# Later_init -- before Later's own initialiser has been emitted. That call
+# declares the function, and emitting Later_init afterwards must define that
+# declaration rather than create a second one: Function::Create renames the
+# new function Later_init.1 and leaves the declaration undefined, so the
+# program failed to link with an undefined Later_init. Every earlier test
+# declared the attribute's class first, so none could see it.
+
+class Holder
+  Later part
+  Middle mid
+
+  def Int read:
+    return part.value() + mid.value()
+  end
+end
+
+class Middle
+  Later inner
+
+  def Int value:
+    return inner.value() * 10
+  end
+end
+
+class Later
+  def Int value:
+    return 7
+  end
+end
+
+class Main from IO
+  def main:
+    Holder h
+    out("value ${h.read()}\n")
+  end
+end
