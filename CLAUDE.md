@@ -866,6 +866,31 @@ Each of these produced a crash or a silent miscompile during development.
   the arithmetic operators. Unlike the `%` question this was safe to change:
   the affected expressions did not compile at all, so no program's meaning
   could move.
+- ~~**A `Ptr` was counted wherever an LLVM `ptr` was.**~~ **Fixed.** A block's
+  value and a method's result are kept alive by retaining them and handing
+  them to the pool, and `emitBlock` and `emitCleanupAndReturn` asked whether
+  the value was a reference by looking at its *LLVM* type -- which a `Ptr`
+  shares. So `unsafe: h = SDL.CreateWindow(...) end`, whose value is a Ptr,
+  retained and later released a pointer into memory C owns. `retain` adds one
+  to the int at offset 8 only if it is positive; `release` takes one off
+  whenever it is not zero, and frees at zero; a C struct with a pointer at
+  offset 8 is negative half the time, so one program in two ended with a
+  pointer decremented by one and `free` of an address that was never
+  allocated, inside the library, after `main` had printed its last line. Tests
+  49 and 50 hid it because the pointer was `malloc`'d scratch that nothing
+  reads back. `yieldsPtr` now asks the catmint type; `57_ptr_uncounted` fills
+  a C block with 0xFF (the negative case) and checks it is untouched. **Any new
+  place that decides "is this value counted" must ask `isReferenceTypeName`,
+  never `isPointerTy()`.** `Ptr == null` still compiles to `__cm_equals`,
+  which is only safe because one side is null: two non-null Ptrs would have
+  their first words read as type information.
+- ~~**A class's initialiser was declared, then created again.**~~ **Fixed.**
+  Constructing an attribute of class type calls `<Class>_init` before that
+  class's own initialiser has been emitted, which declared it;
+  `Function::Create` afterwards renamed the definition `<Class>_init.1` and
+  left the declaration undefined, so a class with an attribute of a
+  later-declared class did not link. `emitInitFunction` now reuses the
+  declaration (`56_forward_attribute`).
 
 ## Documents
 
