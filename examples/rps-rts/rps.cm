@@ -5,106 +5,20 @@
 #                  the FFI path (`extern class`, `unsafe`, `link`, `Ptr`,
 #                  `finalize`) against a real C library end to end.
 #   milestone 2 -- the static iso grid: camera/projection math and the
-#                  tinted-checkerboard board, no units yet.
+#                  tinted-checkerboard board.
+#   milestone 3 -- units and bases drawn as flat-shaded solids (rock = cube,
+#                  paper = slab, scissors = pyramid), painter-sorted, with
+#                  health bars. Placed by hand: nothing moves yet.
 #
-# SDL.* is declared once here and its C side lives in sdl_shim.c, compiled
-# and linked by build.sh -- see that file for why a shim exists at all
-# rather than binding SDL2's own headers directly.
+# The SDL binding is sdl.cmm; its C side is sdl_shim.c, built by build.sh.
 
-link "cmsdl"
-link "SDL2"
-
-extern class SDL
-  def Int Init()
-  def Ptr CreateWindow(String title, Int w, Int h)
-  def Ptr CreateRenderer(Ptr window)
-  def Void SetColor(Ptr renderer, Int r, Int g, Int b, Int a)
-  def Void Clear(Ptr renderer)
-  def Void Present(Ptr renderer)
-  def Int SaveBMP(Ptr renderer, String path)
-  def Void DrawLine(Ptr renderer, Int x0, Int y0, Int x1, Int y1)
-  def Void FillQuad(Ptr renderer, Int x0, Int y0, Int x1, Int y1, Int x2, Int y2, Int x3, Int y3)
-  def Int PollEvent()
-  def Int EventIsQuit()
-  def Int EventIsKeyDown()
-  def Int EventKey()
-  def Void Delay(Int ms)
-  def Void DestroyRenderer(Ptr renderer)
-  def Void DestroyWindow(Ptr window)
-  def Void Quit()
-end
-
-# The wrapper idiom (test 49/50): an unsafe core inside a safe class, so
-# nothing outside this file ever writes `unsafe`. `finalize` gives the
-# handle back when the last reference goes, whether that is end of scope or
-# end of program.
-class Renderer from Object
-  Ptr handle
-
-  constructor(Ptr window):
-    unsafe:
-      handle = SDL.CreateRenderer(window)
-    end
-    if handle == null:
-      throw "could not create renderer"
-    end
-  end
-
-  def Void clear(Int r, Int g, Int b):
-    unsafe:
-      SDL.SetColor(handle, r, g, b, 255)
-      SDL.Clear(handle)
-    end
-  end
-
-  def Void present:
-    unsafe:
-      SDL.Present(handle)
-    end
-  end
-
-  # The colour set here stays current for fillQuad/line until changed again,
-  # the same way SDL_SetRenderDrawColor itself works -- so a shape wants one
-  # setColor before it, not a colour on every call.
-  def Void setColor(Int r, Int g, Int b):
-    unsafe:
-      SDL.SetColor(handle, r, g, b, 255)
-    end
-  end
-
-  def Void fillQuad(Int x0, Int y0, Int x1, Int y1, Int x2, Int y2, Int x3, Int y3):
-    unsafe:
-      SDL.FillQuad(handle, x0, y0, x1, y1, x2, y2, x3, y3)
-    end
-  end
-
-  def Void line(Int x0, Int y0, Int x1, Int y1):
-    unsafe:
-      SDL.DrawLine(handle, x0, y0, x1, y1)
-    end
-  end
-
-  # Writes the frame drawn so far as a BMP; call before present. 1 on
-  # success. This is how a run can be looked at without a screen grab.
-  def Int saveBMP(String path):
-    unsafe:
-      return SDL.SaveBMP(handle, path)
-    end
-  end
-
-  def Void finalize:
-    unsafe:
-      SDL.DestroyRenderer(handle)
-    end
-  end
-end
+using sdl
 
 # Iso projection: world tile coordinates (x, y, and an optional height z, all
 # in tile units) to screen pixels. tw/th are one tile's on-screen size once
 # the whole cols x rows grid is scaled to fit the window; camX/camY centre
 # it. This is resize()/toScreen() from the shared prototype, computed once
-# rather than on every resize since milestone 2 does not yet track window
-# resizing.
+# rather than on every resize since the window does not yet track resizing.
 class Camera from Object
   Int cols
   Int rows
@@ -138,40 +52,51 @@ class Camera from Object
   end
 end
 
-class Window from Object
-  Ptr handle
-  Renderer renderer
+# Everything that draws the game world: the board, the solids units are made
+# of, the health bars. It holds the renderer and the camera so an entity's
+# draw() takes one argument, and the team palette so shading is looked up
+# rather than computed.
+#
+# A palette entry is team * 3 + level, level 0 being the face turned away
+# from the light, 1 the other side face, 2 the top. The values are the
+# prototype's hsl(38|275, 65%, 34|48|64%) worked out once; catmint has no HSL
+# and this is a port of the look, not of the colour arithmetic.
+class Gfx from Object
+  Renderer view = null
+  Camera cam = null
+  Ints pr
+  Ints pg
+  Ints pb
 
-  constructor(String title, Int w, Int h):
-    unsafe:
-      handle = SDL.CreateWindow(title, w, h)
-    end
-    if handle == null:
-      throw "could not create window"
-    end
-    renderer = new Renderer(handle)
+  constructor(Renderer v, Camera c):
+    view = v
+    cam = c
+    pr = new Ints(6)
+    pg = new Ints(6)
+    pb = new Ints(6)
+    tone(0, 143, 102, 30)
+    tone(1, 202, 144, 43)
+    tone(2, 223, 179, 104)
+    tone(3, 96, 30, 143)
+    tone(4, 136, 43, 202)
+    tone(5, 173, 104, 223)
   end
 
-  def Renderer view:
-    return renderer
+  def Void tone(Int i, Int r, Int g, Int b):
+    pr.set(i, r)
+    pg.set(i, g)
+    pb.set(i, b)
   end
 
-  def Void finalize:
-    unsafe:
-      SDL.DestroyWindow(handle)
-    end
+  def Void shade(Int team, Int level):
+    Int i = team * 3 + level
+    view.setColor(pr.get(i), pg.get(i), pb.get(i))
   end
-end
 
-class Main from IO
-  Camera cam
-
-  # The checkerboard plus tinted home zones from the shared prototype's
-  # drawGrid(): x < 3 is the player's zone, x >= cols - 3 the enemy's,
-  # everything between alternates by (x + y) parity. Colours are the
-  # prototype's own hex constants converted to plain RGB, since catmint has
-  # no HSL and this is a straight port of the values, not the formula.
-  def Void drawGrid(Renderer view):
+  # The checkerboard plus tinted home zones from the prototype's drawGrid():
+  # x < 3 is the player's zone, x >= cols - 3 the enemy's, everything between
+  # alternates by (x + y) parity. Plain RGB constants, as above.
+  def Void grid:
     Int cols = cam.cols
     Int rows = cam.rows
     Int y = 0
@@ -228,18 +153,201 @@ class Main from IO
     end
   end
 
-  def main:
-    unsafe:
-      SDL.Init()
-    end
+  # One flat-shaded face with a dark outline. Four corners in order; a
+  # triangle repeats its last.
+  def Void face(Float x0, Float y0, Float x1, Float y1, Float x2, Float y2, Float x3, Float y3, Int team, Int level):
+    shade(team, level)
+    view.fillQuad(x0, y0, x1, y1, x2, y2, x3, y3)
+    view.setColor(25, 28, 34)
+    view.line(x0, y0, x1, y1)
+    view.line(x1, y1, x2, y2)
+    view.line(x2, y2, x3, y3)
+    view.line(x3, y3, x0, y0)
+  end
 
+  # A box centred on tile (ex, ey), h is its half-width in tiles, z its
+  # height in tiles. Only the three faces an iso camera sees are drawn. Each
+  # corner's screen x does not depend on height, so the top corners are the
+  # bottom ones lifted by z * th.
+  def Void prism(Float ex, Float ey, Float h, Float z, Int team):
+    Float lift = z * cam.th
+    Float xpp = cam.screenX(ex + h, ey + h)
+    Float ypp = cam.screenY(ex + h, ey + h, 0.0)
+    Float xpm = cam.screenX(ex + h, ey - h)
+    Float ypm = cam.screenY(ex + h, ey - h, 0.0)
+    Float xmp = cam.screenX(ex - h, ey + h)
+    Float ymp = cam.screenY(ex - h, ey + h, 0.0)
+    Float xmm = cam.screenX(ex - h, ey - h)
+    Float ymm = cam.screenY(ex - h, ey - h, 0.0)
+    face(xpm, ypm - lift, xpp, ypp - lift, xpp, ypp, xpm, ypm, team, 1)
+    face(xmp, ymp - lift, xpp, ypp - lift, xpp, ypp, xmp, ymp, team, 0)
+    face(xmm, ymm - lift, xpm, ypm - lift, xpp, ypp - lift, xmp, ymp - lift, team, 2)
+  end
+
+  def Void pyramid(Float ex, Float ey, Float h, Float z, Int team):
+    Float ax = cam.screenX(ex, ey)
+    Float ay = cam.screenY(ex, ey, z)
+    Float xpm = cam.screenX(ex + h, ey - h)
+    Float ypm = cam.screenY(ex + h, ey - h, 0.0)
+    Float xpp = cam.screenX(ex + h, ey + h)
+    Float ypp = cam.screenY(ex + h, ey + h, 0.0)
+    Float xmp = cam.screenX(ex - h, ey + h)
+    Float ymp = cam.screenY(ex - h, ey + h, 0.0)
+    face(ax, ay, xpm, ypm, xpp, ypp, xpp, ypp, team, 1)
+    face(ax, ay, xmp, ymp, xpp, ypp, xpp, ypp, team, 0)
+  end
+
+  # Green above half health, amber above a quarter, red below. The prototype
+  # backs the bar with 55% black; SDL alpha blending is a mode of its own,
+  # so this uses a solid near-black instead.
+  def Void hpBar(Float ex, Float ey, Float z, Float hp, Float maxHp):
+    Float sx = cam.screenX(ex, ey)
+    Float sy = cam.screenY(ex, ey, z)
+    Float w = cam.tw * 0.42
+    Float ratio = hp / maxHp
+    if ratio < 0.0:
+      ratio = 0.0
+    end
+    view.setColor(12, 14, 18)
+    view.fillRect(sx - w / 2.0 - 1.0, sy - 4.0, w + 2.0, 4.0)
+    if ratio > 0.5:
+      view.setColor(123, 211, 137)
+    elif ratio > 0.25:
+      view.setColor(242, 179, 61)
+    else
+      view.setColor(230, 86, 79)
+    end
+    view.fillRect(sx - w / 2.0, sy - 3.0, w * ratio, 2.0)
+  end
+end
+
+# Something with a place on the board that can be drawn. depth() is the key
+# the painter's sort orders by: further from the camera first, and on an iso
+# board that is simply smaller x + y.
+interface Drawable
+  def Float depth
+  def Void draw(Gfx g)
+end
+
+# kind: 0 rock, 1 paper, 2 scissors. team: 0 the player, 1 the enemy.
+class Unit does Drawable
+  Int team
+  Int kind
+  Float x
+  Float y
+  Float hp
+  Float maxHp
+
+  constructor(Int t, Int k, Float px, Float py):
+    team = t
+    kind = k
+    x = px
+    y = py
+    maxHp = 40.0
+    hp = maxHp
+  end
+
+  def Float depth:
+    return x + y
+  end
+
+  def Void draw(Gfx g):
+    if kind == 0:
+      g.prism(x, y, 0.22, 0.55, team)
+    elif kind == 1:
+      g.prism(x, y, 0.30, 0.12, team)
+    else
+      g.pyramid(x, y, 0.26, 0.85, team)
+    end
+    g.hpBar(x, y, 0.95, hp, maxHp)
+  end
+end
+
+# A plinth with a tower on it.
+class Base does Drawable
+  Int team
+  Float x
+  Float y
+  Float hp
+  Float maxHp
+
+  constructor(Int t, Float px, Float py):
+    team = t
+    x = px
+    y = py
+    maxHp = 150.0
+    hp = maxHp
+  end
+
+  def Float depth:
+    return x + y
+  end
+
+  def Void draw(Gfx g):
+    g.prism(x, y, 0.55, 0.3, team)
+    g.prism(x, y, 0.28, 1.0, team)
+    g.hpBar(x, y, 1.3, hp, maxHp)
+  end
+end
+
+class Main from IO
+  List things
+
+  def Void setup:
+    things.append(new Base(0, 1.5, 4.5))
+    things.append(new Base(1, 12.5, 4.5))
+
+    things.append(new Unit(0, 0, 3.2, 3.0))
+    things.append(new Unit(0, 1, 3.4, 4.5))
+    things.append(new Unit(0, 2, 3.2, 6.0))
+    things.append(new Unit(1, 0, 10.8, 3.2))
+    things.append(new Unit(1, 1, 10.6, 4.6))
+    things.append(new Unit(1, 2, 10.8, 6.1))
+
+    # Two units close enough that the painter's sort decides who is in front.
+    Unit a = new Unit(0, 0, 6.0, 4.5)
+    a.hp = 22.0
+    things.append(a)
+    Unit b = new Unit(1, 2, 6.35, 4.7)
+    b.hp = 8.0
+    things.append(b)
+    things.append(new Unit(0, 2, 6.7, 4.4))
+  end
+
+  # Insertion sort on depth. The list is nearly in order from one frame to
+  # the next, which is the case insertion sort is quickest at.
+  def Void sortByDepth:
+    Int i = 1
+    while i < things.len():
+      Drawable key = things.get(i)
+      Float kd = key.depth()
+      Int j = i - 1
+      Int moving = 1
+      while j >= 0 and moving == 1:
+        Drawable other = things.get(j)
+        if other.depth() > kd:
+          things.set(j + 1, other)
+          j = j - 1
+        else
+          moving = 0
+        end
+      end
+      things.set(j + 1, key)
+      i = i + 1
+    end
+  end
+
+  def main:
+    Sdl sdl = new Sdl()
     Int windowW = 960
     Int windowH = 640
-    Window win = new Window("catmint RPS RTS", windowW, windowH)
-    Renderer view = win.view()
+    Window win = new Window(sdl, "catmint RPS RTS", windowW, windowH)
+    Renderer view = new Renderer(win)
     Float fw = windowW
     Float fh = windowH
-    cam = new Camera(14, 10, 64.0, 32.0, fw, fh)
+    Camera cam = new Camera(14, 10, 64.0, 32.0, fw, fh)
+    Gfx gfx = new Gfx(view, cam)
+    setup()
 
     # `rps --shot out.bmp` draws one frame, saves it and exits.
     String shot = ""
@@ -250,32 +358,30 @@ class Main from IO
     Int running = 1
     Int escape = 27
     while running == 1:
-      unsafe:
-        while SDL.PollEvent() == 1:
-          if SDL.EventIsQuit() == 1:
-            running = 0
-          end
-          if SDL.EventIsKeyDown() == 1 and SDL.EventKey() == escape:
-            running = 0
-          end
+      while sdl.poll() == 1:
+        if sdl.isQuit() == 1:
+          running = 0
+        end
+        if sdl.isKeyDown() == 1 and sdl.key() == escape:
+          running = 0
         end
       end
 
       view.clear(35, 42, 51)
-      drawGrid(view)
+      gfx.grid()
+      sortByDepth()
+      for item in things:
+        Drawable d = item
+        d.draw(gfx)
+      end
       if shot.len() > 0:
         view.saveBMP(shot)
         running = 0
       end
       view.present()
-      unsafe:
-        SDL.Delay(16)
-      end
+      sdl.delay(16)
     end
 
     out("closed cleanly\n")
-    unsafe:
-      SDL.Quit()
-    end
   end
 end

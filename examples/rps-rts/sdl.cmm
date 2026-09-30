@@ -1,0 +1,198 @@
+# SDL2 for catmint: a thin, safe wrapper over the flat C shim in
+# sdl_shim.c. A program says `using sdl`, links libcmsdl (build.sh builds
+# it) and never writes `unsafe` itself -- the unsafe core lives here, inside
+# ordinary classes, and `finalize` gives each SDL handle back when the last
+# reference to its wrapper goes. That is the wrapper idiom from tests 49 and
+# 50, applied to a real library.
+#
+# Lifetime is the whole design. SDL needs a renderer destroyed before its
+# window and the window before SDL_Quit, and calling them in another order
+# aborts inside SDL. Rather than trust every program to release things in the
+# right order, each wrapper holds a strong reference to what it depends on --
+# Renderer to Window, Window to Sdl -- so the reference counts make
+# `finalize` run in dependency order whatever order the program lets go in.
+# The fields that hold them are `= null` on purpose: a bare field of class
+# type is given a throwaway default-built instance, and its finalize would
+# then call SDL with a handle that was never made.
+#
+# Kept next to the game while the game is still finding out which calls it
+# needs; it is written to move into lib/ unchanged.
+
+link "cmsdl"
+link "SDL2"
+
+extern class SDL
+  def Int Init()
+  def Ptr CreateWindow(String title, Int w, Int h)
+  def Ptr CreateRenderer(Ptr window)
+  def Void SetColor(Ptr renderer, Int r, Int g, Int b, Int a)
+  def Void Clear(Ptr renderer)
+  def Void Present(Ptr renderer)
+  def Int SaveBMP(Ptr renderer, String path)
+  def Void DrawLine(Ptr renderer, Int x0, Int y0, Int x1, Int y1)
+  def Void FillQuad(Ptr renderer, Int x0, Int y0, Int x1, Int y1, Int x2, Int y2, Int x3, Int y3)
+  def Int PollEvent()
+  def Int EventIsQuit()
+  def Int EventIsKeyDown()
+  def Int EventKey()
+  def Void Delay(Int ms)
+  def Void DestroyRenderer(Ptr renderer)
+  def Void DestroyWindow(Ptr window)
+  def Void Quit()
+end
+
+# The library itself: Init on construction, Quit when the last window and
+# renderer built on it are gone, and the event queue and timer, which belong
+# to no window.
+class Sdl from Object
+  constructor():
+    Int ok = 0
+    unsafe:
+      ok = SDL.Init()
+    end
+    if ok == 0:
+      throw "could not initialise SDL"
+    end
+  end
+
+  # 1 while there is an event to look at; then isQuit/isKeyDown/key describe
+  # it. One event at a time, the shim keeps the last one polled.
+  def Int poll:
+    unsafe:
+      return SDL.PollEvent()
+    end
+  end
+
+  def Int isQuit:
+    unsafe:
+      return SDL.EventIsQuit()
+    end
+  end
+
+  def Int isKeyDown:
+    unsafe:
+      return SDL.EventIsKeyDown()
+    end
+  end
+
+  def Int key:
+    unsafe:
+      return SDL.EventKey()
+    end
+  end
+
+  def Void delay(Int ms):
+    unsafe:
+      SDL.Delay(ms)
+    end
+  end
+
+  def Void finalize:
+    unsafe:
+      SDL.Quit()
+    end
+  end
+end
+
+class Window from Object
+  Sdl sdl = null
+  Ptr handle
+
+  constructor(Sdl s, String title, Int w, Int h):
+    sdl = s
+    unsafe:
+      handle = SDL.CreateWindow(title, w, h)
+    end
+    if handle == null:
+      throw "could not create window"
+    end
+  end
+
+  def Void finalize:
+    if handle != null:
+      unsafe:
+        SDL.DestroyWindow(handle)
+      end
+    end
+  end
+end
+
+class Renderer from Object
+  Window window = null
+  Ptr handle
+
+  constructor(Window w):
+    window = w
+    unsafe:
+      handle = SDL.CreateRenderer(w.handle)
+    end
+    if handle == null:
+      throw "could not create renderer"
+    end
+  end
+
+  def Void clear(Int r, Int g, Int b):
+    unsafe:
+      SDL.SetColor(handle, r, g, b, 255)
+      SDL.Clear(handle)
+    end
+  end
+
+  def Void present:
+    unsafe:
+      SDL.Present(handle)
+    end
+  end
+
+  # The colour set here stays current for the fill and line calls until it
+  # is changed again, the way SDL_SetRenderDrawColor itself works -- so a
+  # shape wants one setColor before it, not a colour on every call.
+  def Void setColor(Int r, Int g, Int b):
+    unsafe:
+      SDL.SetColor(handle, r, g, b, 255)
+    end
+  end
+
+  def Void fillQuad(Int x0, Int y0, Int x1, Int y1, Int x2, Int y2, Int x3, Int y3):
+    unsafe:
+      SDL.FillQuad(handle, x0, y0, x1, y1, x2, y2, x3, y3)
+    end
+  end
+
+  # A triangle is a quad with its last corner said twice: the scanline fill
+  # skips the zero-height edge that leaves, so no separate primitive is
+  # needed in the shim.
+  def Void fillTri(Int x0, Int y0, Int x1, Int y1, Int x2, Int y2):
+    unsafe:
+      SDL.FillQuad(handle, x0, y0, x1, y1, x2, y2, x2, y2)
+    end
+  end
+
+  def Void fillRect(Int x, Int y, Int w, Int h):
+    unsafe:
+      SDL.FillQuad(handle, x, y, x + w, y, x + w, y + h, x, y + h)
+    end
+  end
+
+  def Void line(Int x0, Int y0, Int x1, Int y1):
+    unsafe:
+      SDL.DrawLine(handle, x0, y0, x1, y1)
+    end
+  end
+
+  # Writes the frame drawn so far as a BMP; call before present. 1 on
+  # success. This is how a run can be looked at without a screen grab.
+  def Int saveBMP(String path):
+    unsafe:
+      return SDL.SaveBMP(handle, path)
+    end
+  end
+
+  def Void finalize:
+    if handle != null:
+      unsafe:
+        SDL.DestroyRenderer(handle)
+      end
+    end
+  end
+end
