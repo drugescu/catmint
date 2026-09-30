@@ -42,7 +42,10 @@ fi
 failed=0
 
 printf "\n${BOLD}parser${NC}\n"
-if ( cd "$ROOT/catmint-lex" && ./wtest.sh ) > "$ROOT/.wtest.log" 2>&1; then
+# Passing means the suite said so, not only that it exited 0: wtest.sh once
+# exited 0 with a test failing, and this section printed nothing at all.
+if ( cd "$ROOT/catmint-lex" && ./wtest.sh ) > "$ROOT/.wtest.log" 2>&1 &&
+   grep -q "All [0-9]* tests passed" "$ROOT/.wtest.log"; then
   grep -o "All [0-9]* tests passed" "$ROOT/.wtest.log" | tail -1 | sed 's/^/  /'
 else
   printf "  ${RED}failed${NC} - see .wtest.log\n"
