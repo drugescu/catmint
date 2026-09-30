@@ -115,6 +115,12 @@ int EventKey(void) {
   return (int)g_event.key.keysym.sym;
 }
 
+/* Milliseconds since SDL started; wraps after about 24 days, which a frame
+ * delta never notices. */
+int Ticks(void) {
+  return (int)SDL_GetTicks();
+}
+
 void Delay(int ms) {
   SDL_Delay((Uint32)ms);
 }

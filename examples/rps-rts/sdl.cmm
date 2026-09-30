@@ -35,6 +35,7 @@ extern class SDL
   def Int EventIsQuit()
   def Int EventIsKeyDown()
   def Int EventKey()
+  def Int Ticks()
   def Void Delay(Int ms)
   def Void DestroyRenderer(Ptr renderer)
   def Void DestroyWindow(Ptr window)
@@ -84,6 +85,12 @@ class Sdl from Object
   def Void delay(Int ms):
     unsafe:
       SDL.Delay(ms)
+    end
+  end
+
+  def Int ticks:
+    unsafe:
+      return SDL.Ticks()
     end
   end
 

@@ -9,6 +9,10 @@
 #   milestone 3 -- units and bases drawn as flat-shaded solids (rock = cube,
 #                  paper = slab, scissors = pyramid), painter-sorted, with
 #                  health bars. Placed by hand: nothing moves yet.
+#   milestone 4 -- the simulation: units hunt, close in, hit for 3x or 1/3 by
+#                  rock-paper-scissors, die and are cleaned up. `rps --frames
+#                  N` runs N fixed 1/60 s steps before drawing, so a battle
+#                  can be checked without watching it.
 #
 # The SDL binding is sdl.cmm; its C side is sdl_shim.c, built by build.sh.
 
@@ -64,6 +68,7 @@ end
 class Gfx from Object
   Renderer view = null
   Camera cam = null
+  Int white = 0
   Ints pr
   Ints pg
   Ints pb
@@ -88,9 +93,15 @@ class Gfx from Object
     pb.set(i, b)
   end
 
+  # An entity that has just been hit is drawn all white for a moment, as in
+  # the prototype: set white before drawing it, clear it after.
   def Void shade(Int team, Int level):
-    Int i = team * 3 + level
-    view.setColor(pr.get(i), pg.get(i), pb.get(i))
+    if white == 1:
+      view.setColor(255, 255, 255)
+    else
+      Int i = team * 3 + level
+      view.setColor(pr.get(i), pg.get(i), pb.get(i))
+    end
   end
 
   # The checkerboard plus tinted home zones from the prototype's drawGrid():
@@ -229,14 +240,40 @@ interface Drawable
   def Void draw(Gfx g)
 end
 
-# kind: 0 rock, 1 paper, 2 scissors. team: 0 the player, 1 the enemy.
-class Unit does Drawable
+# What units and bases have in common: a place, a side, health. team: 0 the
+# player, 1 the enemy. flash counts down from the moment of a hit.
+class Entity does Drawable
   Int team
-  Int kind
+  Int isBase
   Float x
   Float y
   Float hp
   Float maxHp
+  Float flash
+
+  def Float depth:
+    return x + y
+  end
+
+  def Int alive:
+    if hp > 0.0:
+      return 1
+    end
+    return 0
+  end
+
+  # Subclasses draw themselves; an Entity alone is nothing to look at.
+  def Void draw(Gfx g):
+  end
+end
+
+# kind: 0 rock, 1 paper, 2 scissors. A unit hunts the nearest enemy it can
+# see, walks until it is within reach, and hits on a cooldown. Speed, reach,
+# damage and cadence are the prototype's own numbers.
+class Unit from Entity
+  Int kind
+  Float cd
+  Entity target = null
 
   constructor(Int t, Int k, Float px, Float py):
     team = t
@@ -247,11 +284,53 @@ class Unit does Drawable
     hp = maxHp
   end
 
-  def Float depth:
-    return x + y
+  def Void update(World w, Float dt):
+    cd = cd - dt
+    if cd < 0.0:
+      cd = 0.0
+    end
+    flash = flash - dt
+    if flash < 0.0:
+      flash = 0.0
+    end
+
+    if target != null and target.alive() == 0:
+      target = null
+    end
+
+    # The enemy always hunts; the player's units only wake when something is
+    # within 2.2 tiles, because until they are given orders they hold ground.
+    if target == null:
+      Float sight = 2.2
+      if team == 1:
+        sight = 1000000000.0
+      end
+      target = w.nearestEnemy(self, sight)
+    end
+
+    if target != null:
+      Float dx = target.x - x
+      Float dy = target.y - y
+      Float d = Math.sqrt(dx * dx + dy * dy)
+      if d > 0.85:
+        Float step = 1.7 * dt
+        if step > d - 0.85:
+          step = d - 0.85
+        end
+        x = x + dx / d * step
+        y = y + dy / d * step
+      elif cd == 0.0:
+        w.hit(self, target)
+        cd = 0.5
+      end
+    end
   end
 
   def Void draw(Gfx g):
+    g.white = 0
+    if flash > 0.0:
+      g.white = 1
+    end
     if kind == 0:
       g.prism(x, y, 0.22, 0.55, team)
     elif kind == 1:
@@ -259,84 +338,301 @@ class Unit does Drawable
     else
       g.pyramid(x, y, 0.26, 0.85, team)
     end
+    g.white = 0
     g.hpBar(x, y, 0.95, hp, maxHp)
   end
 end
 
-# A plinth with a tower on it.
-class Base does Drawable
-  Int team
-  Float x
-  Float y
-  Float hp
-  Float maxHp
-
+# A plinth with a tower on it. It does not fight; losing it loses the game.
+class Base from Entity
   constructor(Int t, Float px, Float py):
     team = t
+    isBase = 1
     x = px
     y = py
     maxHp = 150.0
     hp = maxHp
   end
 
-  def Float depth:
-    return x + y
-  end
-
   def Void draw(Gfx g):
+    g.white = 0
+    if flash > 0.0:
+      g.white = 1
+    end
     g.prism(x, y, 0.55, 0.3, team)
     g.prism(x, y, 0.28, 1.0, team)
+    g.white = 0
     g.hpBar(x, y, 1.3, hp, maxHp)
   end
 end
 
-class Main from IO
+# The battlefield and its rules. `things` is in creation order and that order
+# is the simulation's: separation and targeting walk it, so it must not depend
+# on how the frame is drawn. The painter's sort therefore works on `order`, a
+# second list of the same entities.
+class World from Object
   List things
+  List order
+  Entity playerBase = null
+  Entity enemyBase = null
+  Int cols = 14
+  Int rows = 10
+  # 0 running, 1 the player won, 2 the player lost.
+  Int over = 0
 
   def Void setup:
-    things.append(new Base(0, 1.5, 4.5))
-    things.append(new Base(1, 12.5, 4.5))
-
     things.append(new Unit(0, 0, 3.2, 3.0))
     things.append(new Unit(0, 1, 3.4, 4.5))
     things.append(new Unit(0, 2, 3.2, 6.0))
-    things.append(new Unit(1, 0, 10.8, 3.2))
-    things.append(new Unit(1, 1, 10.6, 4.6))
-    things.append(new Unit(1, 2, 10.8, 6.1))
-
-    # Two units close enough that the painter's sort decides who is in front.
-    Unit a = new Unit(0, 0, 6.0, 4.5)
-    a.hp = 22.0
-    things.append(a)
-    Unit b = new Unit(1, 2, 6.35, 4.7)
-    b.hp = 8.0
-    things.append(b)
-    things.append(new Unit(0, 2, 6.7, 4.4))
+    things.append(new Unit(0, 0, 2.6, 5.2))
+    things.append(new Unit(1, 2, 10.8, 3.2))
+    things.append(new Unit(1, 0, 10.6, 4.6))
+    things.append(new Unit(1, 1, 10.8, 6.1))
+    things.append(new Unit(1, 1, 11.4, 5.0))
+    playerBase = new Base(0, 1.5, 4.5)
+    enemyBase = new Base(1, 12.5, 4.5)
+    things.append(playerBase)
+    things.append(enemyBase)
+    rebuildOrder()
   end
 
-  # Insertion sort on depth. The list is nearly in order from one frame to
-  # the next, which is the case insertion sort is quickest at.
-  def Void sortByDepth:
+  def Void rebuildOrder:
+    order = things.slice(0, things.len())
+  end
+
+  # 1 when a beats b: rock breaks scissors, scissors cut paper, paper covers
+  # rock. With rock 0, paper 1, scissors 2, a beats (a + 2) mod 3.
+  def Int beats(Int a, Int b):
+    if (a + 2) % 3 == b:
+      return 1
+    end
+    return 0
+  end
+
+  def Void hit(Entity a, Entity b):
+    Float m = 1.0
+    if b.isBase == 0:
+      Unit ua = a
+      Unit ub = b
+      if beats(ua.kind, ub.kind) == 1:
+        m = 3.0
+      elif beats(ub.kind, ua.kind) == 1:
+        m = 1.0 / 3.0
+      end
+    end
+    b.hp = b.hp - 8.0 * m
+    b.flash = 0.12
+  end
+
+  # The closest living enemy of u within maxD tiles, or null. Real distances,
+  # not squares: two enemies almost equally far can round to the same square
+  # root, and the prototype then keeps the first it found where comparing
+  # squares picks the other. Which of two is "closest" decides who a unit
+  # fights, so the tie has to break the way the prototype's does.
+  def Entity nearestEnemy(Entity u, Float maxD):
+    Entity best = null
+    Float bd = maxD
+    for item in things:
+      Entity e = item
+      if e.team != u.team and e.alive() == 1:
+        Float dx = e.x - u.x
+        Float dy = e.y - u.y
+        Float d = Math.sqrt(dx * dx + dy * dy)
+        if d < bd:
+          bd = d
+          best = e
+        end
+      end
+    end
+    return best
+  end
+
+  # No pathfinding: units that overlap are pushed apart.
+  def Void separate:
+    Int n = things.len()
+    Int i = 0
+    while i < n:
+      Entity a = things.get(i)
+      if a.isBase == 0:
+        Int j = i + 1
+        while j < n:
+          Entity b = things.get(j)
+          if b.isBase == 0:
+            Float dx = b.x - a.x
+            Float dy = b.y - a.y
+            Float d = Math.sqrt(dx * dx + dy * dy)
+            if d == 0.0:
+              d = 0.001
+            end
+            if d < 0.45:
+              Float p = (0.45 - d) / 2.0
+              Float nx = dx / d * p
+              Float ny = dy / d * p
+              a.x = a.x - nx
+              a.y = a.y - ny
+              b.x = b.x + nx
+              b.y = b.y + ny
+            end
+          end
+          j = j + 1
+        end
+      end
+      i = i + 1
+    end
+  end
+
+  def Float clampTo(Float v, Float lo, Float hi):
+    if v < lo:
+      return lo
+    end
+    if v > hi:
+      return hi
+    end
+    return v
+  end
+
+  # Drop the dead. A dying unit lets go of its target on the way out: two
+  # units that killed each other in one step would otherwise hold each other
+  # alive for ever, and reference counting cannot see a cycle.
+  def Void clearDead:
+    Int dead = 0
+    for item in things:
+      Entity e = item
+      if e.alive() == 0 and e.isBase == 0:
+        dead = dead + 1
+      end
+    end
+    if dead > 0:
+      List keep
+      for item in things:
+        Entity e = item
+        if e.alive() == 1 or e.isBase == 1:
+          keep.append(e)
+        else
+          Unit gone = e
+          gone.target = null
+        end
+      end
+      things = keep
+      rebuildOrder()
+    end
+  end
+
+  def Void update(Float dt):
+    if over == 0:
+      for item in things:
+        Entity e = item
+        e.flash = e.flash - dt
+        if e.flash < 0.0:
+          e.flash = 0.0
+        end
+        if e.isBase == 0:
+          Unit u = e
+          u.update(self, dt)
+        end
+      end
+
+      separate()
+      for item in things:
+        Entity e = item
+        if e.isBase == 0:
+          e.x = clampTo(e.x, 0.3, cols - 0.3)
+          e.y = clampTo(e.y, 0.3, rows - 0.3)
+        end
+      end
+
+      clearDead()
+
+      if enemyBase.alive() == 0:
+        over = 1
+      elif playerBase.alive() == 0:
+        over = 2
+      end
+    end
+  end
+
+  # Insertion sort of `order` on depth. It is nearly in order from one frame
+  # to the next, which is the case insertion sort is quickest at.
+  def Void sortForDrawing:
     Int i = 1
-    while i < things.len():
-      Drawable key = things.get(i)
+    while i < order.len():
+      Drawable key = order.get(i)
       Float kd = key.depth()
       Int j = i - 1
       Int moving = 1
       while j >= 0 and moving == 1:
-        Drawable other = things.get(j)
+        Drawable other = order.get(j)
         if other.depth() > kd:
-          things.set(j + 1, other)
+          order.set(j + 1, other)
           j = j - 1
         else
           moving = 0
         end
       end
-      things.set(j + 1, key)
+      order.set(j + 1, key)
       i = i + 1
     end
   end
 
+  def Void draw(Gfx g):
+    sortForDrawing()
+    for item in order:
+      Drawable d = item
+      d.draw(g)
+    end
+  end
+
+  # Every unit's state, one per line, in simulation order: what a second
+  # implementation of the rules is compared against. Positions and health are
+  # printed as fixed-point integers (x 10^12, hp 10^9) because a float prints
+  # with six digits, which hides the last-bit differences this exists to find.
+  def String dump:
+    String s = ""
+    for item in things:
+      Entity e = item
+      if e.isBase == 0:
+        Unit u = e
+        Int64 fx = u.x * 1000000000000.0
+        Int64 fy = u.y * 1000000000000.0
+        Int64 fh = u.hp * 1000000000.0
+        s = s + "${u.team} ${u.kind} ${fx} ${fy} ${fh}\n"
+      end
+    end
+    return s
+  end
+
+  # One line: who is left of each kind, and the bases.
+  def String summary:
+    Int p0 = 0
+    Int p1 = 0
+    Int p2 = 0
+    Int e0 = 0
+    Int e1 = 0
+    Int e2 = 0
+    for item in things:
+      Entity e = item
+      if e.isBase == 0:
+        Unit u = e
+        if u.team == 0 and u.kind == 0:
+          p0 = p0 + 1
+        elif u.team == 0 and u.kind == 1:
+          p1 = p1 + 1
+        elif u.team == 0 and u.kind == 2:
+          p2 = p2 + 1
+        elif u.kind == 0:
+          e0 = e0 + 1
+        elif u.kind == 1:
+          e1 = e1 + 1
+        else
+          e2 = e2 + 1
+        end
+      end
+    end
+    return "player R${p0} P${p1} S${p2}  enemy R${e0} P${e1} S${e2}  bases ${playerBase.hp} ${enemyBase.hp}  over ${over}"
+  end
+end
+
+class Main from IO
   def main:
     Sdl sdl = new Sdl()
     Int windowW = 960
@@ -347,16 +643,44 @@ class Main from IO
     Float fh = windowH
     Camera cam = new Camera(14, 10, 64.0, 32.0, fw, fh)
     Gfx gfx = new Gfx(view, cam)
-    setup()
+    World world = new World()
+    world.setup()
 
-    # `rps --shot out.bmp` draws one frame, saves it and exits.
+    # `--frames N` runs N fixed steps before the first frame is drawn, and
+    # `--shot out.bmp` then draws one frame, saves it and exits. Together they
+    # make a run reproducible: the same battle every time, no window watching.
+    Int frames = 0
+    Int dump = 0
     String shot = ""
-    if args() > 2 and arg(1) == "--shot":
-      shot = arg(2)
+    Int a = 1
+    while a < args():
+      if arg(a) == "--frames":
+        frames = arg(a + 1).toInt()
+        a = a + 1
+      elif arg(a) == "--shot":
+        shot = arg(a + 1)
+        a = a + 1
+      elif arg(a) == "--dump":
+        dump = 1
+      end
+      a = a + 1
+    end
+    Int before = allocated()
+    Int step = 0
+    while step < frames:
+      world.update(1.0 / 60.0)
+      step = step + 1
+    end
+    if frames > 0:
+      out("after ${frames}: ${world.summary()}  objects +${allocated() - before}\n")
+      if dump == 1:
+        out(world.dump())
+      end
     end
 
     Int running = 1
     Int escape = 27
+    Int last = sdl.ticks()
     while running == 1:
       while sdl.poll() == 1:
         if sdl.isQuit() == 1:
@@ -367,13 +691,19 @@ class Main from IO
         end
       end
 
+      Int now = sdl.ticks()
+      Float dt = (now - last) / 1000.0
+      last = now
+      if dt > 0.05:
+        dt = 0.05
+      end
+      if shot.len() == 0:
+        world.update(dt)
+      end
+
       view.clear(35, 42, 51)
       gfx.grid()
-      sortByDepth()
-      for item in things:
-        Drawable d = item
-        d.draw(gfx)
-      end
+      world.draw(gfx)
       if shot.len() > 0:
         view.saveBMP(shot)
         running = 0
