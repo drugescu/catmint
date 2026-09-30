@@ -1,10 +1,11 @@
-# RPS iso-RTS -- milestone 1: prove the SDL2 FFI path end to end.
+# RPS iso-RTS, built up in milestones. A catmint port of a rock-paper-
+# scissors isometric RTS prototype, over SDL2.
 #
-# Opens a window, clears it to a flat colour every frame, polls events, and
-# quits cleanly on window-close or Escape. Nothing here is the game yet --
-# this is the smallest program that exercises `extern class`, `unsafe`,
-# `link`, `Ptr` and `finalize` together against a real C library, which is
-# what the later milestones build on.
+#   milestone 1 -- a window that opens, clears, and closes cleanly: proves
+#                  the FFI path (`extern class`, `unsafe`, `link`, `Ptr`,
+#                  `finalize`) against a real C library end to end.
+#   milestone 2 -- the static iso grid: camera/projection math and the
+#                  tinted-checkerboard board, no units yet.
 #
 # SDL.* is declared once here and its C side lives in sdl_shim.c, compiled
 # and linked by build.sh -- see that file for why a shim exists at all
@@ -20,6 +21,9 @@ extern class SDL
   def Void SetColor(Ptr renderer, Int r, Int g, Int b, Int a)
   def Void Clear(Ptr renderer)
   def Void Present(Ptr renderer)
+  def Int SaveBMP(Ptr renderer, String path)
+  def Void DrawLine(Ptr renderer, Int x0, Int y0, Int x1, Int y1)
+  def Void FillQuad(Ptr renderer, Int x0, Int y0, Int x1, Int y1, Int x2, Int y2, Int x3, Int y3)
   def Int PollEvent()
   def Int EventIsQuit()
   def Int EventIsKeyDown()
@@ -59,10 +63,78 @@ class Renderer from Object
     end
   end
 
+  # The colour set here stays current for fillQuad/line until changed again,
+  # the same way SDL_SetRenderDrawColor itself works -- so a shape wants one
+  # setColor before it, not a colour on every call.
+  def Void setColor(Int r, Int g, Int b):
+    unsafe:
+      SDL.SetColor(handle, r, g, b, 255)
+    end
+  end
+
+  def Void fillQuad(Int x0, Int y0, Int x1, Int y1, Int x2, Int y2, Int x3, Int y3):
+    unsafe:
+      SDL.FillQuad(handle, x0, y0, x1, y1, x2, y2, x3, y3)
+    end
+  end
+
+  def Void line(Int x0, Int y0, Int x1, Int y1):
+    unsafe:
+      SDL.DrawLine(handle, x0, y0, x1, y1)
+    end
+  end
+
+  # Writes the frame drawn so far as a BMP; call before present. 1 on
+  # success. This is how a run can be looked at without a screen grab.
+  def Int saveBMP(String path):
+    unsafe:
+      return SDL.SaveBMP(handle, path)
+    end
+  end
+
   def Void finalize:
     unsafe:
       SDL.DestroyRenderer(handle)
     end
+  end
+end
+
+# Iso projection: world tile coordinates (x, y, and an optional height z, all
+# in tile units) to screen pixels. tw/th are one tile's on-screen size once
+# the whole cols x rows grid is scaled to fit the window; camX/camY centre
+# it. This is resize()/toScreen() from the shared prototype, computed once
+# rather than on every resize since milestone 2 does not yet track window
+# resizing.
+class Camera from Object
+  Int cols
+  Int rows
+  Float tw
+  Float th
+  Float camX
+  Float camY
+
+  constructor(Int c, Int r, Float tileW, Float tileH, Float windowW, Float windowH):
+    cols = c
+    rows = r
+    Float span = (c + r) / 2.0
+    Float sx = (windowW - 24.0) / (span * tileW)
+    Float sy = (windowH - 170.0) / (span * tileH)
+    Float s = sx
+    if sy < sx:
+      s = sy
+    end
+    tw = tileW * s
+    th = tileH * s
+    camX = windowW / 2.0 - (c - r) * tw / 4.0
+    camY = windowH * 0.47 - span * th / 2.0
+  end
+
+  def Float screenX(Float x, Float y):
+    return (x - y) * tw / 2.0 + camX
+  end
+
+  def Float screenY(Float x, Float y, Float z):
+    return (x + y) * th / 2.0 + camY - z * th
   end
 end
 
@@ -92,13 +164,88 @@ class Window from Object
 end
 
 class Main from IO
+  Camera cam
+
+  # The checkerboard plus tinted home zones from the shared prototype's
+  # drawGrid(): x < 3 is the player's zone, x >= cols - 3 the enemy's,
+  # everything between alternates by (x + y) parity. Colours are the
+  # prototype's own hex constants converted to plain RGB, since catmint has
+  # no HSL and this is a straight port of the values, not the formula.
+  def Void drawGrid(Renderer view):
+    Int cols = cam.cols
+    Int rows = cam.rows
+    Int y = 0
+    while y < rows:
+      Int x = 0
+      while x < cols:
+        Int home = 0 - 1
+        if x < 3:
+          home = 0
+        end
+        if x >= cols - 3:
+          home = 1
+        end
+
+        Int r = 44
+        Int g = 53
+        Int b = 64
+        if home == 0:
+          r = 58
+          g = 50
+          b = 38
+        elif home == 1:
+          r = 46
+          g = 38
+          b = 58
+        elif (x + y) % 2 == 0:
+          r = 48
+          g = 58
+          b = 70
+        end
+
+        Float fx = x
+        Float fy = y
+        Float sx0 = cam.screenX(fx, fy)
+        Float sy0 = cam.screenY(fx, fy, 0.0)
+        Float sx1 = cam.screenX(fx + 1.0, fy)
+        Float sy1 = cam.screenY(fx + 1.0, fy, 0.0)
+        Float sx2 = cam.screenX(fx + 1.0, fy + 1.0)
+        Float sy2 = cam.screenY(fx + 1.0, fy + 1.0, 0.0)
+        Float sx3 = cam.screenX(fx, fy + 1.0)
+        Float sy3 = cam.screenY(fx, fy + 1.0, 0.0)
+
+        view.setColor(r, g, b)
+        view.fillQuad(sx0, sy0, sx1, sy1, sx2, sy2, sx3, sy3)
+        view.setColor(35, 42, 51)
+        view.line(sx0, sy0, sx1, sy1)
+        view.line(sx1, sy1, sx2, sy2)
+        view.line(sx2, sy2, sx3, sy3)
+        view.line(sx3, sy3, sx0, sy0)
+
+        x = x + 1
+      end
+      y = y + 1
+    end
+  end
+
   def main:
     unsafe:
       SDL.Init()
     end
 
-    Window win = new Window("catmint RPS RTS -- milestone 1", 960, 640)
+    Int windowW = 960
+    Int windowH = 640
+    Window win = new Window("catmint RPS RTS", windowW, windowH)
     Renderer view = win.view()
+    Float fw = windowW
+    Float fh = windowH
+    cam = new Camera(14, 10, 64.0, 32.0, fw, fh)
+
+    # `rps --shot out.bmp` draws one frame, saves it and exits.
+    String shot = ""
+    if args() > 2 and arg(1) == "--shot":
+      shot = arg(2)
+    end
 
     Int running = 1
     Int escape = 27
@@ -115,6 +262,11 @@ class Main from IO
       end
 
       view.clear(35, 42, 51)
+      drawGrid(view)
+      if shot.len() > 0:
+        view.saveBMP(shot)
+        running = 0
+      end
       view.present()
       unsafe:
         SDL.Delay(16)
