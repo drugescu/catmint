@@ -351,9 +351,236 @@ is only worth it if Windows becomes a first-class target.
   compiler's standard error was kept in a log and printed only when the build
   failed, so a diagnostic from a successful compile was invisible.
 
+## Phase 5 — C structs, a prebuilt runtime, LLVM-only builds, as designed
+
+Found by writing a real program against a real C library: an SDL2 game
+(`examples/rps-rts`). Everything the FFI could not say had to be said in a C
+shim instead, and the first attempt to put that binding in `lib/` made
+`catmintc` compile a module's C source on every build. That was the wrong
+answer, and it set the rule this phase is built on:
+
+**A user of catmint needs LLVM and nothing else: no C source ships, and no C
+compiler runs.** Clang, and the C in `runtime.c`, are for people working on
+catmint. Anything a binding needs that the FFI cannot express is a gap in the
+FFI, fixed once in the language, not worked around per library.
+
+### What the shim was covering for
+
+| C needs | example | answer here |
+|---|---|---|
+| a struct passed by pointer | `SDL_RenderFillRect(r, const SDL_Rect *)` | `extern struct` |
+| a union C fills in | `SDL_PollEvent(SDL_Event *)` | `extern union` |
+| an out-parameter | `SDL_GetRendererOutputSize(r, int *, int *)` | a one-field struct passed as `Ptr` |
+| fields read through a C pointer | `surface->pixels` | a *view*: `SDL_Surface.at(p)` |
+| a struct built for C | `SDL_PushEvent(SDL_Event *)` | `extern union` |
+| unsigned types | `Uint8`, `Uint32` | `UInt8`..`UInt64`, at the boundary |
+| macros, which are not symbols | `SDL_SaveBMP`, `SDL_WINDOWPOS_CENTERED` | call the real function; constants generated |
+
+### A. Two toolchains
+
+- **Users:** `catmint-parser`, `catmint-gen`, and LLVM's own tools:
+  `llvm-link`, `opt`, `llc`, and `lld` (`ld64.lld` on macOS, `ld.lld` on
+  Linux). `catmintc` never runs clang. It still needs what every native
+  program links against -- libSystem through the macOS SDK, glibc's startup
+  objects on Linux -- which belong to the operating system, not to a compiler.
+- **Developers:** clang as well, to rebuild the runtime from `runtime.c`,
+  to run the binding generator, and for `--asan`, whose run-time library ships
+  with clang. `catmintc --asan` without clang says so and stops.
+
+The link line has to carry what clang's driver used to add silently, and some
+of that is security: **position-independent executables everywhere**
+(`llc --relocation-model=pic`, `-pie` with `Scrt1.o` on Linux; arm64 macOS
+requires it anyway), and on Linux `-z relro -z now -z noexecstack`. Dropping
+the compiler driver must not drop the hardening it supplied.
+
+### B. The runtime ships prebuilt, as bitcode, one file per operating system
+
+`catmint-gen/runtime-darwin.bc` and `catmint-gen/runtime-linux.bc` replace
+`runtime.ll`, and `catmintc` links whichever matches the host. Three reasons:
+
+- **Bitcode, not text IR.** Textual IR changes between LLVM major versions --
+  `captures(none)` is why LLVM 18 could not read the old `runtime.ll`. Newer
+  LLVM reads older bitcode by policy, so a runtime written by the oldest LLVM
+  we support is read by every newer one.
+- **One per OS, not one.** The C library's headers are not neutral: the
+  macOS-built IR calls `\01_fputs` and `\01_fopen` (Darwin's symbol aliases),
+  `__maskrune` and `__tolower` (its ctype), and `stdin`/`stderr` are macros
+  that name different globals on glibc. The old claim that one `runtime.ll`
+  served every host held only because `build-runtime.sh` quietly recompiled
+  `runtime.c` wherever there was a C compiler. Within an OS the IR does not
+  depend on the architecture, which `portability.sh` keeps checking.
+- **An ABI stamp.** The runtime and the generator agree on object layouts and
+  virtual table slots by convention, and a disagreement is a silent
+  miscompile. The runtime now defines `__catmint_abi_N`, generated code lists
+  it in `llvm.used`, and N changes whenever `runtime.c` and `IRGenerator.cpp`
+  change what they agree on -- so a runtime from another compiler version
+  fails to link instead of calling the wrong slot.
+
+`build-runtime.sh` becomes a developer tool and nothing in the user's path
+calls it. `test.sh` runs it, so the suite always tests the runtime being
+edited. `build-runtime.sh --check` rebuilds into a temporary file and fails
+if the result differs from the committed one: a binary nobody reads has to be
+shown to come from the source everybody reads.
+
+### C. C structs and unions
+
+```
+extern struct SDL_Rect @ 16
+  Int32 x @ 0
+  Int32 y @ 4
+  Int32 w @ 8
+  Int32 h @ 12
+end
+
+extern union SDL_Event @ 56
+  UInt32 type @ 0
+  SDL_KeyboardEvent key @ 0
+  SDL_MouseButtonEvent button @ 0
+  UInt8 padding[56] @ 0
+end
+
+extern struct SDL_Window            # opaque: no fields, no size
+end
+```
+
+**Layout is the declaration's, computed by the compiler** with C's rule for
+the targets catmint supports (natural alignment on LP64 -- the same on
+x86-64 and arm64, Linux and macOS): each field at the next offset aligned to
+its own alignment, the whole padded to the largest. A union puts every field
+at 0. Fields may be the fixed-width numbers, `Float32`, `Float`, `Ptr`,
+another extern struct or union by value, or a fixed array of any of those.
+`@ n` after the name asserts the size and after a field asserts its offset;
+both are checked at compile time, so a declaration that disagrees with the
+real layout is an error, not corrupted memory. The generator below writes
+every assertion from clang's own layout, so a disagreement between catmint's
+rule and the C compiler's is caught where the binding is made.
+
+**Two kinds of instance, one type.** An instance is a counted catmint object
+whose payload is the C bytes:
+
+- *owned* -- `new SDL_Rect()`, or declaring `SDL_Rect r` -- holds its bytes
+  inline, zeroed; its fields are safe to read and write, and it is freed like
+  any object. There is never a count inside the C bytes.
+- a *view* -- what an extern function returning `SDL_Surface` gives back, or
+  `SDL_Surface.at(somePtr)` -- points at memory C owns. Making one needs
+  `unsafe`, because that is where the promise "this pointer is valid, and
+  stays valid while I use it" is made; after that its fields read and write
+  like any other. A view never frees what it points at. A null pointer gives
+  `null`, not a view.
+
+This is Rust's split between a `#[repr(C)]` value and `&*raw_pointer`, with
+one difference forced by catmint having no stack values: the owned bytes live
+in a counted object, and what C receives is a pointer into it.
+
+**Using them.** `ev.key.keysym.sym` is one offset computed at compile time.
+A nested struct used whole is copied, as C assigns structs: `SDL_Rect r =
+box.rect`. An array field is indexed as `s.pad[i]`, bounds-checked. A
+parameter of struct type in an extern function receives a pointer to the
+bytes, and accepts `null`, because C APIs use NULL to mean "none". A `Ptr`
+parameter accepts an extern struct or one of the three arrays, which is how an
+out-parameter is written: declare a one-field struct, pass it, read the field.
+Reading a union's fields is not `unsafe`, unlike Rust: a union here holds only
+numbers and `Ptr`s, every bit pattern of which is a valid value, and a `Ptr`
+read from one is still opaque until something else in `unsafe` uses it.
+
+**C's integer types, at the boundary only.** `UInt8`, `UInt16`, `UInt32` and
+`UInt64` may appear in extern declarations and nowhere else. A value read
+from one becomes the smallest catmint integer that holds every value it can
+have -- `UInt8` and `UInt16` an `Int`, `UInt32` an `Int64` -- and `UInt64` an
+`Int64` holding the same bits. Full unsigned arithmetic is a type-system
+project of its own; this is the part that stops `255` reading as `-1`.
+
+**What the boundary refuses:**
+- a `Float` passed where C takes an integer: a compile error in an extern
+  call, where it is almost always a mistake, though ordinary catmint code still
+  converts implicitly;
+- a String containing a NUL, at run time and catchably -- C would see it
+  truncated, and a path that is not the path it looks like is a classic hole;
+- a struct passed or returned by value, a variadic function, a callback, a
+  bitfield, `long double`, and alignment above 8. Each is refused with an error
+  naming it rather than half supported. Callbacks in particular stay out:
+  C calling catmint from its own thread would race the reference counts, the
+  reason threads were refused.
+
+### D. `tools/bindgen.py` -- bindings from the real headers
+
+A developer tool, as Rust's `bindgen` is: it needs clang, the output is
+committed, users never run it.
+
+```
+tools/bindgen.py SDL2/SDL.h --match '^SDL_' --from SDL2/ \
+    --class SDL2 --constants SDL2C -I /opt/homebrew/include > lib/sdl2.cmm
+```
+
+It reads the declarations from clang's JSON AST, the layouts from
+`-fdump-record-layouts-complete` (clang's own offsets, not a reimplementation),
+and integer macros from `-dM -E`, whose values it has clang evaluate. It
+writes `extern struct`/`extern union` with every size and offset asserted,
+one `extern class` of functions, and a class of constants as static methods.
+Whatever it cannot bind -- the cases the boundary refuses -- it lists in a
+comment rather than dropping in silence. Its test binds a small header of its
+own and checks, against a C library built from the same header, that catmint
+reads and writes every field where C does.
+
+### E. SDL in the standard library, with no C
+
+`lib/sdl2.cmm` is generated (Rust's `sdl2-sys`); `lib/sdl.cmm` is the safe
+layer written by hand on top of it (Rust's `sdl2`): `Sdl`, `Window`,
+`Renderer`, input, and `finalize` releasing each handle. The game's
+`sdl_shim.c` is deleted, its polygon fill becomes catmint, and its two test
+suites (`check.sh`, `play.sh`) are what say the move changed nothing.
+
+### Security, all in one place
+
+1. **A wrong layout corrupts memory.** Checked: sizes and offsets asserted at
+   compile time, and generated from the real headers.
+2. **C memory must never be counted.** A view has no count inside C's bytes and
+   never frees them; test 57 is what happens otherwise.
+3. **Lifetime past the call.** A pointer into a catmint object is valid for the
+   call it is passed to. A C API that keeps it needs the object kept alive by
+   the program -- stored in a field -- and the documentation says so. A
+   temporary dies when its statement's pool closes.
+4. **A view is a promise.** `unsafe` is where it is made. A view outliving its
+   C object is undetectable, as it is in Rust.
+5. **Strings are input only** and refused if they contain a NUL; string
+   literals are shared static objects, and C writing into one would change it
+   everywhere.
+6. **No silent Float-to-integer conversion at the boundary**, and sizes are
+   `UInt64`, not a truncating `Int`.
+7. **No callbacks**, so C never runs catmint code on a thread of its own.
+8. **`unsafe` still means two things**: calling out, and turning a `Ptr` into
+   something -- now including a view. `grep -rn unsafe` stays the audit.
+9. **The prebuilt runtime is reproducible** (`build-runtime.sh --check`) and
+   **stamped** against version skew.
+10. **The executable keeps its hardening** (PIE, RELRO, a non-executable
+    stack) without a compiler driver to supply it.
+11. **Building runs nothing.** No C is compiled on a user's machine, so no
+    stray `.c` beside a module is ever built, and no compiler flag from the
+    environment can load a plugin into the build.
+
+### Order, and what proves each step
+
+| step | proved by |
+|---|---|
+| ABI stamp, per-OS bitcode runtime, developer-only rebuild | suite passes on the committed runtime; `--check` reproduces it; a stale runtime fails to link |
+| `catmintc` on LLVM tools only | suite and examples with clang removed from `LLVM_BIN`; `bench/run.sh` unchanged; Linux in a container |
+| `extern struct`/`union`, views, arrays, assertions | new codegen tests against libc (`memset`, `gmtime_r`, `frexp`), negative tests for every refusal |
+| boundary types and checks | tests for `UInt8` 255, NUL refusal, the Float error |
+| `tools/bindgen.py` | its own test header, bound and checked against a C build of it |
+| SDL in `lib/`, shim deleted | the game's `check.sh` and `play.sh` unchanged |
+
+### Considered and not done
+
+- **Parsing C headers in the compiler**, as Zig and Swift do: a C front end
+  in the user's path, which is the thing this phase removes.
+- **Rust 2024's `unsafe extern`**, which moves the unsafety to the
+  declaration and lets a pointer-free function be declared safe. Worth
+  revisiting; it changes what existing programs must write, so not here.
+- **Full unsigned arithmetic.** Only the boundary needs it now.
+
 ## What is left
 
-Nothing on any of these lists. The last item -- a throw leaking what the
+Phase 5, above. Nothing else on any of these lists. The last item -- a throw leaking what the
 abandoned frame had stored -- is fixed: the pool now holds the *addresses* of
 reference-holding variables as well as objects, and releases them when a
 throw unwinds it. The ordinary path is untouched, because a slot entry is
