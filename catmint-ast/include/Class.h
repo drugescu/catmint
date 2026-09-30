@@ -75,6 +75,21 @@ public:
   bool isExtern() const { return externDeclaration; }
   void setExtern(bool value) { externDeclaration = value; }
 
+  /// `extern struct` and `extern union`: a C layout, fields only. Instances
+  /// are counted catmint objects whose payload is the C bytes -- owned and
+  /// inline, or a view of bytes C owns.
+  bool isCStruct() const { return cKind != 0; }
+  bool isCUnion() const { return cKind == 2; }
+  void setCKind(int kind) { cKind = kind; }
+  int getCKind() const { return cKind; }
+  /// The size `@ n` after the name asserts, or -1 when there is none.
+  int getAssertedSize() const { return assertedSize; }
+  void setAssertedSize(int size) { assertedSize = size; }
+  /// No fields and no asserted size: known only by pointer, never made here.
+  bool isOpaque() const {
+    return isCStruct() && assertedSize < 0 && features.empty();
+  }
+
   /// \brief Add a feature and take ownership of it
   void addFeature(std::unique_ptr<Feature> F) {
     features.push_back(std::move(F));
@@ -113,6 +128,8 @@ private:
   bool interfaceDeclaration = false;
   bool builtinDeclaration = false;
   bool externDeclaration = false;
+  int cKind = 0; // 0 a class, 1 an extern struct, 2 an extern union
+  int assertedSize = -1;
   FeaturesType features;
   Symbol self;
 };

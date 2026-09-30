@@ -117,6 +117,29 @@ struct ClassInfo {
   /// library, so nothing is emitted for it at all -- no metadata, no
   /// initialiser, no bodies -- and its calls use the unmangled name.
   bool IsExtern = false;
+
+  /// `extern struct` / `extern union`. An instance is
+  /// { rtti, refs, ptr view, [CSize x i8] bytes }: `view` is null for an
+  /// owned struct, whose bytes are the inline array, and C's pointer for a
+  /// view -- so Object.copy of either is still right, and a field access
+  /// picks the bytes with one select.
+  bool IsCStruct = false;
+  bool CUnion = false;
+  bool COpaque = false;
+  bool CLaidOut = false;
+  bool CLaying = false;
+  uint64_t CSize = 0;
+  uint64_t CAlign = 1;
+  struct CField {
+    uint64_t Offset = 0;
+    std::string CType;     ///< as declared: UInt8, Int, a struct name...
+    std::string Type;      ///< what catmint code sees
+    unsigned ArrayLen = 0; ///< 0 for a plain field
+    uint64_t ElemSize = 0;
+    ClassInfo *Nested = nullptr; ///< a struct or union held by value
+  };
+  std::map<std::string, CField> CFields;
+
   /// Every interface this class promises, its own and its ancestors'.
   std::vector<std::string> AllInterfaces;
   /// For each of those, where its run of slots begins in this class's
@@ -253,6 +276,8 @@ private:
   // ---- setup -------------------------------------------------------------
   bool collectClasses();
   bool layoutClass(ClassInfo *CI);
+  /// C's layout for an extern struct or union, checking every `@ n`.
+  bool layoutCStruct(ClassInfo *CI);
   void buildVTable(ClassInfo *CI);
   void emitClassMetadata(ClassInfo *CI);
   void declareMethods(ClassInfo *CI);
@@ -264,6 +289,10 @@ private:
   ClassInfo *lookupClass(const std::string &Name);
   llvm::Type *lowerType(const std::string &TypeName);
   llvm::FunctionType *methodType(ClassInfo *CI, Method *M);
+  /// An extern function's C signature: the declared C types, not catmint's.
+  llvm::FunctionType *externFunctionType(Method *M);
+  /// LLVM type for a C type as written; the unsigned ones have C's width.
+  llvm::Type *lowerCType(const std::string &CType);
   std::string mangle(const std::string &ClassName, const std::string &Method);
   std::string runtimeSymbol(ClassInfo *CI, const std::string &Method);
   /// The catmint type of an expression, worked out structurally so that code
@@ -343,6 +372,28 @@ private:
                                const std::vector<Expression *> &Args, int Line,
                                const std::string &Name);
   llvm::Value *emitFieldAccess(FieldAccess *FA);
+  /// A call to a C function declared in an `extern class`.
+  llvm::Value *emitExternCall(Method *M, const std::vector<Expression *> &Args,
+                             int Line);
+
+  // ---- C structs ---------------------------------------------------------
+  /// Where an extern struct's bytes are: its own, or C's for a view.
+  llvm::Value *dataPointer(llvm::Value *Obj, ClassInfo *CI);
+  /// The address of the field \p FA names. A chain through fields held by
+  /// value is one offset from the outermost object's bytes.
+  llvm::Value *cFieldAddress(FieldAccess *FA, ClassInfo::CField &Out);
+  /// The array field a subscript indexes, or null when it is not one.
+  ClassInfo *cArrayField(Dispatch *D, ClassInfo::CField &Out);
+  llvm::Value *loadCScalar(llvm::Value *Addr, const std::string &CType);
+  void storeCScalar(llvm::Value *Addr, llvm::Value *V, const std::string &CType);
+  llvm::Value *emitCFieldAccess(FieldAccess *FA);
+  llvm::Value *emitCArrayElement(Dispatch *D);
+  /// A counted catmint object over bytes C owns, or null for a null pointer.
+  llvm::Value *makeView(ClassInfo *CI, llvm::Value *P);
+  /// What C receives for an extern struct argument: its bytes, or NULL.
+  llvm::Value *structPointerOrNull(llvm::Value *Obj, ClassInfo *CI);
+  /// Calls __cm_runtimeError, which throws, and continues in a fresh block.
+  void emitRuntimeErrorIf(llvm::Value *Cond, const std::string &Message);
   llvm::Value *emitTry(TryStatement *T);
   llvm::Value *emitThrow(ThrowStatement *T);
   llvm::Value *emitDefer(DeferStatement *D);

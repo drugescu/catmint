@@ -140,6 +140,9 @@ private:
   /// an error, which is the whole of what the marking buys: every place the
   /// program can reach outside itself is spelled.
   unsigned unsafeDepth = 0;
+  /// The field a subscript is about to index: the one place an array field
+  /// of an extern struct may be named without being an error.
+  FieldAccess *cArrayContext = nullptr;
   /// A `for` binds its loop variable, which has no definition node of its own
   /// in the tree. The synthesised definitions are owned here so that they
   /// outlive the symbol table entries pointing at them.
@@ -151,7 +154,19 @@ private:
   void checkFeatures(Class *c);
   void checkImplementedInterfaces(Class *c);
 
-  template <typename DispatchT> bool checkDispatchArgs(DispatchT *d, Method *m);
+  template <typename DispatchT>
+  bool checkDispatchArgs(DispatchT *d, Method *m, bool externCall = false);
+  /// The extern struct or union \p typeName names, or null.
+  Class *cStructClass(const std::string &typeName);
+  /// Everything `extern struct` promises: fields of C-representable types,
+  /// no methods, no initialisers.
+  void checkCStruct(Class *c);
+  /// `s.pad[i]` and `s.pad[i] = v`: the dispatch a subscript on an array
+  /// field of an extern struct parses to. Handled here when \p d is one.
+  bool visitCArrayAccess(Dispatch *d, bool &handled);
+  /// C's unsigned types are for extern declarations only; anywhere else they
+  /// are an error that says what to write instead.
+  void refuseCBoundaryType(const std::string &type, TreeNode *where);
 
 };
 }

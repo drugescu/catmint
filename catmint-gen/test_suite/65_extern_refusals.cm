@@ -1,0 +1,16 @@
+# What the C boundary refuses, each as a compile error that says why; the
+# .check compiles one small program per refusal. This program is only the
+# control: the same shapes, written correctly, compile and run.
+
+extern struct Pair @ 8
+  Int32 a @ 0
+  Int32 b @ 4
+end
+
+class Main from IO
+  def main:
+    Pair p
+    p.b = 2
+    out("control ${p.b}\n")
+  end
+end

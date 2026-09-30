@@ -63,6 +63,8 @@
 		return name == "Int" || name == "Int8" || name == "Int16" ||
 		       name == "Int32" || name == "Int64" ||
 		       name == "Float" || name == "Float32" || name == "Float64" ||
+		       name == "UInt8" || name == "UInt16" || name == "UInt32" ||
+		       name == "UInt64" ||
 		       name == "Void" ||
 		       name == "Null" || name == "Object" || name == "String" ||
 		       name == "IO" || name == "List" || name == "Integer" ||
@@ -70,6 +72,15 @@
 		       name == "Worker" || name == "Bytes" ||
 		       name == "Ints" || name == "Floats" || name == "Ptr" ||
 		       name == "auto" || name.rfind("_uuid_generic_", 0) == 0;
+	}
+
+	// C's unsigned integers exist only in extern declarations. What catmint
+	// code sees is the smallest catmint integer that holds every value the C
+	// type can have; UInt64 is an Int64 holding the same bits.
+	static std::string cBoundaryType(const std::string &name) {
+		if (name == "UInt8" || name == "UInt16") return "Int";
+		if (name == "UInt32" || name == "UInt64") return "Int64";
+		return name;
 	}
 
 	static std::string qualifyTypeName(const std::string &name) {
@@ -174,6 +185,7 @@
 %token OP_OPAREN OP_CPAREN OP_COLON OP_STATIC_ACCESS
 
 %token KW_CONSTEXPR KW_DEF KW_STATIC KW_ABSTRACT KW_EXTERN KW_UNSAFE
+%token KW_STRUCT KW_UNION
 
 %token <stringValue> IDENTIFIER
 %token <stringValue> STRING_CONSTANT
@@ -226,6 +238,9 @@ expression
 %type <features> method_arguments
 %type <feature> attribute method interface_method
 %type <catmintClass> catmint_class
+%type <intValue> c_size c_dimension
+%type <features> c_fields
+%type <feature> c_field
 %type <catmintClasses> catmint_classes
 %type <stringValue> 		inherits_class type_name
 %type <vecstr> implements_class type_name_list
@@ -310,11 +325,72 @@ catmint_class
 			for (auto feature : *$4) {
 				if (auto m = dynamic_cast<catmint::Method*>(feature)) {
 					m->setStatic(true);
+					// The C types stay on the node for the generator, which
+					// needs the real widths; everything else sees catmint's.
+					const std::string ret = m->getReturnType();
+					if (cBoundaryType(ret) != ret) {
+						m->setCReturnType(ret);
+						m->setReturnType(cBoundaryType(ret));
+					}
+					for (auto param : *m) {
+						const std::string t = param->getType();
+						if (cBoundaryType(t) != t) {
+							param->setCType(t);
+							param->setType(cBoundaryType(t));
+						}
+					}
 				}
 			}
 
 			delete $3; delete $4;
 		}
+	// `extern struct` and `extern union`: a C layout, fields only. `@ n`
+	// after the name asserts the size, after a field its offset.
+	| KW_EXTERN KW_STRUCT IDENTIFIER c_size c_fields KW_END {
+			$$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$3), "", *$5));
+			$$->setCKind(1);
+			$$->setAssertedSize(static_cast<int>($4));
+			delete $3; delete $5;
+		}
+	| KW_EXTERN KW_UNION IDENTIFIER c_size c_fields KW_END {
+			$$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$3), "", *$5));
+			$$->setCKind(2);
+			$$->setAssertedSize(static_cast<int>($4));
+			delete $3; delete $5;
+		}
+	;
+
+c_size
+	: %empty { $$ = -1; }
+	| '@' INTEGER_CONSTANT { $$ = $2; }
+	;
+
+c_dimension
+	: %empty { $$ = 0; }
+	| '[' INTEGER_CONSTANT ']' { $$ = $2; }
+	;
+
+c_fields
+	: %empty {
+		$$ = new std::vector<catmint::Feature*>();
+	}
+	| c_fields c_field {
+		$$ = $1;
+		$$->push_back($2);
+	}
+	;
+
+// A field keeps its C type for the layout and gets catmint's for the code
+// that reads it.
+c_field
+	: type_name IDENTIFIER c_dimension c_size {
+		auto field = new catmint::Attribute(@1.first_line, *$2, cBoundaryType(*$1));
+		field->setCType(*$1);
+		field->setArrayLength(static_cast<int>($3));
+		field->setAssertedOffset(static_cast<int>($4));
+		$$ = field;
+		delete $1; delete $2;
+	}
 	;
 
 implements_class
@@ -1375,6 +1451,13 @@ vector_access
 		//						name,
 	//							Expression(obj),
 //								args);
+	}
+	// s.pad[i]: an array field of an extern struct, indexed, which reads as
+	// s.pad.get(i) and, assigned to, as s.pad.set(i, v) -- the same shape a[i]
+	// has, so everything downstream of the parser sees a Dispatch.
+	| field_access '[' value_expression ']' {
+		auto args = std::vector<catmint::Expression*>{$3};
+		$$ = new catmint::Dispatch(@1.first_line, std::string("get"), Expression($1), args);
 	}
 	;
 
