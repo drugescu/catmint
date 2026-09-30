@@ -276,6 +276,10 @@ private:
   // ---- ownership ---------------------------------------------------------
   /// True for a type held as an object reference rather than as a value.
   bool isReferenceTypeName(const std::string &TypeName);
+  /// True when the value \p E produces is a Ptr. A Ptr is an LLVM `ptr` like
+  /// any object reference, so the LLVM type cannot tell them apart; the
+  /// catmint type is what says this one must never be counted.
+  bool yieldsPtr(Expression *E);
   void emitRetain(llvm::Value *V);
   void emitRelease(llvm::Value *V);
   /// Store a reference into a slot, keeping the counts right: the new value
