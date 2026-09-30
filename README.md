@@ -92,7 +92,7 @@ the full picture.
 
 ```sh
 # Ubuntu 24.04
-sudo apt install flex bison cmake llvm-18-dev clang-18 zlib1g-dev libzstd-dev
+sudo apt install build-essential flex bison cmake llvm-18-dev clang-18 zlib1g-dev libzstd-dev
 export PATH=/usr/lib/llvm-18/bin:$PATH
 
 # macOS
