@@ -1,0 +1,9 @@
+# In the skirmish the player's side is left with three units once the enemy's
+# are dead. Sent against the enemy base -- right-click at its tower, 0.6 of a
+# tile up -- they take it, and the end screen says "YOU WIN": 56 font pixels,
+# 3584 pixels.
+# frames 2400
+# expect over 1
+# pixels 372 240 588 280 231 226 214 3584
+1500 key 97
+1501 rclick 12.5 4.5 0.6

@@ -8,6 +8,7 @@
 # rps.cm). Its header says how many steps to run and what must, or must not,
 # appear in what the game prints afterwards:
 #
+#   # game                     (a real game; without it, the skirmish)
 #   # frames 10
 #   # expect selected 4  over
 #   # absent idle
@@ -29,7 +30,11 @@ for play in "$HERE"/tests/*.play; do
   frames=$(sed -n 's/^# frames \([0-9]*\)$/\1/p' "$play")
   shot="$TMP/$name.bmp"
   [ -n "$SHOTS" ] && shot="$SHOTS/$name.bmp"
-  "$HERE/rps" --frames "$frames" --play "$play" --shot "$shot" > "$TMP/out" 2>&1
+  # The fixed skirmish unless the file says it is a game.
+  mode=--skirmish
+  grep -q '^# game$' "$play" && mode=""
+  # shellcheck disable=SC2086
+  "$HERE/rps" --frames "$frames" $mode --play "$play" --shot "$shot" > "$TMP/out" 2>&1
   status=$?
   problems=""
   [ "$status" -eq 0 ] || problems="exit status $status"

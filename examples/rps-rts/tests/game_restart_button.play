@@ -1,0 +1,5 @@
+# game
+# So does clicking Play again, at the centre of its button, (480, 358).
+# frames 1115
+# expect player R0 P0 S0  enemy R0 P0 S0  bases 150 150  gold 91  selected 0  over 0
+1100 tap 480 358

@@ -1,0 +1,6 @@
+# game
+# R on the end screen starts again: two bases, no units, 90 gold (and 15
+# steps' income, 1.5, since), the opponent's clock back at zero.
+# frames 1115
+# expect player R0 P0 S0  enemy R0 P0 S0  bases 150 150  gold 91  selected 0  over 0
+1100 key 114

@@ -14,7 +14,11 @@
 #   milestone 5 -- the player's hand on it: gold and spawning, selection by
 #                  click and by dragging a box, move and attack orders, and
 #                  the effects that answer them.
+#   milestone 6 -- an opponent: every 3.5 s the enemy spawns, usually the
+#                  counter to the player's most common kind; a game ends when
+#                  a base falls, and Play again (or R) starts another.
 #
+# A game starts, as the prototype's does, with two bases and 90 gold each.
 # Controls: 1 2 3 or the buttons spawn rock, paper, scissors for 30 gold.
 # Click a unit of yours to select it, drag a box to select several, A selects
 # all, Esc clears. With units selected, click the ground to move there or an
@@ -22,6 +26,8 @@
 # quits.
 #
 # Runs can be scripted and checked without a screen:
+#   --skirmish     start from a fixed battle, no opponent AI: the scenario the
+#                  input tests and the first reference check are written for
 #   --frames N     run N fixed 1/60 s steps, print a summary, then draw
 #   --dump         with --frames: every unit's exact state, for check.sh
 #   --play FILE    feed FILE's input to the steps (see tests/*.play)
@@ -103,6 +109,7 @@ class Gfx from Object
   Ints pg = null
   Ints pb = null
   Ints glyphs = null
+  Ints letters = null
 
   constructor(Renderer v, Camera c):
     view = v
@@ -130,6 +137,23 @@ class Gfx from Object
     glyphs.set(7, 29257)
     glyphs.set(8, 31727)
     glyphs.set(9, 31695)
+
+    # The letters the game's messages use, in the same form, by code - 65.
+    letters = new Ints(26)
+    letters.set(0, 11245)
+    letters.set(1, 27566)
+    letters.set(4, 31143)
+    letters.set(6, 14699)
+    letters.set(8, 29847)
+    letters.set(11, 18727)
+    letters.set(13, 27501)
+    letters.set(14, 11114)
+    letters.set(15, 27556)
+    letters.set(18, 14478)
+    letters.set(19, 29842)
+    letters.set(20, 23407)
+    letters.set(22, 23421)
+    letters.set(24, 23186)
   end
 
   def Void tone(Int i, Int r, Int g, Int b):
@@ -334,7 +358,32 @@ class Gfx from Object
 
   # One digit at screen pixel (sx, sy), each font pixel k screen pixels.
   def Void digit(Int d, Int sx, Int sy, Int k):
-    Int bits = glyphs.get(d)
+    pattern(glyphs.get(d), sx, sy, k)
+  end
+
+  # A text of digits, capital letters and spaces, in the current colour.
+  def Void text(String s, Int sx, Int sy, Int k):
+    Int x = sx
+    Int i = 0
+    while i < s.len():
+      Int c = s.at(i)
+      if c >= 48 and c <= 57:
+        pattern(glyphs.get(c - 48), x, sy, k)
+      elif c >= 65 and c <= 90:
+        pattern(letters.get(c - 65), x, sy, k)
+      end
+      x = x + 4 * k
+      i = i + 1
+    end
+  end
+
+  def Int textWidth(String s, Int k):
+    return s.len() * 4 * k - k
+  end
+
+  # Fifteen bits, row by row from the top, the leftmost pixel of a row the
+  # highest bit: each set one a k x k block.
+  def Void pattern(Int bits, Int sx, Int sy, Int k):
     Int row = 0
     while row < 5:
       Int col = 0
@@ -570,22 +619,39 @@ class World from Object
   Int rows = 10
   # 0 running, 1 the player won, 2 the player lost.
   Int over = 0
+  # The opponent: off in the fixed skirmish, on in a game.
+  Int skirmish = 0
+  Float aiTimer
 
-  def Void setup:
+  # A fresh game, or the fixed skirmish the tests are written for. Called
+  # again by Play again, so it resets everything a game changes; the random
+  # generator carries on, so the next game is not the last one again.
+  def Void start(Int fixedBattle):
+    skirmish = fixedBattle
+    over = 0
+    aiTimer = 0.0
     gold = new Floats(2)
     gold.set(0, 90.0)
     gold.set(1, 90.0)
-    rng = new Random()
-    rng.seed(7)
+    if rng == null:
+      rng = new Random()
+      rng.seed(7)
+    end
+    List noThings
+    List noEffects
+    things = noThings
+    fx = noEffects
 
-    things.append(new Unit(0, 0, 3.2, 3.0))
-    things.append(new Unit(0, 1, 3.4, 4.5))
-    things.append(new Unit(0, 2, 3.2, 6.0))
-    things.append(new Unit(0, 0, 2.6, 5.2))
-    things.append(new Unit(1, 2, 10.8, 3.2))
-    things.append(new Unit(1, 0, 10.6, 4.6))
-    things.append(new Unit(1, 1, 10.8, 6.1))
-    things.append(new Unit(1, 1, 11.4, 5.0))
+    if skirmish == 1:
+      things.append(new Unit(0, 0, 3.2, 3.0))
+      things.append(new Unit(0, 1, 3.4, 4.5))
+      things.append(new Unit(0, 2, 3.2, 6.0))
+      things.append(new Unit(0, 0, 2.6, 5.2))
+      things.append(new Unit(1, 2, 10.8, 3.2))
+      things.append(new Unit(1, 0, 10.6, 4.6))
+      things.append(new Unit(1, 1, 10.8, 6.1))
+      things.append(new Unit(1, 1, 11.4, 5.0))
+    end
     playerBase = new Base(0, 1.5, 4.5)
     enemyBase = new Base(1, 12.5, 4.5)
     things.append(playerBase)
@@ -593,14 +659,55 @@ class World from Object
     rebuildOrder()
   end
 
+  # The prototype's aiTick: every 3.5 s, count the player's units by kind,
+  # take the most common (the first of equals, as its reduce does), and with
+  # probability 0.7 spawn the kind that beats it -- rock is beaten by paper,
+  # paper by scissors, scissors by rock: (k + 1) mod 3. Otherwise a kind at
+  # random. The random draws happen in the prototype's order, which is what
+  # lets replica.py follow the same game.
+  def Void aiTick(Float dt):
+    aiTimer = aiTimer + dt
+    if aiTimer >= 3.5:
+      aiTimer = 0.0
+      Ints n = new Ints(3)
+      for item in things:
+        Entity e = item
+        if e.isBase == 0 and e.team == 0:
+          Unit u = e
+          n.set(u.kind, n.get(u.kind) + 1)
+        end
+      end
+      Int top = 0
+      if n.get(top) < n.get(1):
+        top = 1
+      end
+      if n.get(top) < n.get(2):
+        top = 2
+      end
+      Int pick = 0
+      Int countered = 0
+      if n.get(top) > 0:
+        if chance() < 0.7:
+          pick = (top + 1) % 3
+          countered = 1
+        end
+      end
+      if countered == 0:
+        Float r = chance() * 3.0
+        pick = r
+      end
+      trySpawn(1, pick)
+    end
+  end
+
   def Void rebuildOrder:
     order = things.slice(0, things.len())
   end
 
-  # 0 up to 1, from the seeded generator, so a scripted run spawns in the
-  # same places every time.
+  # 0 up to but not including 1, like Math.random, from the seeded
+  # generator, so a scripted run is the same every time.
   def Float chance:
-    return rng.next() / 32767.0
+    return rng.next() / 32768.0
   end
 
   # A unit of `kind` for `team`, beside its base, if the team has the 30 gold.
@@ -617,7 +724,11 @@ class World from Object
       end
       Float sx = b.x + dir * (0.9 + chance() * 0.4)
       Float sy = b.y + (chance() - 0.5) * 1.6
-      things.append(new Unit(team, kind, sx, sy))
+      Unit made = new Unit(team, kind, sx, sy)
+      # A new unit's first blow comes a little late, at random, as in the
+      # prototype's spawn(), so a squad bought together does not strike as one.
+      made.cd = chance() * 0.3
+      things.append(made)
       rebuildOrder()
       made = 1
     end
@@ -723,20 +834,27 @@ class World from Object
   # root, and the prototype then keeps the first it found where comparing
   # squares picks the other. Which of two is "closest" decides who a unit
   # fights, so the tie has to break the way the prototype's does.
+  #
+  # Units are looked at before bases, the order of the prototype's
+  # S.units.concat(S.bases): an exact tie goes to whichever came first.
   def Entity nearestEnemy(Entity u, Float maxD):
     Entity best = null
     Float bd = maxD
-    for item in things:
-      Entity e = item
-      if e.team != u.team and e.alive() == 1:
-        Float dx = e.x - u.x
-        Float dy = e.y - u.y
-        Float d = Math.sqrt(dx * dx + dy * dy)
-        if d < bd:
-          bd = d
-          best = e
+    Int pass = 0
+    while pass < 2:
+      for item in things:
+        Entity e = item
+        if e.isBase == pass and e.team != u.team and e.alive() == 1:
+          Float dx = e.x - u.x
+          Float dy = e.y - u.y
+          Float d = Math.sqrt(dx * dx + dy * dy)
+          if d < bd:
+            bd = d
+            best = e
+          end
         end
       end
+      pass = pass + 1
     end
     return best
   end
@@ -839,6 +957,9 @@ class World from Object
     if over == 0:
       gold.set(0, gold.get(0) + 6.0 * dt)
       gold.set(1, gold.get(1) + 6.0 * dt)
+      if skirmish == 0:
+        aiTick(dt)
+      end
 
       for item in things:
         Entity e = item
@@ -923,6 +1044,11 @@ class World from Object
         s = s + "${u.team} ${u.kind} ${fx} ${fy} ${fh}\n"
       end
     end
+    Int64 b0 = playerBase.hp * 1000000000.0
+    Int64 b1 = enemyBase.hp * 1000000000.0
+    Int64 g0 = gold.get(0) * 1000000000.0
+    Int64 g1 = gold.get(1) * 1000000000.0
+    s = s + "bases ${b0} ${b1}\ngold ${g0} ${g1}\nover ${over}\n"
     return s
   end
 
@@ -1017,10 +1143,26 @@ class Hud from Object
     return found
   end
 
+  # Play again, centred under the message.
+  def Int againLeft:
+    return w / 2 - 110
+  end
+
+  def Int againTop:
+    return h / 2 + 10
+  end
+
+  def Int againAt(Int mx, Int my):
+    if mx >= againLeft() and mx < againLeft() + 220 and my >= againTop() and my < againTop() + 56:
+      return 1
+    end
+    return 0
+  end
+
   def Void draw(Gfx g, World world):
     Renderer v = g.view
     Int afford = 0
-    if world.gold.get(0) >= 30.0:
+    if world.gold.get(0) >= 30.0 and world.over == 0:
       afford = 1
     end
 
@@ -1084,6 +1226,36 @@ class Hud from Object
       g.number(30, bx + bw - 44, by + 18, 4)
       b = b + 1
     end
+
+    if world.over != 0:
+      drawEnd(g, world)
+    end
+  end
+
+  # The prototype's end screen: everything dimmed, what happened, and a way
+  # to start again.
+  def Void drawEnd(Gfx g, World world):
+    Renderer v = g.view
+    v.setColorA(35, 42, 51, 217)
+    v.fillRect(0, 0, w, h)
+    String message = "YOU WIN"
+    if world.over == 2:
+      message = "BASE LOST"
+    end
+    v.setColor(231, 226, 214)
+    g.text(message, w / 2 - g.textWidth(message, 8) / 2, h / 2 - 80, 8)
+
+    Int bx = againLeft()
+    Int by = againTop()
+    v.setColor(44, 53, 64)
+    v.fillRect(bx, by, 220, 56)
+    v.setColor(58, 68, 82)
+    v.line(bx, by, bx + 219, by)
+    v.line(bx + 219, by, bx + 219, by + 55)
+    v.line(bx + 219, by + 55, bx, by + 55)
+    v.line(bx, by + 55, bx, by)
+    v.setColor(231, 226, 214)
+    g.text("PLAY AGAIN", bx + 110 - g.textWidth("PLAY AGAIN", 4) / 2, by + 18, 4)
   end
 end
 
@@ -1127,10 +1299,13 @@ class Controls from Object
     return keep
   end
 
-  # 1 2 3 spawn, A selects all, Esc clears, Q quits.
+  # 1 2 3 spawn, A selects all, Esc clears, R plays again once a game is
+  # over, Q quits.
   def Int key(Int k):
     Int keep = 1
-    if k >= 49 and k <= 51:
+    if k == 114 and world.over != 0:
+      restart()
+    elif k >= 49 and k <= 51:
       world.trySpawn(0, k - 49)
     elif k == 97:
       world.selectAll(1)
@@ -1142,9 +1317,19 @@ class Controls from Object
     return keep
   end
 
+  def Void restart:
+    dragging = 0
+    boxing = 0
+    world.start(world.skirmish)
+  end
+
   def Void press(Int mx, Int my):
     Int b = hud.buttonAt(mx, my)
-    if b >= 0:
+    if world.over != 0:
+      if hud.againAt(mx, my) == 1:
+        restart()
+      end
+    elif b >= 0:
       world.trySpawn(0, b)
     else
       dragging = 1
@@ -1373,12 +1558,12 @@ class Main from IO
     Camera cam = new Camera(14, 10, 64.0, 32.0, fw, fh)
     Gfx gfx = new Gfx(view, cam)
     World world = new World()
-    world.setup()
     Hud hud = new Hud(windowW, windowH)
     Controls controls = new Controls(world, cam, hud)
 
     Int frames = 0
     Int dump = 0
+    Int fixedBattle = 0
     String shot = ""
     Script script = null
     Int a = 1
@@ -1391,6 +1576,8 @@ class Main from IO
         a = a + 1
       elif arg(a) == "--dump":
         dump = 1
+      elif arg(a) == "--skirmish":
+        fixedBattle = 1
       elif arg(a) == "--play":
         script = new Script()
         script.load(arg(a + 1))
@@ -1398,6 +1585,8 @@ class Main from IO
       end
       a = a + 1
     end
+
+    world.start(fixedBattle)
 
     # Fixed steps first: input from the script, if there is one, then the
     # simulation, exactly as the interactive loop does it but without drawing

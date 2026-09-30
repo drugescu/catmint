@@ -1,0 +1,6 @@
+# game
+# R does nothing while a game is still being played. (65 steps of income
+# is 96.5; 60 would be 95.99999999999966, which prints as 95.)
+# frames 65
+# expect gold 96  selected 0  over 0
+30 key 114
