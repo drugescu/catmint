@@ -1,0 +1,54 @@
+# Declaring a variable of a subclass and initialising it from a superclass
+# value is a checked downcast, the same one that already worked when the value
+# came out of a List typed Object.
+#
+# The declaration only kept its initialiser when the initialiser's type was
+# the declared type, a subclass of it, or exactly Object. `Dog d = a` with `a`
+# an Animal was none of those, so the initialiser was evaluated and dropped and
+# `d` stayed the default Dog the declaration had already built: every field
+# zero, no error, no warning. A simulation that walked a list of entities and
+# downcast each to the kind it needed read zeros for every unit.
+
+class Animal
+  Int legs
+
+  constructor(Int n):
+    legs = n
+  end
+end
+
+class Dog from Animal
+  Int tricks
+
+  constructor(Int n, Int t):
+    legs = n
+    tricks = t
+  end
+end
+
+class Cat from Animal
+  Int lives = 9
+end
+
+class Main from IO
+  def main:
+    List xs
+    xs.append(new Dog(4, 3))
+
+    Animal a = xs.get(0)
+    out("animal legs ${a.legs}\n")
+
+    Dog d = a
+    out("dog legs ${d.legs} tricks ${d.tricks}\n")
+
+    # The cast is checked: this animal is a Dog, so it is not a Cat, and that
+    # is an error rather than a quietly default Cat.
+    try:
+      Cat c = a
+      out("cat lives ${c.lives}\n")
+    catch e:
+      out("not a cat\n")
+    end
+    out("done\n")
+  end
+end
