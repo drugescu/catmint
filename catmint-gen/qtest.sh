@@ -23,12 +23,11 @@ echo "Semantic verification and code generation on $file1.ast"
 ir="$base.ast.ll"
 bc="$base.bc"
 
-# The committed runtime.ll is x86_64 Linux; derive a host-portable copy.
-./build-runtime.sh runtime.host.ll
+./build-runtime.sh --out runtime.host.bc
 
 echo
 echo "Linking $ir with the runtime..."
-"$LLVM_LINK" "$ir" runtime.host.ll -o "$bc"
+"$LLVM_LINK" "$ir" runtime.host.bc -o "$bc"
 
 echo "Running $bc:"
 echo "----------------------------------------"

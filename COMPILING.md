@@ -8,19 +8,32 @@ program running, then understand what the compiler did with it.
 
 ## 1. Install the toolchain
 
-You need flex, bison 3.x, cmake and LLVM 16 or newer. The system bison on macOS
-is 2.3, which is too old for this grammar, and Homebrew's LLVM and bison are
-keg-only, so they have to be put on `PATH` explicitly.
+There are two toolchains, and which you need depends on what you are doing.
+
+**To compile catmint programs** you need LLVM 16 or newer and lld -- LLVM's
+own tools, and nothing else. No C compiler: the runtime ships prebuilt.
+`catmintc` runs `llvm-link`, `opt`, `llc`, and `ld64.lld` or `ld.lld`. What
+every native program links against still has to be there: on macOS the SDK
+(`xcode-select --install`), on Linux glibc's startup objects (`libc6-dev`).
+
+**To work on catmint** you also need flex, bison 3.x and cmake to build the
+compiler, and clang to rebuild the runtime from `runtime.c`, to run the
+binding generator, and for `catmintc --asan`.
+
+The system bison on macOS is 2.3, which is too old for this grammar, and
+Homebrew's LLVM and bison are keg-only, so they have to be put on `PATH`
+explicitly. Homebrew installs lld as its own package; `catmintc` finds it
+there.
 
 ```sh
-brew install bison flex cmake llvm
+brew install bison flex cmake llvm lld
 export PATH=/opt/homebrew/opt/llvm@22/bin:/opt/homebrew/opt/bison/bin:$PATH
 ```
 
 On Linux the distribution packages are usually already on `PATH`:
 
 ```sh
-sudo apt install flex bison cmake llvm clang
+sudo apt install flex bison cmake llvm lld clang libc6-dev
 ```
 
 Both makefiles find LLVM through `llvm-config`. If yours lives somewhere
@@ -28,13 +41,34 @@ unusual, pass it in: `make LLVM_CONFIG=/path/to/llvm-config`.
 
 ### The runtime
 
-`catmint-gen/runtime.c` is the object model and the built-in classes, and
-`catmint-gen/runtime.ll` is a checked-in copy of its LLVM IR with the target
-triple and data layout stripped, so it works on any 64-bit host. You do not
-need a C compiler to get a usable runtime; `build-runtime.sh` will use the
-checked-in IR when there is none. With a compiler it rebuilds from the `.c`
-and refreshes the checked-in copy whenever the source is newer, so if you
-edit `runtime.c`, commit the regenerated `runtime.ll` alongside it.
+`catmint-gen/runtime.c` is the object model and the built-in classes. Users
+never compile it: what ships is `runtime-darwin.bc` and `runtime-linux.bc`,
+its bitcode for each operating system.
+
+- **Bitcode, built by LLVM 16.** Newer LLVM reads older bitcode by policy,
+  and textual IR has no such promise -- a `runtime.ll` written by LLVM 22 was
+  a parse error on LLVM 18. So one file serves every LLVM from 16 on.
+- **One per OS.** The C library's headers are not neutral: the macOS build
+  calls Darwin's `\01_fputs` and `__maskrune`, the Linux build glibc's `stdin`
+  and `__ctype_b_loc`. Within an OS the file serves both x86-64 and arm64,
+  which `portability.sh` checks.
+- **Stamped.** The runtime defines `__catmint_abi_1` and every program refers
+  to it, so a runtime from a compiler that lays objects out differently fails
+  to link instead of miscompiling. Change `CATMINT_ABI` in `runtime.c` and
+  `CatmintAbi` in `IRGenerator.h` together whenever that agreement changes.
+
+If you edit `runtime.c`, rebuild both and commit them:
+
+```sh
+catmint-gen/build-runtime.sh                        # runtime-darwin.bc, on a Mac
+tools/linux/run.sh catmint-gen/build-runtime.sh     # runtime-linux.bc, in a container
+catmint-gen/build-runtime.sh --check                # is the committed file what runtime.c builds to?
+```
+
+`build-runtime.sh` uses LLVM 16 when it is installed (`brew install llvm@16`;
+the container has it), since a newer LLVM's bitcode would not be readable by
+an older one. The test suite always builds a fresh runtime from `runtime.c`
+into its own work directory, so tests run against the source being edited.
 
 ### On Linux
 
@@ -55,16 +89,11 @@ make -C catmint-lex  LLVM_CONFIG=/usr/bin/llvm-config-18
 make -C catmint-gen  LLVM_CONFIG=/usr/bin/llvm-config-18
 ```
 
-Verified: a clean checkout builds and passes all 50 code generation tests and
-all 11 parser tests on Ubuntu 24.04 against LLVM 18.
-
-**The checked-in `runtime.ll` is tied to the LLVM that wrote it.** It exists
-so that a C compiler is optional, but the textual IR format changes between
-LLVM major versions -- `captures(none)` replaced `nocapture` in LLVM 21 -- so
-a copy written by LLVM 22 is a parse error on LLVM 18. The file says which
-LLVM wrote it on its first line, and `build-runtime.sh` checks it can be read
-before falling back to it. With a C compiler present none of this matters:
-`runtime.c` is rebuilt every time.
+Verified in `tools/linux`, a Ubuntu 24.04 container with LLVM 18:
+`tools/linux/run.sh tools/linux/test.sh` builds a copy of the repository,
+runs the whole suite, then compiles programs with no clang anywhere on the
+path and checks the executables are position independent, have read-only
+relocations bound at load, and a stack that cannot be executed.
 
 ## 2. Build the compiler
 
@@ -96,9 +125,9 @@ sum of squares 1..4 = 30
 `catmintc` writes a native executable named after the source file. Use `-o` to
 choose a different name, and drop `--run` to build without running.
 
-## 4. What the four stages actually do
+## 4. What the stages actually do
 
-`catmintc` is a shell script over four steps. Running them by hand is the best
+`catmintc` is a shell script over these steps. Running them by hand is the best
 way to see where a problem is.
 
 ```sh
@@ -111,21 +140,25 @@ catmint-lex/bin/catmint-parser examples/tour.cm /tmp/tour.ast
 #    next to its input, so run it from the directory you want the output in.
 cd /tmp && /path/to/catmint-gen/bin/catmint-gen tour.ast tour.sem
 
-# 3. Link with the runtime, which supplies the object model and I/O.
-cd /path/to/catmint-gen
-./build-runtime.sh                                  # runtime.c -> runtime.host.ll
-llvm-link /tmp/tour.ast.ll runtime.host.ll -o /tmp/tour.bc
+# 3. Link with the prebuilt runtime, which supplies the object model and I/O.
+llvm-link /tmp/tour.ast.ll catmint-gen/runtime-darwin.bc -o /tmp/tour.bc
 
-# 4. Native executable.
-clang /tmp/tour.bc -o /tmp/tour && /tmp/tour
+# 4. Optimise and generate code for this machine. The module names no target;
+#    -mtriple gives it the host's triple and data layout.
+TRIPLE=$(llc --version | sed -n 's/^ *Default target: //p')
+opt -O2 -mtriple=$TRIPLE /tmp/tour.bc -o /tmp/tour.opt.bc
+llc -O2 -filetype=obj --relocation-model=pic -mtriple=$TRIPLE /tmp/tour.opt.bc -o /tmp/tour.o
+
+# 5. Link. On macOS against libSystem from the SDK; catmintc's
+#    link_executable has the Linux line, with glibc's startup objects.
+ld64.lld -arch arm64 -platform_version macos 15.0 $(xcrun --show-sdk-version) \
+  -syslibroot $(xcrun --show-sdk-path) -o /tmp/tour /tmp/tour.o -lSystem && /tmp/tour
 ```
 
-Step 3 needs explaining. The runtime is `catmint-gen/runtime.c`, and
-`build-runtime.sh` compiles it for whatever host you are on. The repository
-also still carries the original `runtime.ll`, which was committed without its
-source and built for x86_64 Linux; `runtime.c` was reconstructed from it and
-verified to behave identically. `build-runtime.sh` uses the C source when it
-is there and falls back to patching the old IR when it is not.
+The link line is where clang's driver used to do work nobody saw, and some of
+it is security: `catmintc` asks for a position-independent executable and, on
+Linux, read-only relocations bound at load and a non-executable stack, so
+losing the driver lost none of its hardening.
 
 ## 5. The language, as far as the compiler currently supports it
 
@@ -337,7 +370,7 @@ catmint-parser --no-expand --module square.cmm square.ast
 catmint-gen     --module --import shapes.ast   square.ast square.sem
 catmint-parser --no-expand                     app.cm     app.ast
 catmint-gen     --import shapes.ast --import square.ast app.ast app.sem
-llvm-link shapes.ast.ll square.ast.ll app.ast.ll runtime.host.ll -o app.bc
+llvm-link shapes.ast.ll square.ast.ll app.ast.ll catmint-gen/runtime-darwin.bc -o app.bc
 ```
 
 `--module` says this is a library: no `Main` is required and no entry point is
@@ -461,7 +494,7 @@ very chatty debug trace.
 
 Worth reading before changing `catmint-gen/IRGenerator.cpp`.
 
-The object model is fixed by `runtime.ll` and the generator has to match it
+The object model is fixed by `runtime.c` and the generator has to match it
 exactly. Every object begins with a pointer to its run-time type information:
 
 ```
@@ -480,7 +513,7 @@ chains to the parent's initialiser and then runs the attribute initialisers.
 
 Virtual table slots are the parent's slots followed by the class's new methods
 in declaration order; an override reuses the parent's slot. The built-in
-classes are seeded to match the order already baked into `runtime.ll`, which is
+classes are seeded to match the order already baked into `runtime.c`, which is
 why `Object` occupies slots 0 to 2 and `IO` adds `input` and `out` at 3 and 4.
 
 Methods are named `M<length><Class>_<method>`, take `self` as their first

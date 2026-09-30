@@ -65,6 +65,17 @@ struct __cm_iface {
   int base;
 };
 
+/* The ABI stamp. Object layouts and the virtual table slot order are fixed
+ * by agreement between this file and IRGenerator.cpp, and a disagreement is
+ * a silent miscompile. Every generated program refers to this symbol by name,
+ * so a runtime and a compiler that disagree fail to link instead. Change
+ * CATMINT_ABI here and in IRGenerator.h whenever that agreement changes -- a
+ * slot moved, a field added to the type information, an object reshaped. */
+#define CATMINT_ABI 1
+#define CATMINT_ABI_NAME_(n) __catmint_abi_##n
+#define CATMINT_ABI_NAME(n) CATMINT_ABI_NAME_(n)
+const int CATMINT_ABI_NAME(CATMINT_ABI) = CATMINT_ABI;
+
 /* Every object starts this way. `refs` is 1 when __catmint_new made it and 0
  * when it is a static object the compiler emitted -- a string literal or a
  * class name. Zero is therefore "do not free", which is what makes free() on

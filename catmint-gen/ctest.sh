@@ -40,7 +40,12 @@ GREEN='\033[1;32m'; RED='\033[1;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-./build-runtime.sh "$WORK/runtime.host.ll"
+# The runtime as runtime.c builds it now, so the suite tests what is being
+# edited rather than what was last committed; every catmintc this script runs
+# links the same one.
+./build-runtime.sh --out "$WORK/runtime.bc"
+CATMINT_RUNTIME="$WORK/runtime.bc"
+export CATMINT_RUNTIME
 
 # run_binary <binary> <output file> -- with this test's stdin and arguments.
 # Standard error goes to its own file, not into the output being compared:
@@ -158,7 +163,7 @@ for file in ${WANTED:-test_suite/*.cm}; do
   fi
 
   # 3. link + run
-  if ! "$LLVM_LINK" "$WORK/$name.ast.ll" "$WORK/runtime.host.ll" -o "$WORK/$name.bc" \
+  if ! "$LLVM_LINK" "$WORK/$name.ast.ll" "$WORK/runtime.bc" -o "$WORK/$name.bc" \
         >"$WORK/$name.link.log" 2>&1; then
     printf "${RED}FAIL${NC} (link; see $WORK/$name.link.log)\n"
     errors=$((errors+1)); failed="$failed $name"; continue

@@ -17,7 +17,13 @@
 # compiler never sees the line -- the preprocessor removes it -- so there is
 # no grammar rule and no AST node behind it.
 #
-# Set LLVM_BIN if llvm-link/clang are not on PATH.
+# What it runs is LLVM and nothing else: catmint-parser and catmint-gen, then
+# llvm-link, opt, llc, and lld to link. No C compiler -- the runtime ships
+# prebuilt. Clang is only for developers: building the runtime from runtime.c,
+# and --asan, whose run-time library comes with clang.
+#
+# Set LLVM_BIN if the LLVM tools are not on PATH, and LLD_BIN if lld lives
+# somewhere else again (Homebrew installs it as its own package).
 set -e
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
@@ -27,23 +33,25 @@ GENDIR="$ROOT/catmint-gen"
 
 LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v llvm-link 2>/dev/null || echo /opt/homebrew/opt/llvm@22/bin/llvm-link)")}
 LLVM_LINK="$LLVM_BIN/llvm-link"
-CLANG="$LLVM_BIN/clang"
-# Exported so build-runtime.sh compiles the runtime with the same clang that
-# compiles the program. It must not look the compiler up on PATH by itself:
-# one clang's front end can emit a function attribute another clang's back end
-# refuses. Apple clang marks large frames "probe-stack"="__chkstk_darwin",
-# which LLVM 22's AArch64 back end rejects outright -- every program then dies
-# with "Unsupported stack probing method" in a function the programmer never
-# wrote.
+OPT_TOOL="$LLVM_BIN/opt"
+LLC="$LLVM_BIN/llc"
 export LLVM_BIN
+
+# lld under its own name, wherever it is.
+find_linker() {
+  for dir in "$LLD_BIN" "$LLVM_BIN" /opt/homebrew/opt/lld/bin /usr/local/opt/lld/bin; do
+    if [ -n "$dir" ] && [ -x "$dir/$1" ]; then echo "$dir/$1"; return 0; fi
+  done
+  command -v "$1" 2>/dev/null
+}
 
 RUN=0
 OUT=""
 SRC=""
 INCLUDES=""
 SEPARATE=0
-# The level clang compiles the linked bitcode at. It is not a nicety: at -O0
-# clang uses the fast register allocator, which spills every value to the
+# The level opt and llc run the linked bitcode at. It is not a nicety: at -O0
+# llc uses the fast register allocator, which spills every value to the
 # stack, and a counted loop runs more than twice as slowly for it.
 OPT=-O2
 # -g asks the generator for line numbers and clang to keep them.
@@ -215,28 +223,103 @@ else
 fi
 OBJECTS="$OBJECTS $WORK/$BASE.ast.ll"
 
-# Link against the runtime, compiled for this host from runtime.c.
-"$GENDIR/build-runtime.sh" "$WORK/runtime.host.ll"
+# Link against the prebuilt runtime for this operating system. It is bitcode,
+# built from runtime.c by the oldest LLVM catmint supports, so any newer LLVM
+# reads it; nothing here compiles C. CATMINT_RUNTIME points somewhere else,
+# which is how the test suite links the runtime it has just rebuilt.
+RUNTIME=${CATMINT_RUNTIME:-"$GENDIR/runtime-$(uname -s | tr '[:upper:]' '[:lower:]').bc"}
+[ -f "$RUNTIME" ] || {
+  echo "catmintc: no runtime for this system at $RUNTIME" >&2
+  echo "  (catmint-gen/build-runtime.sh builds one, and needs clang)" >&2; exit 1; }
 # shellcheck disable=SC2086
-"$LLVM_LINK" $OBJECTS "$WORK/runtime.host.ll" -o "$WORK/$BASE.bc"
+"$LLVM_LINK" $OBJECTS "$RUNTIME" -o "$WORK/$BASE.bc"
 
-# Bitcode -> native executable. -lm for the Math class; on macOS libm is part
-# of libSystem and the flag is a no-op, on Linux it is not. -pthread is
-# there for Worker.
-if [ -n "$DEBUG" ]; then
-  # Two steps, because macOS does not put DWARF in the executable: it leaves
-  # it in the object file and records a debug map pointing there, which
-  # dsymutil then collects into a .dSYM. Compiling and linking in one command
-  # would delete the object before dsymutil could read it, which is why
-  # `clang -g one.c -o one` gives an executable a debugger cannot read either.
-  "$CLANG" -Wno-override-module "$OPT" $SAN -g -c "$WORK/$BASE.bc" -o "$WORK/$BASE.o"
-  "$CLANG" "$OPT" $SAN -g -pthread "$WORK/$BASE.o" -o "$OUT" $LIBS
-  if [ "$(uname)" = "Darwin" ] && command -v dsymutil >/dev/null 2>&1; then
-    dsymutil "$OUT" >/dev/null 2>&1 || \
-      echo "catmintc: warning: dsymutil could not collect debug information" >&2
+# Bitcode -> native executable, with LLVM's own tools. The linked module has
+# no target triple and no data layout -- neither the program nor the runtime
+# pins one -- and `opt -mtriple` gives it the host's of both, which is what
+# lets the optimiser reason about sizes and costs.
+TRIPLE=$("$LLC" --version | sed -n 's/^ *Default target: //p')
+# clang targeted the M1 by default on Apple silicon, and plain llc would
+# assume a generic ARMv8 core; say what clang said, so nothing gets slower.
+MCPU=""
+case "$TRIPLE" in arm64-apple-*|aarch64-apple-*) MCPU="-mcpu=apple-m1" ;; esac
+
+# The system linker line clang's driver used to write. Some of it is
+# security: a position-independent executable, so the system can randomise
+# where it loads, and on Linux a read-only relocation table and a stack that
+# cannot be executed. Dropping the compiler driver must not drop those.
+link_executable() {
+  obj=$1
+  case "$(uname -s)" in
+    Darwin)
+      LD=$(find_linker ld64.lld) || true
+      [ -n "$LD" ] || { echo "catmintc: ld64.lld not found (install lld, or set LLD_BIN)" >&2; exit 1; }
+      SDK=$(xcrun --show-sdk-path 2>/dev/null || true)
+      [ -d "$SDK" ] || SDK=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+      [ -d "$SDK" ] || { echo "catmintc: the macOS SDK is needed to link against libSystem" >&2
+                         echo "  (xcode-select --install)" >&2; exit 1; }
+      SDKVER=$(xcrun --show-sdk-version 2>/dev/null || sw_vers -productVersion)
+      case "$TRIPLE" in arm64*|aarch64*) ARCH=arm64 ;; *) ARCH=x86_64 ;; esac
+      # macOS executables are position independent by default.
+      # shellcheck disable=SC2086
+      "$LD" -arch "$ARCH" -platform_version macos "$(sw_vers -productVersion)" "$SDKVER" \
+        -syslibroot "$SDK" -o "$OUT" "$obj" $LIBS -lSystem
+      ;;
+    Linux)
+      LD=$(find_linker ld.lld) || true
+      [ -n "$LD" ] || { echo "catmintc: ld.lld not found (install lld, or set LLD_BIN)" >&2; exit 1; }
+      case "$TRIPLE" in
+        x86_64*)  MULTIARCH=x86_64-linux-gnu;  LOADER=/lib64/ld-linux-x86-64.so.2 ;;
+        aarch64*) MULTIARCH=aarch64-linux-gnu; LOADER=/lib/ld-linux-aarch64.so.1 ;;
+        *) echo "catmintc: do not know how to link for $TRIPLE" >&2; exit 1 ;;
+      esac
+      CRT=""
+      for dir in "/usr/lib/$MULTIARCH" /usr/lib64 /usr/lib; do
+        if [ -f "$dir/Scrt1.o" ]; then CRT=$dir; break; fi
+      done
+      [ -n "$CRT" ] || { echo "catmintc: glibc's startup objects (Scrt1.o) not found" >&2
+                         echo "  (install libc6-dev or glibc-devel)" >&2; exit 1; }
+      # shellcheck disable=SC2086
+      "$LD" -pie --dynamic-linker "$LOADER" -z relro -z now -z noexecstack \
+        --eh-frame-hdr --build-id -o "$OUT" \
+        "$CRT/Scrt1.o" "$CRT/crti.o" "$obj" -L"$CRT" -L"/lib/$MULTIARCH" \
+        $LIBS -lpthread -lc "$CRT/crtn.o"
+      ;;
+    *) echo "catmintc: do not know how to link on $(uname -s)" >&2; exit 1 ;;
+  esac
+}
+
+if [ -n "$SAN" ]; then
+  # AddressSanitizer is a developer's tool: its run-time library comes with
+  # clang, so this is the one build that uses it. It instruments the linked
+  # bitcode, which is the program *and* the runtime.
+  CLANG="$LLVM_BIN/clang"
+  [ -x "$CLANG" ] || { echo "catmintc: --asan needs clang, which comes with its run-time library" >&2; exit 1; }
+  if [ -n "$DEBUG" ]; then
+    "$CLANG" -Wno-override-module "$OPT" $SAN -g -c "$WORK/$BASE.bc" -o "$WORK/$BASE.o"
+    "$CLANG" "$OPT" $SAN -g -pthread "$WORK/$BASE.o" -o "$OUT" $LIBS
+  else
+    "$CLANG" -Wno-override-module "$OPT" $SAN -pthread "$WORK/$BASE.bc" -o "$OUT" $LIBS
   fi
 else
-  "$CLANG" -Wno-override-module "$OPT" $SAN -pthread "$WORK/$BASE.bc" -o "$OUT" $LIBS
+  # shellcheck disable=SC2086
+  "$OPT_TOOL" "$OPT" -mtriple="$TRIPLE" $MCPU "$WORK/$BASE.bc" -o "$WORK/$BASE.opt.bc"
+  # shellcheck disable=SC2086
+  "$LLC" "$OPT" -filetype=obj --relocation-model=pic -mtriple="$TRIPLE" $MCPU \
+    "$WORK/$BASE.opt.bc" -o "$WORK/$BASE.o"
+  link_executable "$WORK/$BASE.o"
+fi
+
+# macOS does not put DWARF in the executable: it leaves it in the object file
+# and records a debug map pointing there, which dsymutil collects into a
+# .dSYM. The object is still in the work directory at this point.
+if [ -n "$DEBUG" ] && [ "$(uname)" = "Darwin" ]; then
+  DSYMUTIL="$LLVM_BIN/dsymutil"
+  [ -x "$DSYMUTIL" ] || DSYMUTIL=$(command -v dsymutil || true)
+  if [ -n "$DSYMUTIL" ]; then
+    "$DSYMUTIL" "$OUT" >/dev/null 2>&1 || \
+      echo "catmintc: warning: dsymutil could not collect debug information" >&2
+  fi
 fi
 echo "catmintc: wrote $OUT"
 

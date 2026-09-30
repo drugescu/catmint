@@ -78,6 +78,9 @@ _deps
 catmint-ast/build/
 catmint-gen/bin/*
 catmint-gen/*.bc
+# ...except the prebuilt runtimes, which ship: nothing compiles runtime.c for a user.
+!catmint-gen/runtime-darwin.bc
+!catmint-gen/runtime-linux.bc
 catmint-gen/*.sem
 
 # Generated host-portable runtime (produced by make-host-runtime.sh)

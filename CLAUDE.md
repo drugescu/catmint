@@ -15,7 +15,7 @@ Three components, built in order, each depending on the previous:
 
 ```
 .cm source ─► catmint-lex ─► .ast (JSON) ─► catmint-gen ─► .ll ─► llvm-link ─► lli / clang
-              flex+bison                    semantic analysis      + runtime.ll
+              flex+bison                    semantic analysis      + runtime-<os>.bc
               → AST objects                 + IR generation
 ```
 
@@ -44,7 +44,7 @@ Three components, built in order, each depending on the previous:
    types via `TypeVisitor`), then `IRGenerator` emits a `.ll` file.
 
 The emitted IR is not self-contained: it declares `M2_IO_out`, `M2_IO_in` and
-`__catmint_new` and must be linked against `runtime.ll` before running.
+`__catmint_new` and must be linked against the runtime before running.
 
 ## Build
 
@@ -135,44 +135,60 @@ the symbol table and the grammar's running commentary all go to `std::cout`,
 which is redirected to nowhere by default. Diagnostics go to `std::cerr` and
 are never swallowed, so a failing build still says why.
 
-`catmintc` compiles the linked bitcode at `-O2`, and `-O0` on its command
-line turns that off. This is not a nicety: at `-O0` clang uses the fast
+`catmintc` runs LLVM's tools and nothing else: `llvm-link` with the prebuilt
+runtime, `opt` and `llc` at `-O2` (`-O0` on its command line turns that off),
+and lld to link. **No clang in a user's path.** Clang is for developers: it
+builds the runtime from `runtime.c` and runs `--asan`, whose run-time library
+ships with it; `catmintc --asan` without clang says so and stops. The module
+names no target, so `opt -mtriple=<host>` supplies the host's triple and data
+layout, and on Apple silicon `-mcpu=apple-m1`, which is what clang assumed;
+`bench/run.sh` was unchanged or faster for the switch. The link line is
+`link_executable` in `catmintc`, and it carries the hardening clang's driver
+used to add: position-independent executables, and on Linux `-z relro -z now
+-z noexecstack` -- `tools/linux/test.sh` checks the result with `readelf`.
+The optimisation level is not a nicety: at `-O0` llc uses the fast
 register allocator, which spills every value to the stack, and a counted loop
 ran more than twice as slowly for it. Running LLVM's pass pipeline inside
 `catmint-gen` as well was tried and made no measurable difference on top of
 that, so the generator emits plain IR, which is also far easier to read when
 working on it.
 
-## The runtime, and why it needs a build step
+## The runtime ships prebuilt
 
 `catmint-gen/runtime.c` is the object model and I/O library: `TObject`,
 `TString`, `TIO`, `TList`, `TInteger`, `TFile`, `TMath`, the
-`__catmint_rtti` type-info struct, `__catmint_new`, and the built-in methods. `build-runtime.sh` compiles it for the host into
-`runtime.host.ll`, which is what programs link against.
+`__catmint_rtti` type-info struct, `__catmint_new`, and the built-in methods.
+Users never compile it. What ships is **`runtime-darwin.bc` and
+`runtime-linux.bc`**, and `catmintc` links the one for the host
+(`CATMINT_RUNTIME` overrides it, which is how the test suite links the one it
+has just built).
 
-`runtime.c` is the source of truth and `runtime.ll` is a checked-in copy of
-what it compiles to, with the target triple, the data layout and the build
-path stripped, so that one copy serves every 64-bit host -- the runtime uses
-only pointers, `int`, `long long` and `double`, whose layouts agree
-everywhere this compiler runs.
+- **Bitcode built by LLVM 16**, the oldest catmint supports: newer LLVM reads
+  older bitcode by policy, so one file serves every LLVM from 16 on. Textual
+  IR has no such promise, which is why the old `runtime.ll` written by LLVM 22
+  could not be read by 18.
+- **One per OS**, because the C library's headers are not neutral. Built on
+  macOS the IR calls `\01_fputs` and `\01_fopen` (Darwin's aliases) and
+  `__maskrune`; on Linux it calls glibc's `stdin`, `stderr` and
+  `__ctype_b_loc`. The old claim that one `runtime.ll` served every host held
+  only because `build-runtime.sh` quietly recompiled `runtime.c` wherever
+  there was a C compiler. Within one OS the file is architecture-neutral, and
+  `portability.sh` compiles each for both architectures of its OS.
+- **Stamped.** `runtime.c` defines `__catmint_abi_<CATMINT_ABI>`; the
+  generated `main` reads it volatile, so every program needs that exact
+  symbol and a runtime from another agreement fails to link. **Bump
+  `CATMINT_ABI` in `runtime.c` and `CatmintAbi` in `IRGenerator.h` together
+  whenever a layout, an RTTI field or a slot changes.** Test 63 checks a
+  renamed stamp is refused.
 
-`build-runtime.sh` keeps the two honest. With a C compiler it compiles the
-`.c` fresh, and refreshes the checked-in `.ll` whenever `runtime.c` is newer,
-so the copy in the repository never falls behind the source that a
-contributor with a compiler is editing. Without a C compiler it uses the
-`.ll` as it stands and warns if it looks stale. **If you change `runtime.c`,
-commit the regenerated `runtime.ll` with it** -- running the test suite will
-have regenerated it for you.
-
-That staleness is not a theoretical worry: the original `runtime.ll` was
-committed without its source, built for x86_64 Linux, and drifted far enough
-from the object model that using it would have been a silent miscompile
-rather than a link error. Hence the refresh-on-build.
-
-A C compiler is still needed to produce a *native executable*, because
-`catmintc` ends by calling clang; what the checked-in IR removes is the need
-for one to have a usable runtime, which is enough to run programs under
-`lli`.
+`build-runtime.sh` is a developer tool that nothing in `catmintc` calls. It
+strips the triple, data layout, CPU, features and probe-stack, normalises the
+module name, and assembles bitcode; it prefers LLVM 16 (`brew install
+llvm@16`). `tools/linux/run.sh catmint-gen/build-runtime.sh` builds the Linux
+one in a container. **If you change `runtime.c`, rebuild both files and commit
+them**; `build-runtime.sh --check` fails when the committed file is not what
+`runtime.c` builds to. `ctest.sh` builds a fresh runtime into its work
+directory, so the suite tests the source being edited even before you do.
 
 The layouts and the virtual table slot order in `runtime.c` are fixed by
 agreement with `IRGenerator.cpp`; changing one without the other silently
@@ -351,7 +367,7 @@ For each class the generator emits an LLVM struct laid out as
 that chains to the parent initialiser and then runs the attribute initialisers.
 Virtual table slots are the parent's followed by the class's new methods in
 declaration order, with an override reusing the parent's slot. Built-in classes
-are seeded to match the order already fixed in `runtime.ll`, so `Object` holds
+are seeded to match the order already fixed in `runtime.c`, so `Object` holds
 slots 0-2 and `IO` adds `input` and `out` at 3 and 4.
 
 Dispatch loads the function pointer from the receiver's vtable, after a
@@ -729,8 +745,9 @@ broken until it was tried, all of them invisible on macOS.
   inside `find_package(LLVM)` before any of our code runs, which was worth
   establishing, since the first guess was a missing `find_package(ZLIB)` and
   that turned out not to be it.
-- **The checked-in `runtime.ll` only reads on an LLVM close to the one that
-  wrote it.** The IR text format is not stable across major versions;
+- ~~**The checked-in `runtime.ll` only reads on an LLVM close to the one that
+  wrote it.**~~ **Replaced** by bitcode built with LLVM 16; see "The runtime
+  ships prebuilt". Kept for the history: The IR text format is not stable across major versions;
   `captures(none)` replaced `nocapture` in LLVM 21. The file carries a stamp
   saying what wrote it and `build-runtime.sh` checks before falling back.
 
