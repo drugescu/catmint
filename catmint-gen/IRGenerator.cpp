@@ -1178,6 +1178,38 @@ bool IRGenerator::isReferenceTypeName(const std::string &TypeName) {
   return TypeName != strings::Null;
 }
 
+bool IRGenerator::yieldsPtr(Expression *E) {
+  if (!E)
+    return false;
+  // A block's value is its last statement's, and staticTypeOf cannot see
+  // through an assignment, so look at that statement itself.
+  if (auto *B = dynamic_cast<Block *>(E)) {
+    Expression *LastSub = nullptr;
+    for (auto *Sub : *B)
+      LastSub = Sub;
+    return yieldsPtr(LastSub);
+  }
+  // `x = expr` parses as a definition of type "auto", and is an assignment
+  // when x already exists; the value is then x's, so x's type is the answer.
+  if (auto *LD = dynamic_cast<LocalDefinition *>(E)) {
+    std::string T = LD->getType();
+    if (T == "auto") {
+      T = staticTypeOf(LD->getInit());
+      for (const auto &Name : LD->getName()) {
+        if (auto *L = findLocal(Name)) {
+          T = L->TypeName;
+        } else if (CurrentClass) {
+          auto It = CurrentClass->FieldType.find(Name);
+          if (It != CurrentClass->FieldType.end())
+            T = It->second;
+        }
+      }
+    }
+    return T == strings::Ptr;
+  }
+  return staticTypeOf(E) == strings::Ptr;
+}
+
 void IRGenerator::emitRetain(llvm::Value *V) {
   if (!V || !V->getType()->isPointerTy())
     return;
@@ -1314,7 +1346,9 @@ void IRGenerator::emitPoolAdd(llvm::Value *V) {
 }
 
 void IRGenerator::emitCleanupAndReturn(llvm::Value *RV) {
-  const bool Reference = RV && RV->getType()->isPointerTy();
+  // A Ptr result is not a reference, whatever its LLVM type says: see emitBlock.
+  const bool Reference = RV && RV->getType()->isPointerTy() &&
+                         CurrentReturnType != strings::Ptr;
 
   // Retain first: everything below is about giving references back, and the
   // result must not be one of the things given back.
@@ -1600,10 +1634,12 @@ llvm::Value *IRGenerator::emit(Expression *E) {
 llvm::Value *IRGenerator::emitBlock(Block *B) {
   Scopes.emplace_back();
   llvm::Value *Last = nullptr;
+  Expression *LastExpr = nullptr;
   for (auto *Sub : *B) {
     if (blockTerminated())
       break;
     Last = emit(Sub);
+    LastExpr = Sub;
   }
 
   if (!blockTerminated()) {
@@ -1611,7 +1647,12 @@ llvm::Value *IRGenerator::emitBlock(Block *B) {
     // release -- a method whose last expression names a local. Handing it to
     // the pool keeps it alive for the rest of the enclosing statement, which
     // is exactly as long as anyone can still be looking at it.
-    if (Last && Last->getType()->isPointerTy()) {
+    //
+    // Not a Ptr, though: it is a machine pointer into memory this program
+    // does not own, so retaining it bumps an integer inside a C library's
+    // structure and releasing it can free that structure. `unsafe: h =
+    // SDL.CreateWindow(...) end` is a block whose value is exactly that.
+    if (Last && Last->getType()->isPointerTy() && !yieldsPtr(LastExpr)) {
       emitRetain(Last);
       emitPoolAdd(Last);
     }
