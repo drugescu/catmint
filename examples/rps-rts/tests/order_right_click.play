@@ -1,0 +1,8 @@
+# With a selection, the right button always orders: on one of your own units
+# it moves the selection there instead of deselecting that one.
+# frames 4
+# expect selected 4  over
+# expect selected 1 moving
+# absent idle
+1 key 97
+2 rclick 3.2 3.0 0.3

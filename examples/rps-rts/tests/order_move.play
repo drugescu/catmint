@@ -1,0 +1,10 @@
+# A click on empty ground sends the selection there, spread on a circle of
+# radius 0.3 * sqrt(4) = 0.6. The rock at (3.2, 3) is first, so its point is
+# (6.6, 4.5); eight steps at 1.7 tiles a second take it to (3.40, 3.09).
+# frames 10
+# expect selected 4  over
+# expect unit 0 at 340 309 selected 1 moving
+# absent idle
+# absent fighting
+1 key 97
+2 click 6 4.5 0

@@ -8,15 +8,29 @@
 #                  tinted-checkerboard board.
 #   milestone 3 -- units and bases drawn as flat-shaded solids (rock = cube,
 #                  paper = slab, scissors = pyramid), painter-sorted, with
-#                  health bars. Placed by hand: nothing moves yet.
+#                  health bars.
 #   milestone 4 -- the simulation: units hunt, close in, hit for 3x or 1/3 by
-#                  rock-paper-scissors, die and are cleaned up. `rps --frames
-#                  N` runs N fixed 1/60 s steps before drawing, so a battle
-#                  can be checked without watching it.
+#                  rock-paper-scissors, die and are cleaned up.
+#   milestone 5 -- the player's hand on it: gold and spawning, selection by
+#                  click and by dragging a box, move and attack orders, and
+#                  the effects that answer them.
+#
+# Controls: 1 2 3 or the buttons spawn rock, paper, scissors for 30 gold.
+# Click a unit of yours to select it, drag a box to select several, A selects
+# all, Esc clears. With units selected, click the ground to move there or an
+# enemy to attack it; right-click always orders. Q or closing the window
+# quits.
+#
+# Runs can be scripted and checked without a screen:
+#   --frames N     run N fixed 1/60 s steps, print a summary, then draw
+#   --dump         with --frames: every unit's exact state, for check.sh
+#   --play FILE    feed FILE's input to the steps (see tests/*.play)
+#   --shot F.bmp   save the first frame drawn and exit
 #
 # The SDL binding is sdl.cmm; its C side is sdl_shim.c, built by build.sh.
 
 using sdl
+using random
 
 # Iso projection: world tile coordinates (x, y, and an optional height z, all
 # in tile units) to screen pixels. tw/th are one tile's on-screen size once
@@ -54,12 +68,26 @@ class Camera from Object
   def Float screenY(Float x, Float y, Float z):
     return (x + y) * th / 2.0 + camY - z * th
   end
+
+  # The inverse at ground level: which tile point is under screen pixel
+  # (sx, sy). The prototype's toWorld().
+  def Float worldX(Float sx, Float sy):
+    Float a = (sx - camX) / (tw / 2.0)
+    Float b = (sy - camY) / (th / 2.0)
+    return (a + b) / 2.0
+  end
+
+  def Float worldY(Float sx, Float sy):
+    Float a = (sx - camX) / (tw / 2.0)
+    Float b = (sy - camY) / (th / 2.0)
+    return (b - a) / 2.0
+  end
 end
 
 # Everything that draws the game world: the board, the solids units are made
-# of, the health bars. It holds the renderer and the camera so an entity's
-# draw() takes one argument, and the team palette so shading is looked up
-# rather than computed.
+# of, health bars, rings, and a small digit font for the HUD. It holds the
+# renderer and the camera so an entity's draw() takes one argument, and the
+# team palette so shading is looked up rather than computed.
 #
 # A palette entry is team * 3 + level, level 0 being the face turned away
 # from the light, 1 the other side face, 2 the top. The values are the
@@ -69,9 +97,11 @@ class Gfx from Object
   Renderer view = null
   Camera cam = null
   Int white = 0
-  Ints pr
-  Ints pg
-  Ints pb
+  Int dim = 0
+  Ints pr = null
+  Ints pg = null
+  Ints pb = null
+  Ints glyphs = null
 
   constructor(Renderer v, Camera c):
     view = v
@@ -85,6 +115,20 @@ class Gfx from Object
     tone(3, 96, 30, 143)
     tone(4, 136, 43, 202)
     tone(5, 173, 104, 223)
+
+    # A 3x5 font for 0-9, one Int a digit: fifteen bits, row by row from the
+    # top, the leftmost pixel of a row the highest bit.
+    glyphs = new Ints(10)
+    glyphs.set(0, 31599)
+    glyphs.set(1, 11415)
+    glyphs.set(2, 29671)
+    glyphs.set(3, 29647)
+    glyphs.set(4, 23497)
+    glyphs.set(5, 31183)
+    glyphs.set(6, 31215)
+    glyphs.set(7, 29257)
+    glyphs.set(8, 31727)
+    glyphs.set(9, 31695)
   end
 
   def Void tone(Int i, Int r, Int g, Int b):
@@ -94,10 +138,14 @@ class Gfx from Object
   end
 
   # An entity that has just been hit is drawn all white for a moment, as in
-  # the prototype: set white before drawing it, clear it after.
+  # the prototype; a spawn button the player cannot afford is drawn in grey.
+  # Both are flags set around a draw rather than arguments to every face.
   def Void shade(Int team, Int level):
     if white == 1:
       view.setColor(255, 255, 255)
+    elif dim == 1:
+      Int grey = 70 + level * 15
+      view.setColor(grey, grey + 4, grey + 10)
     else
       Int i = team * 3 + level
       view.setColor(pr.get(i), pg.get(i), pb.get(i))
@@ -208,9 +256,19 @@ class Gfx from Object
     face(ax, ay, xmp, ymp, xpp, ypp, xpp, ypp, team, 0)
   end
 
-  # Green above half health, amber above a quarter, red below. The prototype
-  # backs the bar with 55% black; SDL alpha blending is a mode of its own,
-  # so this uses a solid near-black instead.
+  # kind 0 rock, 1 paper, 2 scissors, standing on tile point (ex, ey).
+  def Void figure(Int kind, Float ex, Float ey, Int team):
+    if kind == 0:
+      prism(ex, ey, 0.22, 0.55, team)
+    elif kind == 1:
+      prism(ex, ey, 0.30, 0.12, team)
+    else
+      pyramid(ex, ey, 0.26, 0.85, team)
+    end
+  end
+
+  # Green above half health, amber above a quarter, red below, on the
+  # prototype's 55% black.
   def Void hpBar(Float ex, Float ey, Float z, Float hp, Float maxHp):
     Float sx = cam.screenX(ex, ey)
     Float sy = cam.screenY(ex, ey, z)
@@ -219,7 +277,7 @@ class Gfx from Object
     if ratio < 0.0:
       ratio = 0.0
     end
-    view.setColor(12, 14, 18)
+    view.setColorA(0, 0, 0, 140)
     view.fillRect(sx - w / 2.0 - 1.0, sy - 4.0, w + 2.0, 4.0)
     if ratio > 0.5:
       view.setColor(123, 211, 137)
@@ -229,6 +287,82 @@ class Gfx from Object
       view.setColor(230, 86, 79)
     end
     view.fillRect(sx - w / 2.0, sy - 3.0, w * ratio, 2.0)
+  end
+
+  # An ellipse lying on the ground around tile point (ex, ey), radii rx and
+  # ry in tiles -- the shape of every ring the prototype draws.
+  def Void ring(Float ex, Float ey, Float rx, Float ry, Int r, Int g, Int b, Int a):
+    Float cx = cam.screenX(ex, ey)
+    Float cy = cam.screenY(ex, ey, 0.0)
+    Float ax = cam.tw * rx
+    Float ay = cam.th * ry
+    view.setColorA(r, g, b, a)
+    Float px = cx + ax
+    Float py = cy
+    Int i = 1
+    while i <= 32:
+      Float t = i * Math.pi() / 16.0
+      Float qx = cx + ax * Math.cos(t)
+      Float qy = cy + ay * Math.sin(t)
+      view.line(px, py, qx, qy)
+      px = qx
+      py = qy
+      i = i + 1
+    end
+  end
+
+  # A dashed straight line, four pixels on and three off.
+  def Void dashed(Float x0, Float y0, Float x1, Float y1):
+    Float dx = x1 - x0
+    Float dy = y1 - y0
+    Float len = Math.sqrt(dx * dx + dy * dy)
+    if len > 0.0:
+      Float ux = dx / len
+      Float uy = dy / len
+      Float at = 0.0
+      while at < len:
+        Float stop = at + 4.0
+        if stop > len:
+          stop = len
+        end
+        view.line(x0 + ux * at, y0 + uy * at, x0 + ux * stop, y0 + uy * stop)
+        at = at + 7.0
+      end
+    end
+  end
+
+  # One digit at screen pixel (sx, sy), each font pixel k screen pixels.
+  def Void digit(Int d, Int sx, Int sy, Int k):
+    Int bits = glyphs.get(d)
+    Int row = 0
+    while row < 5:
+      Int col = 0
+      while col < 3:
+        Int shift = 14 - (row * 3 + col)
+        if ((bits >> shift) & 1) == 1:
+          view.fillRect(sx + col * k, sy + row * k, k, k)
+        end
+        col = col + 1
+      end
+      row = row + 1
+    end
+  end
+
+  # A non-negative number, most significant digit first, in the current
+  # colour. Returns the width drawn.
+  def Int number(Int n, Int sx, Int sy, Int k):
+    Int div = 1
+    while n / div >= 10:
+      div = div * 10
+    end
+    Int x = sx
+    while div > 0:
+      Int d = (n / div) % 10
+      digit(d, x, sy, k)
+      x = x + 4 * k
+      div = div / 10
+    end
+    return x - sx
   end
 end
 
@@ -267,13 +401,18 @@ class Entity does Drawable
   end
 end
 
-# kind: 0 rock, 1 paper, 2 scissors. A unit hunts the nearest enemy it can
-# see, walks until it is within reach, and hits on a cooldown. Speed, reach,
-# damage and cadence are the prototype's own numbers.
+# kind: 0 rock, 1 paper, 2 scissors. A unit with a target walks until it is
+# within reach and hits on a cooldown; one with a move order walks to its
+# point and ignores the enemy until it gets there. Speed, reach, damage and
+# cadence are the prototype's own numbers.
 class Unit from Entity
   Int kind
   Float cd
   Entity target = null
+  Int ordered
+  Float tx
+  Float ty
+  Int selected
 
   constructor(Int t, Int k, Float px, Float py):
     team = t
@@ -289,18 +428,15 @@ class Unit from Entity
     if cd < 0.0:
       cd = 0.0
     end
-    flash = flash - dt
-    if flash < 0.0:
-      flash = 0.0
-    end
 
     if target != null and target.alive() == 0:
       target = null
     end
 
     # The enemy always hunts; the player's units only wake when something is
-    # within 2.2 tiles, because until they are given orders they hold ground.
-    if target == null:
+    # within 2.2 tiles, and not while they are walking somewhere they were
+    # sent.
+    if target == null and ordered == 0:
       Float sight = 2.2
       if team == 1:
         sight = 1000000000.0
@@ -308,36 +444,52 @@ class Unit from Entity
       target = w.nearestEnemy(self, sight)
     end
 
+    Int going = 0
+    Float gx = 0.0
+    Float gy = 0.0
+    Float stop = 0.85
     if target != null:
-      Float dx = target.x - x
-      Float dy = target.y - y
+      gx = target.x
+      gy = target.y
+      going = 1
+    elif ordered == 1:
+      gx = tx
+      gy = ty
+      stop = 0.1
+      going = 1
+    end
+
+    if going == 1:
+      Float dx = gx - x
+      Float dy = gy - y
       Float d = Math.sqrt(dx * dx + dy * dy)
-      if d > 0.85:
+      if d > stop:
         Float step = 1.7 * dt
-        if step > d - 0.85:
-          step = d - 0.85
+        if step > d - stop:
+          step = d - stop
         end
         x = x + dx / d * step
         y = y + dy / d * step
-      elif cd == 0.0:
-        w.hit(self, target)
-        cd = 0.5
+      elif target != null:
+        if cd == 0.0:
+          w.hit(self, target)
+          cd = 0.5
+        end
+      else
+        ordered = 0
       end
     end
   end
 
   def Void draw(Gfx g):
+    if selected == 1:
+      g.ring(x, y, 0.28, 0.28, 255, 255, 255, 255)
+    end
     g.white = 0
     if flash > 0.0:
       g.white = 1
     end
-    if kind == 0:
-      g.prism(x, y, 0.22, 0.55, team)
-    elif kind == 1:
-      g.prism(x, y, 0.30, 0.12, team)
-    else
-      g.pyramid(x, y, 0.26, 0.85, team)
-    end
+    g.figure(kind, x, y, team)
     g.white = 0
     g.hpBar(x, y, 0.95, hp, maxHp)
   end
@@ -366,6 +518,41 @@ class Base from Entity
   end
 end
 
+# A ring that grows and fades: where a move order went (kind 0), what an
+# attack order targeted (1), where a unit died (2).
+class Effect from Object
+  Float x
+  Float y
+  Float t
+  Float life
+  Int kind
+  Int team
+
+  constructor(Float px, Float py, Float span, Int k, Int tm):
+    x = px
+    y = py
+    life = span
+    kind = k
+    team = tm
+  end
+
+  def Void draw(Gfx g):
+    Float k = t / life
+    Int alpha = (1.0 - k) * 255.0
+    if kind == 0:
+      Float r = 0.22 + k * 0.35
+      g.ring(x, y, r, r, 255, 255, 255, alpha)
+    elif kind == 1:
+      Float r = 0.22 + k * 0.35
+      g.ring(x, y, r, r, 230, 86, 79, alpha)
+    else
+      Float r = 0.1 + k * 0.4
+      Int i = team * 3 + 2
+      g.ring(x, y, r, r, g.pr.get(i), g.pg.get(i), g.pb.get(i), alpha)
+    end
+  end
+end
+
 # The battlefield and its rules. `things` is in creation order and that order
 # is the simulation's: separation and targeting walk it, so it must not depend
 # on how the frame is drawn. The painter's sort therefore works on `order`, a
@@ -373,14 +560,23 @@ end
 class World from Object
   List things
   List order
+  List fx
   Entity playerBase = null
   Entity enemyBase = null
+  Floats gold = null
+  Random rng = null
   Int cols = 14
   Int rows = 10
   # 0 running, 1 the player won, 2 the player lost.
   Int over = 0
 
   def Void setup:
+    gold = new Floats(2)
+    gold.set(0, 90.0)
+    gold.set(1, 90.0)
+    rng = new Random()
+    rng.seed(7)
+
     things.append(new Unit(0, 0, 3.2, 3.0))
     things.append(new Unit(0, 1, 3.4, 4.5))
     things.append(new Unit(0, 2, 3.2, 6.0))
@@ -398,6 +594,103 @@ class World from Object
 
   def Void rebuildOrder:
     order = things.slice(0, things.len())
+  end
+
+  # 0 up to 1, from the seeded generator, so a scripted run spawns in the
+  # same places every time.
+  def Float chance:
+    return rng.next() / 32767.0
+  end
+
+  # A unit of `kind` for `team`, beside its base, if the team has the 30 gold.
+  # 1 if one was made.
+  def Int trySpawn(Int team, Int kind):
+    Int made = 0
+    if over == 0 and gold.get(team) >= 30.0:
+      gold.set(team, gold.get(team) - 30.0)
+      Entity b = playerBase
+      Float dir = 1.0
+      if team == 1:
+        b = enemyBase
+        dir = 0.0 - 1.0
+      end
+      Float sx = b.x + dir * (0.9 + chance() * 0.4)
+      Float sy = b.y + (chance() - 0.5) * 1.6
+      things.append(new Unit(team, kind, sx, sy))
+      rebuildOrder()
+      made = 1
+    end
+    return made
+  end
+
+  def Void effect(Float x, Float y, Float life, Int kind, Int team):
+    fx.append(new Effect(x, y, life, kind, team))
+  end
+
+  def Int selectedCount:
+    Int n = 0
+    for item in things:
+      Entity e = item
+      if e.isBase == 0:
+        Unit u = e
+        n = n + u.selected
+      end
+    end
+    return n
+  end
+
+  # Every living unit of the player's selected (1) or not (0).
+  def Void selectAll(Int on):
+    for item in things:
+      Entity e = item
+      if e.isBase == 0 and e.team == 0:
+        Unit u = e
+        u.selected = on
+      end
+    end
+  end
+
+  # Selected units go for `target` and nothing else until it is dead.
+  def Void orderAttack(Entity target):
+    for item in things:
+      Entity e = item
+      if e.isBase == 0:
+        Unit u = e
+        if u.selected == 1:
+          u.target = target
+          u.ordered = 0
+        end
+      end
+    end
+    effect(target.x, target.y, 0.4, 1, 0)
+  end
+
+  # Selected units walk to (wx, wy), spread on a circle so they do not all
+  # want the same spot -- radius 0.3 * sqrt(n), as in the prototype.
+  def Void orderMove(Float wx, Float wy):
+    Int n = selectedCount()
+    if n > 0:
+      Float r = 0.0
+      if n > 1:
+        r = 0.3 * Math.sqrt(n)
+      end
+      Int i = 0
+      for item in things:
+        Entity e = item
+        if e.isBase == 0:
+          Unit u = e
+          if u.selected == 1:
+            Float a = i * 2.0 * Math.pi() / n
+            u.tx = clampTo(wx + Math.cos(a) * r, 0.3, cols - 0.3)
+            u.ty = clampTo(wy + Math.sin(a) * r, 0.3, rows - 0.3)
+            u.ordered = 1
+            u.target = null
+            i = i + 1
+          end
+        end
+      end
+      effect(wx, wy, 0.5, 0, 0)
+    end
   end
 
   # 1 when a beats b: rock breaks scissors, scissors cut paper, paper covers
@@ -491,9 +784,10 @@ class World from Object
     return v
   end
 
-  # Drop the dead. A dying unit lets go of its target on the way out: two
-  # units that killed each other in one step would otherwise hold each other
-  # alive for ever, and reference counting cannot see a cycle.
+  # Drop the dead, leaving a ring where each fell. A dying unit lets go of
+  # its target on the way out: two units that killed each other in one step
+  # would otherwise hold each other alive for ever, and reference counting
+  # cannot see a cycle.
   def Void clearDead:
     Int dead = 0
     for item in things:
@@ -511,6 +805,7 @@ class World from Object
         else
           Unit gone = e
           gone.target = null
+          effect(gone.x, gone.y, 0.45, 2, gone.team)
         end
       end
       things = keep
@@ -518,8 +813,32 @@ class World from Object
     end
   end
 
+  def Void updateEffects(Float dt):
+    Int done = 0
+    for item in fx:
+      Effect f = item
+      f.t = f.t + dt
+      if f.t >= f.life:
+        done = done + 1
+      end
+    end
+    if done > 0:
+      List keep
+      for item in fx:
+        Effect f = item
+        if f.t < f.life:
+          keep.append(f)
+        end
+      end
+      fx = keep
+    end
+  end
+
   def Void update(Float dt):
     if over == 0:
+      gold.set(0, gold.get(0) + 6.0 * dt)
+      gold.set(1, gold.get(1) + 6.0 * dt)
+
       for item in things:
         Entity e = item
         e.flash = e.flash - dt
@@ -542,6 +861,7 @@ class World from Object
       end
 
       clearDead()
+      updateEffects(dt)
 
       if enemyBase.alive() == 0:
         over = 1
@@ -580,6 +900,10 @@ class World from Object
       Drawable d = item
       d.draw(g)
     end
+    for item in fx:
+      Effect f = item
+      f.draw(g)
+    end
   end
 
   # Every unit's state, one per line, in simulation order: what a second
@@ -601,7 +925,7 @@ class World from Object
     return s
   end
 
-  # One line: who is left of each kind, and the bases.
+  # One line: who is left of each kind, the bases, gold and selection.
   def String summary:
     Int p0 = 0
     Int p1 = 0
@@ -628,7 +952,411 @@ class World from Object
         end
       end
     end
-    return "player R${p0} P${p1} S${p2}  enemy R${e0} P${e1} S${e2}  bases ${playerBase.hp} ${enemyBase.hp}  over ${over}"
+    Int g = gold.get(0)
+    return "player R${p0} P${p1} S${p2}  enemy R${e0} P${e1} S${e2}  bases ${playerBase.hp} ${enemyBase.hp}  gold ${g}  selected ${selectedCount()}  over ${over}"
+  end
+
+  # Where each of the player's units is, and whether it is selected, walking
+  # somewhere, or after something: what the input tests look at.
+  def String units:
+    String s = ""
+    for item in things:
+      Entity e = item
+      if e.isBase == 0 and e.team == 0:
+        Unit u = e
+        String doing = "idle"
+        if u.ordered == 1:
+          doing = "moving"
+        elif u.target != null:
+          doing = "fighting"
+        end
+        Int ix = u.x * 100.0
+        Int iy = u.y * 100.0
+        s = s + "unit ${u.kind} at ${ix} ${iy} selected ${u.selected} ${doing}\n"
+      end
+    end
+    return s
+  end
+end
+
+# The spawn buttons along the bottom of the window. Their geometry lives here
+# so drawing them and clicking them cannot disagree.
+class Hud from Object
+  Int w
+  Int h
+  Int bw = 132
+  Int bh = 56
+  Int gap = 12
+
+  constructor(Int ww, Int hh):
+    w = ww
+    h = hh
+  end
+
+  def Int left(Int i):
+    return w / 2 - (3 * bw + 2 * gap) / 2 + i * (bw + gap)
+  end
+
+  def Int top:
+    return h - bh - 10
+  end
+
+  # Which button (0, 1, 2) is under (mx, my), or -1.
+  def Int buttonAt(Int mx, Int my):
+    Int found = 0 - 1
+    if my >= top() and my < top() + bh:
+      Int i = 0
+      while i < 3:
+        if mx >= left(i) and mx < left(i) + bw:
+          found = i
+        end
+        i = i + 1
+      end
+    end
+    return found
+  end
+
+  def Void draw(Gfx g, World world):
+    Renderer v = g.view
+    Int afford = 0
+    if world.gold.get(0) >= 30.0:
+      afford = 1
+    end
+
+    # Gold, top left, after a coin.
+    v.setColor(242, 179, 61)
+    v.fillQuad(24, 16, 34, 26, 24, 36, 14, 26)
+    v.setColor(231, 226, 214)
+    Int gold = world.gold.get(0)
+    g.number(gold, 44, 16, 4)
+
+    # How many are selected, top right, after a ring like the one they wear.
+    Int n = world.selectedCount()
+    v.setColor(231, 226, 214)
+    Int width = g.number(n, 0, 0 - 100, 4)
+    Int nx = w - 20 - width
+    g.number(n, nx, 16, 4)
+    Float rx = nx - 22.0
+    Float ry = 26.0
+    Int i = 0
+    Float px = rx + 12.0
+    Float py = ry
+    while i <= 32:
+      Float t = i * Math.pi() / 16.0
+      Float qx = rx + 12.0 * Math.cos(t)
+      Float qy = ry + 6.0 * Math.sin(t)
+      v.line(px, py, qx, qy)
+      px = qx
+      py = qy
+      i = i + 1
+    end
+
+    Int b = 0
+    while b < 3:
+      Int bx = left(b)
+      Int by = top()
+      v.setColor(44, 53, 64)
+      v.fillRect(bx, by, bw, bh)
+      v.setColor(58, 68, 82)
+      v.line(bx, by, bx + bw - 1, by)
+      v.line(bx + bw - 1, by, bx + bw - 1, by + bh - 1)
+      v.line(bx + bw - 1, by + bh - 1, bx, by + bh - 1)
+      v.line(bx, by + bh - 1, bx, by)
+
+      # The key that does the same, small, in the corner.
+      v.setColor(120, 128, 140)
+      g.digit(b + 1, bx + 6, by + 6, 2)
+
+      # The figure itself, drawn by the same code as the board's, standing on
+      # the tile point under this spot of screen.
+      Float ix = bx + 42.0
+      Float iy = by + bh - 12.0
+      g.dim = 1 - afford
+      g.figure(b, g.cam.worldX(ix, iy), g.cam.worldY(ix, iy), 0)
+      g.dim = 0
+
+      if afford == 1:
+        v.setColor(242, 179, 61)
+      else
+        v.setColor(110, 116, 126)
+      end
+      g.number(30, bx + bw - 44, by + 18, 4)
+      b = b + 1
+    end
+  end
+end
+
+# Mouse and keyboard, turned into the prototype's gestures: a press and
+# release in one place is a tap, one that moved more than 10 pixels is a box.
+class Controls from Object
+  World world = null
+  Camera cam = null
+  Hud hud = null
+  Int dragging = 0
+  Int boxing = 0
+  Int x0
+  Int y0
+  Int x
+  Int y
+
+  constructor(World w, Camera c, Hud h):
+    world = w
+    cam = c
+    hud = h
+  end
+
+  # Handles every event waiting. 0 once the player has asked to quit.
+  def Int pump(Sdl sdl):
+    Int keep = 1
+    while sdl.poll() == 1:
+      if sdl.isQuit() == 1:
+        keep = 0
+      elif sdl.isKeyDown() == 1:
+        if key(sdl.key()) == 0:
+          keep = 0
+        end
+      elif sdl.isMouseDown() == 1:
+        press(sdl.mouseX(), sdl.mouseY())
+      elif sdl.isMouseMove() == 1:
+        move(sdl.mouseX(), sdl.mouseY())
+      elif sdl.isMouseUp() == 1:
+        lift(sdl.mouseX(), sdl.mouseY(), sdl.mouseButton())
+      end
+    end
+    return keep
+  end
+
+  # 1 2 3 spawn, A selects all, Esc clears, Q quits.
+  def Int key(Int k):
+    Int keep = 1
+    if k >= 49 and k <= 51:
+      world.trySpawn(0, k - 49)
+    elif k == 97:
+      world.selectAll(1)
+    elif k == 27:
+      world.selectAll(0)
+    elif k == 113:
+      keep = 0
+    end
+    return keep
+  end
+
+  def Void press(Int mx, Int my):
+    Int b = hud.buttonAt(mx, my)
+    if b >= 0:
+      world.trySpawn(0, b)
+    else
+      dragging = 1
+      boxing = 0
+      x0 = mx
+      y0 = my
+      x = mx
+      y = my
+    end
+  end
+
+  def Void move(Int mx, Int my):
+    if dragging == 1:
+      x = mx
+      y = my
+      Float dx = x - x0
+      Float dy = y - y0
+      if Math.sqrt(dx * dx + dy * dy) > 10.0:
+        boxing = 1
+      end
+    end
+  end
+
+  def Void lift(Int mx, Int my, Int button):
+    if dragging == 1:
+      x = mx
+      y = my
+      if boxing == 1:
+        boxSelect()
+      else
+        Int force = 0
+        if button == 3:
+          force = 1
+        end
+        tap(mx, my, force)
+      end
+      dragging = 0
+      boxing = 0
+    end
+  end
+
+  # The entity nearest a screen point, measured to its body rather than its
+  # feet, within 0.4 of a tile's width; null if nothing is that close.
+  def Entity pickAt(Int sx, Int sy):
+    Entity best = null
+    Float bd = cam.tw * 0.4
+    for item in world.things:
+      Entity e = item
+      Float z = 0.3
+      if e.isBase == 1:
+        z = 0.6
+      end
+      Float dx = sx - cam.screenX(e.x, e.y)
+      Float dy = sy - cam.screenY(e.x, e.y, z)
+      Float d = Math.sqrt(dx * dx + dy * dy)
+      if d < bd:
+        bd = d
+        best = e
+      end
+    end
+    return best
+  end
+
+  # A tap on one of your units toggles it. Otherwise, with something
+  # selected, a tap on an enemy attacks it and a tap anywhere else sends the
+  # selection there. `force` is the right button: always an order.
+  def Void tap(Int sx, Int sy, Int force):
+    if world.over == 0:
+      Entity e = pickAt(sx, sy)
+      if e != null and e.team == 0 and e.isBase == 0 and force == 0:
+        Unit u = e
+        u.selected = 1 - u.selected
+      elif world.selectedCount() > 0:
+        if e != null and e.team == 1:
+          world.orderAttack(e)
+        else
+          world.orderMove(cam.worldX(sx, sy), cam.worldY(sx, sy))
+        end
+      end
+    end
+  end
+
+  # The box replaces the selection with the player's units whose bodies are
+  # inside it.
+  def Void boxSelect:
+    Int lx = x0
+    Int hx = x
+    if hx < lx:
+      lx = x
+      hx = x0
+    end
+    Int ly = y0
+    Int hy = y
+    if hy < ly:
+      ly = y
+      hy = y0
+    end
+    for item in world.things:
+      Entity e = item
+      if e.isBase == 0 and e.team == 0:
+        Unit u = e
+        Float sx = cam.screenX(u.x, u.y)
+        Float sy = cam.screenY(u.x, u.y, 0.3)
+        u.selected = 0
+        if sx >= lx and sx <= hx and sy >= ly and sy <= hy:
+          u.selected = 1
+        end
+      end
+    end
+  end
+
+  def Void draw(Gfx g):
+    if dragging == 1 and boxing == 1:
+      g.view.setColor(255, 255, 255)
+      g.dashed(x0, y0, x, y0)
+      g.dashed(x, y0, x, y)
+      g.dashed(x, y, x0, y)
+      g.dashed(x0, y, x0, y0)
+    end
+  end
+end
+
+# One line of a play file: at step `frame`, do `cmd` with up to six numbers.
+class Cue from Object
+  Int frame
+  String cmd = ""
+  Floats a = null
+end
+
+# Scripted input for --play. Each line is "<step> <command> <numbers>":
+#
+#   12 key 49              a key, by SDL keycode (49 is "1")
+#   20 click 3.2 3.0 0.3   left click on tile point (x, y) at height z
+#   20 rclick 9 4 0.3      the same with the right button
+#   30 drag 1 2 5 7        press on tile point (1, 2), move to (5, 7), release
+#   40 tap 480 600         left click at a screen pixel, for the buttons
+#
+# World points are turned into screen pixels with the game's own camera and
+# pushed into SDL's queue as real events, so a script goes through the very
+# code a mouse does. Lines starting "#" are comments.
+class Script from Object
+  List cues
+  Int next = 0
+
+  def Void load(String path):
+    File f
+    if f.open(path, "r") == 0:
+      throw "cannot open ${path}"
+    end
+    while f.eof() == 0:
+      String line = f.readLine().trim()
+      if line.len() > 0:
+        List words = line.split(" ")
+        String first = words.get(0)
+        if first != "#":
+          Cue c = new Cue()
+          c.frame = first.toInt()
+          c.cmd = words.get(1)
+          c.a = new Floats(6)
+          Int i = 2
+          while i < words.len() and i < 8:
+            String w = words.get(i)
+            c.a.set(i - 2, w.toFloat())
+            i = i + 1
+          end
+          cues.append(c)
+        end
+      end
+    end
+    f.close()
+  end
+
+  # Queues everything due by this step.
+  def Void push(Int frame, Sdl sdl, Camera cam):
+    Int more = 1
+    while more == 1 and next < cues.len():
+      Cue c = cues.get(next)
+      if c.frame <= frame:
+        send(c, sdl, cam)
+        next = next + 1
+      else
+        more = 0
+      end
+    end
+  end
+
+  def Void send(Cue c, Sdl sdl, Camera cam):
+    Floats a = c.a
+    if c.cmd == "key":
+      sdl.pushKey(a.get(0))
+    elif c.cmd == "click" or c.cmd == "rclick":
+      Int button = 1
+      if c.cmd == "rclick":
+        button = 3
+      end
+      Float sx = cam.screenX(a.get(0), a.get(1))
+      Float sy = cam.screenY(a.get(0), a.get(1), a.get(2))
+      sdl.pushMouse(0, sx, sy, button)
+      sdl.pushMouse(1, sx, sy, button)
+    elif c.cmd == "drag":
+      Float sx0 = cam.screenX(a.get(0), a.get(1))
+      Float sy0 = cam.screenY(a.get(0), a.get(1), 0.0)
+      Float sx1 = cam.screenX(a.get(2), a.get(3))
+      Float sy1 = cam.screenY(a.get(2), a.get(3), 0.0)
+      sdl.pushMouse(0, sx0, sy0, 1)
+      sdl.pushMouse(2, sx1, sy1, 1)
+      sdl.pushMouse(1, sx1, sy1, 1)
+    elif c.cmd == "tap":
+      sdl.pushMouse(0, a.get(0), a.get(1), 1)
+      sdl.pushMouse(1, a.get(0), a.get(1), 1)
+    else
+      throw "unknown command '${c.cmd}' in play file"
+    end
   end
 end
 
@@ -645,13 +1373,13 @@ class Main from IO
     Gfx gfx = new Gfx(view, cam)
     World world = new World()
     world.setup()
+    Hud hud = new Hud(windowW, windowH)
+    Controls controls = new Controls(world, cam, hud)
 
-    # `--frames N` runs N fixed steps before the first frame is drawn, and
-    # `--shot out.bmp` then draws one frame, saves it and exits. Together they
-    # make a run reproducible: the same battle every time, no window watching.
     Int frames = 0
     Int dump = 0
     String shot = ""
+    Script script = null
     Int a = 1
     while a < args():
       if arg(a) == "--frames":
@@ -662,34 +1390,41 @@ class Main from IO
         a = a + 1
       elif arg(a) == "--dump":
         dump = 1
+      elif arg(a) == "--play":
+        script = new Script()
+        script.load(arg(a + 1))
+        a = a + 1
       end
       a = a + 1
     end
+
+    # Fixed steps first: input from the script, if there is one, then the
+    # simulation, exactly as the interactive loop does it but without drawing
+    # or waiting, so a run is fast and the same every time.
     Int before = allocated()
+    Int keep = 1
     Int step = 0
-    while step < frames:
+    while step < frames and keep == 1:
+      if script != null:
+        script.push(step, sdl, cam)
+      end
+      keep = controls.pump(sdl)
       world.update(1.0 / 60.0)
       step = step + 1
     end
     if frames > 0:
-      out("after ${frames}: ${world.summary()}  objects +${allocated() - before}\n")
+      out("after ${step}: ${world.summary()}  objects +${allocated() - before}\n")
       if dump == 1:
         out(world.dump())
       end
+      if script != null:
+        out(world.units())
+      end
     end
 
-    Int running = 1
-    Int escape = 27
     Int last = sdl.ticks()
-    while running == 1:
-      while sdl.poll() == 1:
-        if sdl.isQuit() == 1:
-          running = 0
-        end
-        if sdl.isKeyDown() == 1 and sdl.key() == escape:
-          running = 0
-        end
-      end
+    while keep == 1:
+      keep = controls.pump(sdl)
 
       Int now = sdl.ticks()
       Float dt = (now - last) / 1000.0
@@ -704,9 +1439,11 @@ class Main from IO
       view.clear(35, 42, 51)
       gfx.grid()
       world.draw(gfx)
+      controls.draw(gfx)
+      hud.draw(gfx, world)
       if shot.len() > 0:
         view.saveBMP(shot)
-        running = 0
+        keep = 0
       end
       view.present()
       sdl.delay(16)

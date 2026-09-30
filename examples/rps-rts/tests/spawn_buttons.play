@@ -1,0 +1,7 @@
+# The buttons along the bottom do what the keys do. Their centres are
+# (336, 602), (480, 602) and (624, 602) in a 960 x 640 window.
+# frames 15
+# expect player R3 P2 S1
+# expect gold 31  selected 0
+1 tap 336 602
+1 tap 480 602

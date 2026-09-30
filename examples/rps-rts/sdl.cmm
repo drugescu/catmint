@@ -29,12 +29,21 @@ extern class SDL
   def Void Clear(Ptr renderer)
   def Void Present(Ptr renderer)
   def Int SaveBMP(Ptr renderer, String path)
+  def Void FillRect(Ptr renderer, Int x, Int y, Int w, Int h)
   def Void DrawLine(Ptr renderer, Int x0, Int y0, Int x1, Int y1)
   def Void FillQuad(Ptr renderer, Int x0, Int y0, Int x1, Int y1, Int x2, Int y2, Int x3, Int y3)
   def Int PollEvent()
   def Int EventIsQuit()
   def Int EventIsKeyDown()
   def Int EventKey()
+  def Int EventIsMouseDown()
+  def Int EventIsMouseUp()
+  def Int EventIsMouseMove()
+  def Int EventMouseX()
+  def Int EventMouseY()
+  def Int EventMouseButton()
+  def Int PushMouse(Int kind, Int x, Int y, Int button)
+  def Int PushKey(Int key)
   def Int Ticks()
   def Void Delay(Int ms)
   def Void DestroyRenderer(Ptr renderer)
@@ -79,6 +88,57 @@ class Sdl from Object
   def Int key:
     unsafe:
       return SDL.EventKey()
+    end
+  end
+
+  def Int isMouseDown:
+    unsafe:
+      return SDL.EventIsMouseDown()
+    end
+  end
+
+  def Int isMouseUp:
+    unsafe:
+      return SDL.EventIsMouseUp()
+    end
+  end
+
+  def Int isMouseMove:
+    unsafe:
+      return SDL.EventIsMouseMove()
+    end
+  end
+
+  def Int mouseX:
+    unsafe:
+      return SDL.EventMouseX()
+    end
+  end
+
+  def Int mouseY:
+    unsafe:
+      return SDL.EventMouseY()
+    end
+  end
+
+  # 1 left, 2 middle, 3 right.
+  def Int mouseButton:
+    unsafe:
+      return SDL.EventMouseButton()
+    end
+  end
+
+  # Queue an input event as though it had come from the system, so a script
+  # drives the same code a person does. kind: 0 press, 1 release, 2 motion.
+  def Int pushMouse(Int kind, Int x, Int y, Int button):
+    unsafe:
+      return SDL.PushMouse(kind, x, y, button)
+    end
+  end
+
+  def Int pushKey(Int key):
+    unsafe:
+      return SDL.PushKey(key)
     end
   end
 
@@ -160,6 +220,13 @@ class Renderer from Object
     end
   end
 
+  # a is opacity, 0 to 255; blending is on for every renderer.
+  def Void setColorA(Int r, Int g, Int b, Int a):
+    unsafe:
+      SDL.SetColor(handle, r, g, b, a)
+    end
+  end
+
   def Void fillQuad(Int x0, Int y0, Int x1, Int y1, Int x2, Int y2, Int x3, Int y3):
     unsafe:
       SDL.FillQuad(handle, x0, y0, x1, y1, x2, y2, x3, y3)
@@ -175,9 +242,10 @@ class Renderer from Object
     end
   end
 
+  # Exactly w x h pixels from (x, y).
   def Void fillRect(Int x, Int y, Int w, Int h):
     unsafe:
-      SDL.FillQuad(handle, x, y, x + w, y, x + w, y + h, x, y + h)
+      SDL.FillRect(handle, x, y, w, h)
     end
   end
 

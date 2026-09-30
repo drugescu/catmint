@@ -1,0 +1,5 @@
+# A selects all four of the player's units.
+# frames 5
+# expect selected 4  over
+# absent selected 0
+1 key 97

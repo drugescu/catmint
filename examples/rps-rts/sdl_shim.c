@@ -26,9 +26,13 @@ void *CreateWindow(const char *title, int w, int h) {
                            w, h, SDL_WINDOW_SHOWN);
 }
 
+/* Blending on, so a colour's alpha means something: fading effects and the
+ * translucent bar behind a health bar. Opaque drawing is unaffected. */
 void *CreateRenderer(void *window) {
-  return SDL_CreateRenderer((SDL_Window *)window, -1,
-                             SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+  SDL_Renderer *r = SDL_CreateRenderer((SDL_Window *)window, -1,
+                                       SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+  if (r) SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+  return r;
 }
 
 void SetColor(void *renderer, int r, int g, int b, int a) {
@@ -58,6 +62,17 @@ int SaveBMP(void *renderer, const char *path) {
        && SDL_SaveBMP(s, path) == 0;
   SDL_FreeSurface(s);
   return ok ? 1 : 0;
+}
+
+/* Exactly w x h pixels from (x, y). FillQuad cannot stand in for this: its
+ * scanline fill includes both edges, so a quad from x to x + w is w + 1 wide. */
+void FillRect(void *renderer, int x, int y, int w, int h) {
+  SDL_Rect r;
+  r.x = x;
+  r.y = y;
+  r.w = w;
+  r.h = h;
+  SDL_RenderFillRect((SDL_Renderer *)renderer, &r);
 }
 
 void DrawLine(void *renderer, int x0, int y0, int x1, int y1) {
@@ -113,6 +128,62 @@ int EventIsKeyDown(void) {
 
 int EventKey(void) {
   return (int)g_event.key.keysym.sym;
+}
+
+int EventIsMouseDown(void) {
+  return g_event.type == SDL_MOUSEBUTTONDOWN ? 1 : 0;
+}
+
+int EventIsMouseUp(void) {
+  return g_event.type == SDL_MOUSEBUTTONUP ? 1 : 0;
+}
+
+int EventIsMouseMove(void) {
+  return g_event.type == SDL_MOUSEMOTION ? 1 : 0;
+}
+
+/* Window coordinates of the last mouse event, whichever kind it was. */
+int EventMouseX(void) {
+  return g_event.type == SDL_MOUSEMOTION ? g_event.motion.x : g_event.button.x;
+}
+
+int EventMouseY(void) {
+  return g_event.type == SDL_MOUSEMOTION ? g_event.motion.y : g_event.button.y;
+}
+
+/* 1 left, 2 middle, 3 right. */
+int EventMouseButton(void) {
+  return (int)g_event.button.button;
+}
+
+/* Queue an event exactly as the system would deliver it, so a scripted run
+ * goes through the same PollEvent path a person clicking does. kind: 0 down,
+ * 1 up, 2 motion. 1 if it was queued. */
+int PushMouse(int kind, int x, int y, int button) {
+  SDL_Event e;
+  SDL_zero(e);
+  if (kind == 2) {
+    e.type = SDL_MOUSEMOTION;
+    e.motion.x = x;
+    e.motion.y = y;
+  } else {
+    e.type = kind == 0 ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+    e.button.x = x;
+    e.button.y = y;
+    e.button.button = (Uint8)button;
+    e.button.state = kind == 0 ? SDL_PRESSED : SDL_RELEASED;
+    e.button.clicks = 1;
+  }
+  return SDL_PushEvent(&e) == 1 ? 1 : 0;
+}
+
+int PushKey(int key) {
+  SDL_Event e;
+  SDL_zero(e);
+  e.type = SDL_KEYDOWN;
+  e.key.state = SDL_PRESSED;
+  e.key.keysym.sym = key;
+  return SDL_PushEvent(&e) == 1 ? 1 : 0;
 }
 
 /* Milliseconds since SDL started; wraps after about 24 days, which a frame

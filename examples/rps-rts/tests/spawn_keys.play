@@ -1,0 +1,9 @@
+# 1, 2 and 3 each buy a unit for 30 of the 90 starting gold, and a fourth
+# press finds too little left. Gold grows 6 a second: 15 steps is 1.5 more.
+# frames 15
+# expect player R3 P2 S2
+# expect gold 1  selected 0
+1 key 49
+1 key 50
+1 key 51
+2 key 49
