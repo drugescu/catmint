@@ -1,0 +1,6 @@
+# Clicking it again lets it go.
+# frames 5
+# expect selected 0  over
+# absent selected 1 idle
+1 click 3.2 3.0 0.3
+2 click 3.2 3.0 0.3

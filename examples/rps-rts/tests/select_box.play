@@ -1,0 +1,12 @@
+# A dragged box replaces the selection with the units whose bodies are inside
+# it. This one spans screen (339, 160) to (430, 219): it holds the rock at
+# (3.2, 3) and the paper at (3.4, 4.5), whose bodies are at (410, 176) and
+# (359, 209), and not the two further left.
+# frames 5
+# expect selected 2  over
+# expect unit 0 at 320 300 selected 1 idle
+# expect unit 1 at 340 450 selected 1 idle
+# expect unit 2 at 320 600 selected 0 idle
+# expect unit 0 at 260 520 selected 0 idle
+1 key 97
+2 drag 1.595 3.185 4.287 3.569

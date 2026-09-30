@@ -1,0 +1,6 @@
+# A selects every unit of yours; Esc lets them all go.
+# frames 5
+# expect selected 0  over
+# absent selected 1
+1 key 97
+2 key 27

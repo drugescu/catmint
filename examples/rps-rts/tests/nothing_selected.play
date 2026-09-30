@@ -1,0 +1,5 @@
+# With nothing selected a click on the ground does nothing at all.
+# frames 5
+# expect selected 0  over
+# absent moving
+1 click 6 4.5 0

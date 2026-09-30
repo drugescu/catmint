@@ -28,6 +28,6 @@ SDL_PREFIX=$(command -v brew >/dev/null 2>&1 && brew --prefix sdl2 2>/dev/null |
 "$CLANG" -O2 -c -I"$SDL_PREFIX/include" "$HERE/sdl_shim.c" -o "$HERE/sdl_shim.o"
 ar rcs "$HERE/libcmsdl.a" "$HERE/sdl_shim.o"
 
-"$ROOT/catmintc" -I "$HERE" -L "$HERE" -L "$SDL_PREFIX/lib" \
+"$ROOT/catmintc" -I "$HERE" -I "$ROOT/lib" -L "$HERE" -L "$SDL_PREFIX/lib" \
   -o "$HERE/rps" "$@" "$HERE/rps.cm"
 echo "build.sh: wrote $HERE/rps"
