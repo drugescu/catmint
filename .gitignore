@@ -116,3 +116,7 @@ fuzz/failures/
 /mem
 *.cm.ast
 *.cm.ast.ll
+
+# examples/rps-rts: the SDL shim's static lib is caught by *.a above; the
+# linked executable has no extension, so it needs its own line.
+examples/rps-rts/rps

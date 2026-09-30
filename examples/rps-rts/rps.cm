@@ -1,0 +1,129 @@
+# RPS iso-RTS -- milestone 1: prove the SDL2 FFI path end to end.
+#
+# Opens a window, clears it to a flat colour every frame, polls events, and
+# quits cleanly on window-close or Escape. Nothing here is the game yet --
+# this is the smallest program that exercises `extern class`, `unsafe`,
+# `link`, `Ptr` and `finalize` together against a real C library, which is
+# what the later milestones build on.
+#
+# SDL.* is declared once here and its C side lives in sdl_shim.c, compiled
+# and linked by build.sh -- see that file for why a shim exists at all
+# rather than binding SDL2's own headers directly.
+
+link "cmsdl"
+link "SDL2"
+
+extern class SDL
+  def Int Init()
+  def Ptr CreateWindow(String title, Int w, Int h)
+  def Ptr CreateRenderer(Ptr window)
+  def Void SetColor(Ptr renderer, Int r, Int g, Int b, Int a)
+  def Void Clear(Ptr renderer)
+  def Void Present(Ptr renderer)
+  def Int PollEvent()
+  def Int EventIsQuit()
+  def Int EventIsKeyDown()
+  def Int EventKey()
+  def Void Delay(Int ms)
+  def Void DestroyRenderer(Ptr renderer)
+  def Void DestroyWindow(Ptr window)
+  def Void Quit()
+end
+
+# The wrapper idiom (test 49/50): an unsafe core inside a safe class, so
+# nothing outside this file ever writes `unsafe`. `finalize` gives the
+# handle back when the last reference goes, whether that is end of scope or
+# end of program.
+class Renderer from Object
+  Ptr handle
+
+  constructor(Ptr window):
+    unsafe:
+      handle = SDL.CreateRenderer(window)
+    end
+    if handle == null:
+      throw "could not create renderer"
+    end
+  end
+
+  def Void clear(Int r, Int g, Int b):
+    unsafe:
+      SDL.SetColor(handle, r, g, b, 255)
+      SDL.Clear(handle)
+    end
+  end
+
+  def Void present:
+    unsafe:
+      SDL.Present(handle)
+    end
+  end
+
+  def Void finalize:
+    unsafe:
+      SDL.DestroyRenderer(handle)
+    end
+  end
+end
+
+class Window from Object
+  Ptr handle
+  Renderer renderer
+
+  constructor(String title, Int w, Int h):
+    unsafe:
+      handle = SDL.CreateWindow(title, w, h)
+    end
+    if handle == null:
+      throw "could not create window"
+    end
+    renderer = new Renderer(handle)
+  end
+
+  def Renderer view:
+    return renderer
+  end
+
+  def Void finalize:
+    unsafe:
+      SDL.DestroyWindow(handle)
+    end
+  end
+end
+
+class Main from IO
+  def main:
+    unsafe:
+      SDL.Init()
+    end
+
+    Window win = new Window("catmint RPS RTS -- milestone 1", 960, 640)
+    Renderer view = win.view()
+
+    Int running = 1
+    Int escape = 27
+    while running == 1:
+      unsafe:
+        while SDL.PollEvent() == 1:
+          if SDL.EventIsQuit() == 1:
+            running = 0
+          end
+          if SDL.EventIsKeyDown() == 1 and SDL.EventKey() == escape:
+            running = 0
+          end
+        end
+      end
+
+      view.clear(35, 42, 51)
+      view.present()
+      unsafe:
+        SDL.Delay(16)
+      end
+    end
+
+    out("closed cleanly\n")
+    unsafe:
+      SDL.Quit()
+    end
+  end
+end
