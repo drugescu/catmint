@@ -608,9 +608,68 @@ suites (`check.sh`, `play.sh`) are what say the move changed nothing.
   revisiting; it changes what existing programs must write, so not here.
 - **Full unsigned arithmetic.** Only the boundary needs it now.
 
+## Phase 6 — lockstep multiplayer for the game
+
+Real-time strategy games are networked by deterministic lockstep: the
+machines exchange only what the players do, and each runs the whole battle.
+That asks three things of a game, and this one had the hardest already -- a
+simulation that is a function of its inputs, seeded, and checked bit for bit
+against an independent port.
+
+### Commands — **done**
+
+Everything a player does to the battle is a `Command`, stamped with the step
+it takes effect on and applied before that step moves anything. Units are
+named by id and a point is in 1/1024ths of a tile, so a command is integers
+and crosses a file or a wire exactly. The interactive loop takes fixed 1/60 s
+steps from an accumulator, rather than one step as long as the frame was.
+The opponent spawns through the same `apply`; `--delay N` holds commands
+back as a network will; `--record` and `--replay` write and play them.
+
+Proved by: `check.sh` and all 17 play tests, unchanged; the output of 15 of
+those tests byte for byte what the build before produced, and of the other
+two, the move orders, within 7e-5 of a tile, which is the rounding of the
+point; and `replay.sh`, new, which records every play test and a busy minute
+of a real game, plays each back with no other input, and requires the whole
+state and the recording itself to come out the same, with and without a
+delay. Made to read the selection, or to drop restarts from a recording, it
+fails where it should. Clean under ASan and LSan, recording and replaying.
+
+### Next: one game on every machine
+
+- `Math.cos` and `Math.sin` in `World.moveTo` are the only calls in the
+  simulation that may round differently on another system: glibc's and
+  Apple's libm need not agree in the last bit, while `sqrt` and the
+  arithmetic are exact everywhere, and nothing is compiled with fast-math.
+  Replace the two with a polynomial written in catmint, and the same in
+  `replica.py`.
+- `check.sh` has never given an order. With commands it can: feed the game
+  and `replica.py` one recording.
+- A `--state` committed from one platform and compared by both CI jobs is
+  the only proof that a Mac and a Linux machine play one game.
+
+### Then: the wire
+
+- `lib/sdl2_net.cmm` from `tools/bindgen.py`, which binds SDL_net as it
+  stands: 33 functions, leaving out only `SDLNet_SetError` (variadic) and the
+  inline socket-set and byte-order helpers, each a line on top.
+- `lib/net.cmm`, the safe layer, polling `SDLNet_CheckSockets(set, 0)` once
+  a frame. No thread and no callback: a worker may not touch an object and C
+  may not call back in, so polling from the main loop is the shape
+  networking takes here -- and the shape lockstep wants anyway.
+- Lockstep over TCP: each side sends its commands for step t + delay, and a
+  step waits until the other side's have arrived; `World.state()`, hashed
+  every second, notices drift.
+- An FFI gap found on the way, twice: a `String` parameter refuses `null`,
+  where C means "the default" by it -- `SDL_OpenAudioDevice(NULL, ...)`, and
+  `SDLNet_ResolveHost(ip, NULL, port)`, which is how a server listens on
+  every address. Both have a way round; a struct parameter already accepts
+  `null`, and a string should. The error it gives, "Calling a method of a
+  void object", also says something that did not happen.
+
 ## What is left
 
-`String.chr(0)`, recorded under Phase 5. Nothing else on any of these lists. The last item -- a throw leaking what the
+`String.chr(0)`, recorded under Phase 5, and Phase 6 after its commands. Nothing else on any of these lists. The last item -- a throw leaking what the
 abandoned frame had stored -- is fixed: the pool now holds the *addresses* of
 reference-holding variables as well as objects, and releases them when a
 throw unwinds it. The ordinary path is untouched, because a slot entry is

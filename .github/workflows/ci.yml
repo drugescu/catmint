@@ -65,6 +65,23 @@ jobs:
       - name: Test
         run: ./test.sh --no-build --thorough
 
+      # The game is the one program here that drives a real C library, and
+      # its three suites are what say a change to it, or under it, changed
+      # nothing: the simulation bit for bit against an independent port, the
+      # input tests, and every game being exactly its recorded commands.
+      # SDL's dummy video driver and software renderer run it with no
+      # display; the suites' --shot is what makes each run end.
+      - name: The RTS game
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_RENDER_DRIVER: software
+        run: |
+          sudo apt-get install -y libsdl2-dev
+          examples/rps-rts/build.sh
+          examples/rps-rts/check.sh
+          examples/rps-rts/play.sh
+          examples/rps-rts/replay.sh
+
       # The shipped runtime-linux.bc has to be what runtime.c builds to.
       - name: Runtime reproduces
         run: catmint-gen/build-runtime.sh --check
