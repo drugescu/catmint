@@ -755,8 +755,12 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
     return true;
   }
 
-  CI->Init = llvm::Function::Create(FT, llvm::GlobalValue::ExternalLinkage,
-                                    InitName, &Module);
+  // Not Function::Create: an earlier class whose attribute is of this class
+  // type has already called <Class>_init through constructObject, which
+  // declared it. Create would leave that declaration undefined and name this
+  // one <Class>_init.1, so the earlier class failed to link.
+  CI->Init = llvm::cast<llvm::Function>(
+      Module.getOrInsertFunction(InitName, FT).getCallee());
 
   auto *Entry = llvm::BasicBlock::Create(Context, "entry", CI->Init);
   Builder.SetInsertPoint(Entry);
