@@ -1847,6 +1847,12 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
       InitType == strings::Int || InitType == strings::Float ||
       InitType == strings::Null || InitType == strings::Object ||
       (DeclaredType == strings::Int && lookupClass(InitType) != nullptr) ||
+      // A downcast from a class that is not Object: `Dog d = animal`. The
+      // `=` was written, so the value is wanted; coerce inserts the checked
+      // cast. Without this the initialiser was dropped and d stayed the
+      // default Dog the declaration had built, every field zero.
+      (DeclaredClass && lookupClass(InitType) != nullptr &&
+       isSubclassOf(DeclaredType, InitType)) ||
       // An interface-typed variable takes any object; whether it really does
       // what the interface asks is settled at run time.
       (DeclaredClass && DeclaredClass->IsInterface &&
