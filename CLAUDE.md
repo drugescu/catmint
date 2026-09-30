@@ -401,6 +401,17 @@ numbers. A literal too large for an `Int` is an `Int64`; arithmetic on two
 from. Boxing goes through a 64-bit `Integer`, so no width loses anything on
 the way into a container. `IO.epoch()` is an `Int64` and works past 2038.
 
+Floats come in two widths, `Float` (a double) and `Float32` (a C `float`);
+`Float64` is folded into `Float` by the parser, as `Int32` is into `Int`.
+`TypeTable::floatWidth` is the float counterpart of `integerWidth`, and the
+rules mirror the integer ones: two floats meet at the wider, an integer meets
+a float at that float, and `coerce` extends or truncates between the widths
+implicitly. **Every float literal is a double** -- `FloatConstant` stores one.
+It stored a `float` until test 59, so every literal in every program was
+rounded to seven digits before the generator saw it; printing at six digits
+hid it, and a bit-for-bit comparison with an independent port of a game
+found it. `Floats` still holds doubles.
+
 Namespaces: `using math as m` declares that module's classes as `m::Name`.
 A qualified name is joined into a single `IDENTIFIER` by the lexer, because
 letting the grammar see `IDENTIFIER :: IDENTIFIER` where a type is named is
@@ -580,8 +591,8 @@ nothing frees it, it never reaches the temporary pool. It meets `null` and
 nothing else: no conversion to or from `Int` in either direction, because a
 pointer reachable by arithmetic is one nobody can reason about.
 
-Only what has an unambiguous machine representation may cross: the integers
-and `Float` by value, `Ptr` as itself, `String` and the three arrays as the
+Only what has an unambiguous machine representation may cross: the integers,
+`Float` (as a `double`) and `Float32` (as a `float`) by value, `Ptr` as itself, `String` and the three arrays as the
 address of their contents. `marshalToC` does that last part -- all four put
 that pointer at the same offset, so one struct shape serves -- and keeps the
 null check, because handing C a null where it wants a buffer is a fault with

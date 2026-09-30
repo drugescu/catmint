@@ -62,7 +62,8 @@
 	static bool isGlobalTypeName(const std::string &name) {
 		return name == "Int" || name == "Int8" || name == "Int16" ||
 		       name == "Int32" || name == "Int64" ||
-		       name == "Float" || name == "Void" ||
+		       name == "Float" || name == "Float32" || name == "Float64" ||
+		       name == "Void" ||
 		       name == "Null" || name == "Object" || name == "String" ||
 		       name == "IO" || name == "List" || name == "Integer" ||
 		       name == "File" || name == "Math" || name == "Process" ||
@@ -76,6 +77,10 @@
 		// of the two names ever reaches the type table or the generator.
 		if (name == "Int32") {
 			return "Int";
+		}
+		// Float64 is a second spelling of Float, folded the same way.
+		if (name == "Float64") {
+			return "Float";
 		}
 		if (isGlobalTypeName(name) || name.find("::") != std::string::npos) {
 			return name;

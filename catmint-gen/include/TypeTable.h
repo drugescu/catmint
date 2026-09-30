@@ -44,6 +44,9 @@ public:
   /// \brief Width in bits of an integer type, or 0 when \p name is not one.
   ///        Int and Int32 are the same 32-bit type.
   static int integerWidth(const std::string &name);
+  /// \brief Width in bits of a floating-point type, or 0 when \p name is not
+  ///        one. Float is the 64-bit double; Float32 is a C float.
+  static int floatWidth(const std::string &name);
   Type *getVoidType() const;
   Type *getNullType() const;
   Type *getFloatType() const;

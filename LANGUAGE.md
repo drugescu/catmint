@@ -27,13 +27,15 @@ works here.
 
 ## Values and types
 
-`Int8`, `Int16`, `Int32`, `Int64` — `Int` is `Int32`. `Float` is a double.
+`Int8`, `Int16`, `Int32`, `Int64` — `Int` is `Int32`. `Float32`, `Float64` —
+`Float` is `Float64`, a double, and so is every float literal.
 `String`, `Object`, `List`, `Integer`, and the built-in classes below.
 
 ```
 Int n = 7
 Int64 big = 9000000000
 Float x = 2.5
+Float32 f = 2.5          # rounded to a C float when stored
 String s = "text"
 ```
 
@@ -42,7 +44,14 @@ truncates, as in C. Which means `Int64 x = a * b` with two `Int`s multiplies
 in 32 bits and widens afterwards, exactly as C's `long x = a * b` does. The
 compiler warns rather than changing the arithmetic; start from a 64-bit
 operand. A literal too large for an `Int` is an `Int64`.
-→ `02_arith.cm`, `26_sized_ints.cm`, `14_io_float.cm`, `54_width_warning.cm`
+
+The two floats follow the same rules: mixing them computes at the wider, an
+integer mixed with either becomes that float, and assigning across widths
+extends or rounds implicitly. So `Float32` arithmetic stays `Float32` until a
+`Float` operand joins it. `Float32` exists for C and for bulk data; `Float` is
+the default.
+→ `02_arith.cm`, `26_sized_ints.cm`, `14_io_float.cm`, `54_width_warning.cm`,
+`59_float_literals.cm`, `60_float32.cm`
 
 ## Statements
 
@@ -301,7 +310,8 @@ turned off.
 `Ptr` is an opaque machine pointer: a value, not an object, so nothing counts
 it and nothing frees it. It compares with `null` and converts to nothing.
 Only numbers, `Ptr`, `String` and the three arrays may cross; what a C
-function receives for the last two is the address of the contents.
+function receives for the last two is the address of the contents. A
+`Float32` crosses as a C `float`, a `Float` as a `double`.
 
 `link "name"` adds `-lname`, and `catmintc -l name -L dir` does the same from
 the command line.

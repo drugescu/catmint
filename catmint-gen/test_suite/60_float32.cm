@@ -1,0 +1,96 @@
+# Float32: the 32-bit float, beside Float (a double).
+#
+# It converts implicitly in both directions, as the integer widths do and as C
+# does, because the language has no cast expression for numbers. Arithmetic
+# between two Float32 stays Float32 and rounds like one; the wider of two
+# floats wins; an integer mixed with a Float32 becomes a Float32. It crosses to
+# C as a `float`, not a `double`.
+#
+# Values are printed as x * 1e12 truncated to an Int64, which shows the bits:
+# a Float prints only six digits.
+
+link "m"
+
+extern class Libc
+  def Float32 sqrtf(Float32 x)
+end
+
+class Box
+  Float32 w
+
+  constructor(Float32 v):
+    w = v
+  end
+
+  def Float32 twice:
+    return w + w
+  end
+end
+
+class Main from IO
+  def Int64 fixed(Float x):
+    Int64 r = x * 1000000000000.0
+    return r
+  end
+
+  def main:
+    # A literal is a double; a Float32 keeps only what a float can hold.
+    Float32 a = 3.2
+    Float widened = a
+    out("widen ${fixed(widened)}\n")
+
+    # 16777216 + 1 is not representable in a float: the 1 is lost.
+    Float32 big = 16777216.0
+    Float32 one = 1.0
+    Float32 s32 = big + one
+    Int n32 = s32
+    out("f32 sum ${n32}\n")
+
+    # With a Float operand the addition is done as a double.
+    Float mixed = big + 1.0
+    Int nmix = mixed
+    out("mixed ${nmix}\n")
+
+    Int i = 16777217
+    Float32 fromInt = i
+    Int back = fromInt
+    out("int round trip ${back}\n")
+
+    Float32 p = 0.1
+    Float q = 0.1
+    Int same = 0
+    if p == q:
+      same = 1
+    end
+    Float32 h1 = 0.5
+    Float h2 = 0.5
+    Int exact = 0
+    if h1 == h2:
+      exact = 1
+    end
+    out("eq ${same} exact ${exact}\n")
+
+    Box b = new Box(1.5)
+    Float t = b.twice()
+    out("box ${fixed(t)}\n")
+
+    Float32 r = 0.0
+    unsafe:
+      r = Libc.sqrtf(2.0)
+    end
+    out("sqrtf ${fixed(r)}\n")
+
+    Float32 x = 10.0
+    Float32 y = 3.0
+    Float32 z = x / y
+    out("div ${fixed(z)}\n")
+
+    Float32 h = 2.5
+    out("print ${h}\n")
+    Float32 neg = 0.0 - h
+    Int cut = neg
+    out("trunc ${cut}\n")
+
+    out("sqrt ${fixed(Math.sqrt(x - 8.0))}\n")
+  end
+end

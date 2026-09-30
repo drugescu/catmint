@@ -303,6 +303,8 @@ llvm::Type *IRGenerator::lowerType(const std::string &TypeName) {
     return llvm::Type::getVoidTy(Context);
   if (int Width = TypeTable::integerWidth(TypeName))
     return llvm::Type::getIntNTy(Context, static_cast<unsigned>(Width));
+  if (TypeName == strings::Float32)
+    return llvm::Type::getFloatTy(Context);
   if (TypeName == strings::Float)
     return llvm::Type::getDoubleTy(Context);
   if (TypeName == strings::Void)
@@ -1167,7 +1169,7 @@ llvm::Value *IRGenerator::attributeAddress(const std::string &Name,
 
 bool IRGenerator::isReferenceTypeName(const std::string &TypeName) {
   if (TypeName.empty() || TypeName == "auto" || TypeName == strings::Void ||
-      TypeName == strings::Float || TypeTable::integerWidth(TypeName))
+      TypeTable::floatWidth(TypeName) || TypeTable::integerWidth(TypeName))
     return false;
   // A Ptr is a machine pointer and nothing else -- no run-time type
   // information in front of it, so no count to touch and nothing to release.
@@ -1388,9 +1390,9 @@ llvm::Value *IRGenerator::toCondition(llvm::Value *V, const std::string &Name) {
     return Builder.CreateICmpNE(
         V, llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(Context)),
         Name);
-  if (V->getType()->isDoubleTy())
-    return Builder.CreateFCmpONE(
-        V, llvm::ConstantFP::get(llvm::Type::getDoubleTy(Context), 0.0), Name);
+  if (V->getType()->isFloatingPointTy())
+    return Builder.CreateFCmpONE(V, llvm::ConstantFP::get(V->getType(), 0.0),
+                                 Name);
   return Builder.CreateICmpNE(V, llvm::ConstantInt::get(V->getType(), 0), Name);
 }
 
@@ -1436,8 +1438,13 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
     std::string R = staticTypeOf(BO->getRHS());
     if (L == strings::String || R == strings::String)
       return strings::String; // '+' concatenates
-    if (L == strings::Float || R == strings::Float)
-      return strings::Float;
+    const int LFloat = TypeTable::floatWidth(L);
+    const int RFloat = TypeTable::floatWidth(R);
+    if (LFloat || RFloat) {
+      if (LFloat && RFloat)
+        return LFloat >= RFloat ? L : R;
+      return LFloat ? L : R;
+    }
     const int LWidth = TypeTable::integerWidth(L);
     const int RWidth = TypeTable::integerWidth(R);
     if (LWidth && RWidth)
@@ -1541,18 +1548,28 @@ llvm::Value *IRGenerator::coerce(llvm::Value *V, const std::string &From,
     V = coerce(V, From, strings::Int, Line);
     return Builder.CreateCall(Runtime.intToString(), {V}, "int.str");
   }
-  if (From == strings::Float && To == strings::String) {
+  const int FromFloat = TypeTable::floatWidth(From);
+  const int ToFloat = TypeTable::floatWidth(To);
+  if (FromFloat && To == strings::String) {
     noteAllocation();
+    // The runtime prints a double; a Float32 widens exactly.
+    if (FromFloat != 64)
+      V = Builder.CreateFPExt(V, llvm::Type::getDoubleTy(Context), "f32.wide");
     return Builder.CreateCall(Runtime.floatToString(), {V}, "float.str");
   }
-  if (FromWidth && To == strings::Float)
-    return Builder.CreateSIToFP(V, llvm::Type::getDoubleTy(Context), "int.fp");
-  if (From == strings::Float && ToWidth)
+  if (FromWidth && ToFloat)
+    return Builder.CreateSIToFP(V, lowerType(To), "int.fp");
+  if (FromFloat && ToWidth)
     return Builder.CreateFPToSI(
         V, llvm::Type::getIntNTy(Context, static_cast<unsigned>(ToWidth)),
         "fp.int");
-  const bool FromIsValue = (FromWidth != 0 || From == strings::Float);
-  const bool ToIsValue = (ToWidth != 0 || To == strings::Float);
+  // Between the two float widths, as between the integer ones: both directions
+  // are implicit, extending to widen and rounding to narrow.
+  if (FromFloat && ToFloat)
+    return FromFloat < ToFloat ? Builder.CreateFPExt(V, lowerType(To), "fp.wide")
+                               : Builder.CreateFPTrunc(V, lowerType(To), "fp.narrow");
+  const bool FromIsValue = (FromWidth != 0 || FromFloat != 0);
+  const bool ToIsValue = (ToWidth != 0 || ToFloat != 0);
 
   // An integer put where object references live is boxed into an Integer, and
   // taken back out it is unboxed, checked. This is what lets a List hold
@@ -1812,9 +1829,8 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
       Builder.CreateStore(llvm::ConstantPointerNull::get(
                               llvm::PointerType::getUnqual(Context)),
                           Slot);
-    } else if (DeclaredType == strings::Float) {
-      Builder.CreateStore(
-          llvm::ConstantFP::get(llvm::Type::getDoubleTy(Context), 0.0), Slot);
+    } else if (TypeTable::floatWidth(DeclaredType)) {
+      Builder.CreateStore(llvm::ConstantFP::get(Lowered, 0.0), Slot);
     } else {
       // The declared width, not Int's: an Int64 was being given a 32-bit
       // zero and then immediately overwritten.
@@ -1844,7 +1860,7 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
   ClassInfo *DeclaredClass = lookupClass(DeclaredType);
   const bool Assignable =
       InitType == DeclaredType || isSubclassOf(InitType, DeclaredType) ||
-      InitType == strings::Int || InitType == strings::Float ||
+      InitType == strings::Int || TypeTable::floatWidth(InitType) ||
       InitType == strings::Null || InitType == strings::Object ||
       (DeclaredType == strings::Int && lookupClass(InitType) != nullptr) ||
       // A downcast from a class that is not Object: `Dog d = animal`. The
@@ -2045,10 +2061,17 @@ llvm::Value *IRGenerator::emitBinaryOperator(BinaryOperator *BO) {
         llvm::Type::getInt32Ty(Context), "objne");
   }
 
-  const bool Floating = (LT == strings::Float || RT == strings::Float);
+  // Arithmetic and comparison happen at the wider float of the two operands,
+  // so a Float32 with a Float is done as a double, and a Float32 with an
+  // integer stays a float.
+  const int LFloat = TypeTable::floatWidth(LT);
+  const int RFloat = TypeTable::floatWidth(RT);
+  const bool Floating = (LFloat || RFloat);
   if (Floating) {
-    L = coerce(L, LT, strings::Float, BO->getLineNumber());
-    R = coerce(R, RT, strings::Float, BO->getLineNumber());
+    const std::string FloatType =
+        (LFloat && RFloat) ? (LFloat >= RFloat ? LT : RT) : (LFloat ? LT : RT);
+    L = coerce(L, LT, FloatType, BO->getLineNumber());
+    R = coerce(R, RT, FloatType, BO->getLineNumber());
     switch (Op) {
     case BK::Add: return Builder.CreateFAdd(L, R, "fadd");
     case BK::Sub: return Builder.CreateFSub(L, R, "fsub");
@@ -2143,7 +2166,7 @@ llvm::Value *IRGenerator::emitUnaryOperator(UnaryOperator *UO) {
   if (!V)
     return nullptr;
   if (UO->getOperatorKind() == UnaryOperator::Minus) {
-    if (V->getType()->isDoubleTy())
+    if (V->getType()->isFloatingPointTy())
       return Builder.CreateFNeg(V, "neg");
     return Builder.CreateNeg(V, "neg");
   }
