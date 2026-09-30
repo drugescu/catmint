@@ -1,0 +1,9 @@
+# game
+# With nobody playing, the opponent's units walk over and take the player's
+# base: after 1012 steps by the reference's count. The end screen says so:
+# "BASE LOST" is 66 font pixels at 8 x 8, 4224 pixels, and "PLAY AGAIN" 80
+# at 4 x 4, 1280, both in the text colour over the dimmed board.
+# frames 1100
+# expect over 2
+# pixels 340 240 620 280 231 226 214 4224
+# pixels 402 348 558 368 231 226 214 1280
