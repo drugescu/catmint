@@ -1860,7 +1860,10 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
   ClassInfo *DeclaredClass = lookupClass(DeclaredType);
   const bool Assignable =
       InitType == DeclaredType || isSubclassOf(InitType, DeclaredType) ||
-      InitType == strings::Int || TypeTable::floatWidth(InitType) ||
+      // Any number: coerce widens, truncates or converts between every pair
+      // of numeric types, as the language documents. Listing only Int here
+      // dropped `Int n = someInt64` and left n zero.
+      TypeTable::integerWidth(InitType) || TypeTable::floatWidth(InitType) ||
       InitType == strings::Null || InitType == strings::Object ||
       (DeclaredType == strings::Int && lookupClass(InitType) != nullptr) ||
       // A downcast from a class that is not Object: `Dog d = animal`. The
