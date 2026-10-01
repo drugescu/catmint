@@ -1,0 +1,1251 @@
+# pad: a small editor for catmint programs.
+#
+#   pad [file] [--catmintc path] [-I dir] ...
+#
+# Text is the interface. There is no menu bar, no dialog, no tab strip and
+# nothing to configure: one command palette (Ctrl P, or Cmd on a Mac) does what
+# those do -- it runs commands, opens files by a fragment of their path, finds,
+# replaces and goes to a line -- and one line at the bottom says where you are.
+# F5 saves and builds with catmintc and shows what it said in a panel; a click
+# on a line that names a place goes there.
+#
+#   Ctrl P  commands        Ctrl O  open a file      Ctrl S  save
+#   Ctrl F  find            Ctrl H  replace          Ctrl L  go to a line
+#   F3      next match      F5      build            Ctrl T  dark / light
+#   Ctrl =  bigger text     Ctrl -  smaller text     Ctrl Q  quit
+#
+# One file at a time. A tab character is drawn as ?, and a string that runs
+# over a newline is coloured on its first line only.
+#
+# Built on the library, not on this file: the text is lib/textbuffer.cmm, what
+# is done to it lib/editor.cmm, the palette lib/palette.cmm over lib/fuzzy.cmm,
+# the colours lib/theme.cmm, files lib/files.cmm. What is here is drawing and
+# turning events into those.
+#
+# Testing without a person: `--play script --frames N --shot out.bmp` feeds
+# scripted input to the same code, draws N frames, saves the last, and prints
+# the state; see examples/pad/play.sh.
+
+using sdl
+using font
+using theme
+using editor
+using highlight
+using palette
+using files
+using buildlog
+
+# One thing a script does at one frame.
+class Cue from Object
+  Int frame
+  String cmd = ""
+  List words = null
+end
+
+class Pad from IO
+  Sdl sdl = null
+  Window win = null
+  Renderer view = null
+  Font font = null
+  Theme dark = null
+  Theme light = null
+  Theme t = null
+  Editor ed = null
+  Palette pal = null
+  String path = ""
+  String message = ""
+  String catmintc = "catmintc"
+  List includes = null
+  List recents = null
+  List panel = null
+  Int panelOpen
+  Int scale = 1
+  Int scrollX
+  Int dragging
+  Int lastClick
+  Int clickedRow = 0 - 1
+  Int clickedCol = 0 - 1
+  Int width
+  Int height
+  Int caretOn = 1
+  Int lastBlink
+  Int dirty = 1
+  Int quitting
+  Int scripted
+  String armed = ""
+  String was = ""
+  String needle = ""
+  Int findOrigin
+  List commandIds = null
+  List commandNames = null
+  List commandHints = null
+
+  constructor(Sdl s, Window w, Renderer r):
+    sdl = s
+    win = w
+    view = r
+    font = new Font(r)
+    dark = Theme.dark()
+    light = Theme.light()
+    t = dark
+    ed = new Editor()
+    pal = new Palette()
+    includes = new List()
+    recents = new List()
+    panel = new List()
+    commandIds = new List()
+    commandNames = new List()
+    commandHints = new List()
+    width = w.width()
+    height = w.height()
+    command("save", "Save", "Ctrl S")
+    command("open", "Open file", "Ctrl O")
+    command("find", "Find", "Ctrl F")
+    command("findnext", "Find next", "F3")
+    command("findprev", "Find previous", "Shift F3")
+    command("replace", "Replace", "Ctrl H")
+    command("line", "Go to line", "Ctrl L")
+    command("build", "Build", "F5")
+    command("theme", "Toggle dark and light", "Ctrl T")
+    command("bigger", "Bigger text", "Ctrl =")
+    command("smaller", "Smaller text", "Ctrl -")
+    command("undo", "Undo", "Ctrl Z")
+    command("redo", "Redo", "Ctrl Shift Z")
+    command("all", "Select all", "Ctrl A")
+    command("cut", "Cut", "Ctrl X")
+    command("copy", "Copy", "Ctrl C")
+    command("paste", "Paste", "Ctrl V")
+    command("quit", "Quit", "Ctrl Q")
+  end
+
+  def Void command(String id, String name, String hint):
+    commandIds.append(id)
+    commandNames.append(name)
+    commandHints.append(hint)
+  end
+
+  # ---- measures ---------------------------------------------------------------
+
+  def Int cell:
+    return 8 * scale
+  end
+
+  # A line is 1.4 times the height of a glyph.
+  def Int rowHeight:
+    return 16 * scale * 7 / 5
+  end
+
+  def Int inset:
+    return (rowHeight() - 16 * scale) / 2
+  end
+
+  def Int digits:
+    Int n = ed.buf.lines()
+    Int d = 3
+    while n >= 1000:
+      n = n / 10
+      d = d + 1
+    end
+    return d
+  end
+
+  # Two cells of margin, the line number, two cells more.
+  def Int textLeft:
+    return (4 + digits()) * cell()
+  end
+
+  def Int panelHeight:
+    if panelOpen == 1:
+      return 8 * rowHeight() + 1
+    end
+    return 0
+  end
+
+  def Int viewHeight:
+    return height - rowHeight() - panelHeight()
+  end
+
+  def Int viewRows:
+    Int rows = viewHeight() / rowHeight()
+    if rows < 1:
+      rows = 1
+    end
+    return rows
+  end
+
+  def Int visibleCols:
+    Int cols = (width - textLeft()) / cell()
+    if cols < 4:
+      cols = 4
+    end
+    return cols
+  end
+
+  # Scroll just far enough that the cursor can be seen.
+  def Void reveal:
+    ed.reveal(viewRows())
+    Int c = ed.column(ed.cursor)
+    Int cols = visibleCols() - 2
+    if c < scrollX:
+      scrollX = c
+    elif c >= scrollX + cols:
+      scrollX = c - cols + 1
+    end
+    dirty = 1
+  end
+
+  def Void wake:
+    caretOn = 1
+    lastBlink = sdl.ticks()
+    dirty = 1
+  end
+
+  # ---- drawing ----------------------------------------------------------------
+
+  def Void color(Int c):
+    view.setColor(Theme.red(c), Theme.green(c), Theme.blue(c))
+  end
+
+  def Void ink(String s, Int x, Int y, Int c):
+    font.draw(s, x, y + inset(), scale, Theme.red(c), Theme.green(c), Theme.blue(c))
+  end
+
+  def Void hairline(Int x, Int y, Int w, Int c):
+    color(c)
+    view.fillRect(x, y, w, 1)
+  end
+
+  # One line of code, a run at a time, each in the colour of what it is.
+  def Void drawCode(String text, Int x, Int y):
+    Bytes kinds = Highlight.kinds(text)
+    Int n = text.len()
+    Int i = 0
+    Int cells = 0
+    while i < n:
+      Int kind = kinds.get(i)
+      Int j = i
+      while j < n and kinds.get(j) == kind:
+        j = j + 1
+      end
+      String run = text.substr(i, j)
+      Int w = Font.cells(run)
+      Int px = x + cells * cell()
+      if px < width:
+        ink(run, px, y, Highlight.colour(t, kind))
+      end
+      cells = cells + w
+      i = j
+    end
+  end
+
+  def Void drawText:
+    Int rows = viewRows()
+    Int left = textLeft()
+    Int cursorRow = ed.buf.lineOf(ed.cursor)
+    Int a = ed.selStart()
+    Int b = ed.selEnd()
+    Int i = 0
+    while i < rows:
+      Int row = ed.top + i
+      if row < ed.buf.lines():
+        Int y = i * rowHeight()
+        if row == cursorRow:
+          color(t.line)
+          view.fillRect(0, y, width, rowHeight())
+        end
+        # The selection on this row, and the newline if it goes on past it.
+        Int ls = ed.buf.lineStart(row)
+        Int le = ed.textEnd(row)
+        if b > ls and a <= le and a != b:
+          Int from0 = a
+          if from0 < ls:
+            from0 = ls
+          end
+          Int to0 = b
+          if to0 > le:
+            to0 = le
+          end
+          Int startCol = ed.column(from0)
+          Int cols = ed.column(to0) - startCol
+          if b > le:
+            cols = cols + 1
+          end
+          color(t.selection)
+          view.fillRect(left + (startCol - scrollX) * cell(), y, cols * cell(), rowHeight())
+        end
+        String number = "${row + 1}"
+        Int numberColor = t.dim
+        if row == cursorRow:
+          numberColor = t.text
+        end
+        ink(number, (2 + digits() - number.len()) * cell(), y, numberColor)
+        view.clip(left, y, width - left, rowHeight())
+        drawCode(ed.buf.lineText(row), left - scrollX * cell(), y)
+        view.unclip()
+      end
+      i = i + 1
+    end
+    if caretOn == 1 and pal.isOpen() == 0 and cursorRow >= ed.top and cursorRow < ed.top + rows:
+      color(t.accent)
+      view.fillRect(left + (ed.column(ed.cursor) - scrollX) * cell(), (cursorRow - ed.top) * rowHeight(), 2 * scale, rowHeight())
+    end
+  end
+
+  def Void drawPanel:
+    Int top = viewHeight()
+    color(t.panel)
+    view.fillRect(0, top, width, panelHeight())
+    hairline(0, top, width, t.dim)
+    Int i = 0
+    while i < 8 and i < panel.len():
+      String line = panel.get(i)
+      Int c = t.text
+      if BuildLog.line(line) > 0:
+        c = t.error
+      end
+      view.clip(0, top + 1, width, panelHeight() - 1)
+      ink(line, cell(), top + 1 + i * rowHeight(), c)
+      view.unclip()
+      i = i + 1
+    end
+  end
+
+  def Void drawStatus:
+    Int y = height - rowHeight()
+    color(t.panel)
+    view.fillRect(0, y, width, rowHeight())
+    String name = path
+    if name.len() == 0:
+      name = "(no name)"
+    end
+    if ed.buf.modified() == 1:
+      name = name + " *"
+    end
+    ink(name, cell(), y, t.text)
+    if message.len() > 0:
+      ink(message, cell() * (3 + Font.cells(name)), y, t.dim)
+    end
+    String where = "${ed.line()}:${ed.col()}"
+    ink(where, width - cell() * (1 + where.len()), y, t.dim)
+  end
+
+  def Int paletteWidth:
+    Int w = 64 * cell()
+    if w > width - 2 * cell():
+      w = width - 2 * cell()
+    end
+    return w
+  end
+
+  def Void drawPalette:
+    Int w = paletteWidth()
+    Int x = (width - w) / 2
+    Int y = rowHeight()
+    Int shown = pal.results.len()
+    Int h = (1 + shown) * rowHeight() + 1
+    color(t.panel)
+    view.fillRect(x, y, w, h)
+    hairline(x, y, w, t.dim)
+    hairline(x, y + h, w, t.dim)
+    color(t.dim)
+    view.fillRect(x, y, 1, h)
+    view.fillRect(x + w, y, 1, h + 1)
+    ink(pal.prompt, x + cell(), y, t.dim)
+    Int fieldX = x + cell() * (2 + Font.cells(pal.prompt))
+    view.clip(x, y, w, rowHeight())
+    ink(pal.field.buf.text(), fieldX, y, t.text)
+    if caretOn == 1:
+      color(t.accent)
+      view.fillRect(fieldX + pal.field.column(pal.field.cursor) * cell(), y + 1, 2 * scale, rowHeight() - 2)
+    end
+    view.unclip()
+    hairline(x, y + rowHeight() - 1, w, t.accent)
+    Int i = 0
+    while i < shown:
+      Int index = pal.results.get(i)
+      Int ry = y + (1 + i) * rowHeight()
+      if i == pal.selected:
+        color(t.selection)
+        view.fillRect(x + 1, ry, w - 1, rowHeight())
+      end
+      String name = pal.names.get(index)
+      view.clip(x, ry, w, rowHeight())
+      ink(name, x + cell(), ry, t.text)
+      if index < pal.hints.len():
+        String hint = pal.hints.get(index)
+        ink(hint, x + w - cell() * (1 + Font.cells(hint)), ry, t.dim)
+      end
+      view.unclip()
+      i = i + 1
+    end
+  end
+
+  def Void draw:
+    color(t.ground)
+    view.fillRect(0, 0, width, height)
+    drawText()
+    if panelOpen == 1:
+      drawPanel()
+    end
+    drawStatus()
+    if pal.isOpen() == 1:
+      drawPalette()
+    end
+    view.present()
+    dirty = 0
+  end
+
+  # ---- files ------------------------------------------------------------------------
+
+  def Void remember(String p):
+    List kept = new List()
+    kept.append(p)
+    Int i = 0
+    while i < recents.len():
+      String r = recents.get(i)
+      if r != p:
+        kept.append(r)
+      end
+      i = i + 1
+    end
+    recents = kept
+  end
+
+  def Void openPath(String p):
+    String text = Files.read(p, 64 * 1024 * 1024)
+    if text == null:
+      if File.exists(p) == 1:
+        message = "cannot read ${p}: a directory, or over 64 MB"
+      else
+        ed.load("")
+        path = p
+        message = "new file"
+        scrollX = 0
+        remember(p)
+      end
+    else
+      ed.load(text)
+      path = p
+      scrollX = 0
+      remember(p)
+    end
+    win.title("pad - ${path}")
+    reveal()
+  end
+
+  def Void save:
+    if path.len() == 0:
+      pal.open(Palette.saveMode(), "save as", new List(), new List())
+    else
+      if Files.save(path, ed.buf.text()) == 1:
+        ed.buf.markSaved()
+        message = "saved"
+      else
+        message = "could not save ${path}"
+      end
+    end
+  end
+
+  # With unsaved changes, the first attempt says so and the same action again
+  # goes ahead. 1 if it may.
+  def Int mayDiscard(String action):
+    if ed.buf.modified() == 0 or was.equals(action):
+      return 1
+    end
+    message = "unsaved changes - Ctrl S saves, or do that again to discard them"
+    armed = action
+    return 0
+  end
+
+  # A path with its extension taken off: where a build is put.
+  def String builtName:
+    if path.len() > 3 and path.substr(path.len() - 3, path.len()).equals(".cm"):
+      return path.substr(0, path.len() - 3)
+    end
+    return path + ".out"
+  end
+
+  def Void build:
+    if path.len() == 0:
+      message = "save the file first"
+      save()
+    else
+      if ed.buf.modified() == 1:
+        save()
+      end
+      message = "building..."
+      draw()
+      List args = new List()
+      args.append(catmintc)
+      Int i = 0
+      while i < includes.len():
+        args.append("-I")
+        args.append(includes.get(i))
+        i = i + 1
+      end
+      args.append(path)
+      args.append("-o")
+      args.append(builtName())
+      panel = new List()
+      Process p = new Process()
+      p.openArgs(args)
+      while p.eof() == 0:
+        String line = p.readLine()
+        if panel.len() < 200:
+          panel.append(line)
+        end
+      end
+      Int code = p.finish()
+      if code == 127:
+        panel.append("could not run ${catmintc}")
+      end
+      if code == 0:
+        message = "built ${builtName()}"
+      else
+        message = "build failed"
+      end
+      panelOpen = 1
+      dirty = 1
+    end
+  end
+
+  # ---- the palette ---------------------------------------------------------------------
+
+  def Void openCommands:
+    pal.open(Palette.commandMode(), "command", commandNames, commandHints)
+  end
+
+  def Void openFiles:
+    List found = Files.list(".", 6, 5000)
+    List names = new List()
+    Int i = 0
+    while i < recents.len():
+      names.append(recents.get(i))
+      i = i + 1
+    end
+    i = 0
+    while i < found.len():
+      String name = found.get(i)
+      Int seen = 0
+      Int j = 0
+      while j < recents.len():
+        String r = recents.get(j)
+        if r.equals(name):
+          seen = 1
+        end
+        j = j + 1
+      end
+      if seen == 0:
+        names.append(name)
+      end
+      i = i + 1
+    end
+    pal.open(Palette.fileMode(), "open", names, new List())
+  end
+
+  def Void openFind:
+    findOrigin = ed.selStart()
+    pal.open(Palette.findMode(), "find", new List(), new List())
+    if needle.len() > 0:
+      pal.typeText(needle)
+      pal.field.selectAll()
+    end
+  end
+
+  def Void afterFieldEdit:
+    if pal.mode == Palette.findMode():
+      needle = pal.field.buf.text()
+      ed.moveTo(findOrigin, 0)
+      if needle.len() > 0:
+        if ed.find(needle, 1) == 0:
+          message = "not found"
+        end
+      end
+      reveal()
+    end
+  end
+
+  def Void findAgain(Int forward):
+    if needle.len() == 0:
+      openFind()
+    else
+      if ed.find(needle, forward) == 0:
+        message = "not found"
+      end
+      reveal()
+    end
+  end
+
+  def Void acceptPalette(Int shift, Int shortcut):
+    Int m = pal.mode
+    if m == Palette.commandMode():
+      Int which = pal.chosen()
+      pal.close()
+      if which >= 0:
+        String id = commandIds.get(which)
+        runCommand(id)
+      end
+    elif m == Palette.fileMode():
+      Int which = pal.chosen()
+      String typed = pal.field.buf.text()
+      String target = typed
+      if which >= 0:
+        String named = pal.names.get(which)
+        target = named
+      end
+      if target.len() > 0 and mayDiscard("open") == 1:
+        pal.close()
+        openPath(target)
+      end
+    elif m == Palette.findMode():
+      needle = pal.field.buf.text()
+      if shift == 1:
+        findAgain(0)
+      else
+        findAgain(1)
+      end
+    elif m == Palette.replaceMode():
+      String replacement = pal.field.buf.text()
+      if shortcut == 1:
+        message = "replaced ${ed.replaceAll(needle, replacement)}"
+        pal.close()
+      else
+        if ed.replaceNext(needle, replacement) == 0:
+          message = "no more"
+        end
+      end
+      reveal()
+    elif m == Palette.lineMode():
+      Int n = pal.number()
+      pal.close()
+      if n >= 1:
+        ed.goToLine(n)
+        reveal()
+      end
+    elif m == Palette.saveMode():
+      String target = pal.field.buf.text()
+      pal.close()
+      if target.len() > 0:
+        path = target
+        win.title("pad - ${path}")
+        save()
+      end
+    end
+  end
+
+  def Void runCommand(String id):
+    if id == "save":
+      save()
+    elif id == "open":
+      openFiles()
+    elif id == "find":
+      openFind()
+    elif id == "findnext":
+      findAgain(1)
+    elif id == "findprev":
+      findAgain(0)
+    elif id == "replace":
+      if needle.len() == 0:
+        message = "find something first (Ctrl F)"
+      else
+        pal.open(Palette.replaceMode(), "replace ${needle} with", new List(), new List())
+      end
+    elif id == "line":
+      pal.open(Palette.lineMode(), "go to line", new List(), new List())
+    elif id == "build":
+      build()
+    elif id == "theme":
+      if t == dark:
+        t = light
+      else
+        t = dark
+      end
+    elif id == "bigger":
+      if scale < 4:
+        scale = scale + 1
+      end
+      reveal()
+    elif id == "smaller":
+      if scale > 1:
+        scale = scale - 1
+      end
+      reveal()
+    elif id == "undo":
+      ed.undo()
+      reveal()
+    elif id == "redo":
+      ed.redo()
+      reveal()
+    elif id == "all":
+      ed.selectAll()
+    elif id == "cut":
+      String s = ed.cut()
+      if s.len() > 0:
+        sdl.setClipboard(s)
+      end
+      reveal()
+    elif id == "copy":
+      if ed.hasSelection() == 1:
+        sdl.setClipboard(ed.copyText())
+      end
+    elif id == "paste":
+      ed.paste(sdl.clipboard())
+      reveal()
+    elif id == "quit":
+      if mayDiscard("quit") == 1:
+        quitting = 1
+      end
+    end
+  end
+
+  # ---- input --------------------------------------------------------------------------------
+
+  def Void onText(String s):
+    if pal.isOpen() == 1:
+      pal.typeText(s)
+      afterFieldEdit()
+    else
+      ed.typeText(s)
+      reveal()
+    end
+    wake()
+  end
+
+  def Void paletteKey(Int key, Int shift, Int shortcut):
+    if key == SDL2C.SDLK_ESCAPE():
+      pal.close()
+    elif key == SDL2C.SDLK_RETURN():
+      acceptPalette(shift, shortcut)
+    elif key == SDL2C.SDLK_UP():
+      pal.up()
+    elif key == SDL2C.SDLK_DOWN():
+      pal.down()
+    elif key == SDL2C.SDLK_BACKSPACE():
+      pal.backspace()
+      afterFieldEdit()
+    elif key == SDL2C.SDLK_DELETE():
+      pal.deleteForward()
+      afterFieldEdit()
+    elif key == SDL2C.SDLK_LEFT():
+      pal.field.left(shift)
+    elif key == SDL2C.SDLK_RIGHT():
+      pal.field.right(shift)
+    elif key == SDL2C.SDLK_HOME():
+      pal.field.docStart(shift)
+    elif key == SDL2C.SDLK_END():
+      pal.field.docEnd(shift)
+    elif key == SDL2C.SDLK_F3() and pal.mode == Palette.findMode():
+      needle = pal.field.buf.text()
+      if shift == 1:
+        findAgain(0)
+      else
+        findAgain(1)
+      end
+    elif shortcut == 1 and key == 97:
+      pal.field.selectAll()
+    elif shortcut == 1 and key == 118:
+      pal.typeText(sdl.clipboard())
+      afterFieldEdit()
+    end
+  end
+
+  def Void editorKey(Int key, Int shift, Int shortcut, Int alt):
+    if shortcut == 1:
+      if key == 112:
+        openCommands()
+      elif key == 111:
+        runCommand("open")
+      elif key == 115:
+        save()
+      elif key == 102:
+        runCommand("find")
+      elif key == 104:
+        runCommand("replace")
+      elif key == 108:
+        runCommand("line")
+      elif key == 116:
+        runCommand("theme")
+      elif key == 61 or key == 43:
+        runCommand("bigger")
+      elif key == 45:
+        runCommand("smaller")
+      elif key == 113:
+        runCommand("quit")
+      elif key == 97:
+        runCommand("all")
+      elif key == 99:
+        runCommand("copy")
+      elif key == 120:
+        runCommand("cut")
+      elif key == 118:
+        runCommand("paste")
+      elif key == 122 and shift == 1:
+        runCommand("redo")
+      elif key == 122:
+        runCommand("undo")
+      elif key == 121:
+        runCommand("redo")
+      elif key == SDL2C.SDLK_LEFT():
+        ed.wordLeft(shift)
+        reveal()
+      elif key == SDL2C.SDLK_RIGHT():
+        ed.wordRight(shift)
+        reveal()
+      elif key == SDL2C.SDLK_HOME():
+        ed.docStart(shift)
+        reveal()
+      elif key == SDL2C.SDLK_END():
+        ed.docEnd(shift)
+        reveal()
+      end
+    elif key == SDL2C.SDLK_ESCAPE():
+      if panelOpen == 1:
+        panelOpen = 0
+        reveal()
+      end
+    elif key == SDL2C.SDLK_F5():
+      build()
+    elif key == SDL2C.SDLK_F3():
+      findAgain(1 - shift)
+    elif key == SDL2C.SDLK_LEFT():
+      ed.left(shift)
+      reveal()
+    elif key == SDL2C.SDLK_RIGHT():
+      ed.right(shift)
+      reveal()
+    elif key == SDL2C.SDLK_UP():
+      ed.up(shift)
+      reveal()
+    elif key == SDL2C.SDLK_DOWN():
+      ed.down(shift)
+      reveal()
+    elif key == SDL2C.SDLK_HOME():
+      ed.home(shift)
+      reveal()
+    elif key == SDL2C.SDLK_END():
+      ed.endOfLine(shift)
+      reveal()
+    elif key == SDL2C.SDLK_PAGEUP():
+      ed.vertical(0 - viewRows(), shift)
+      reveal()
+    elif key == SDL2C.SDLK_PAGEDOWN():
+      ed.vertical(viewRows(), shift)
+      reveal()
+    elif key == SDL2C.SDLK_RETURN():
+      ed.newline()
+      reveal()
+    elif key == SDL2C.SDLK_BACKSPACE():
+      ed.backspace()
+      reveal()
+    elif key == SDL2C.SDLK_DELETE():
+      ed.deleteForward()
+      reveal()
+    elif key == SDL2C.SDLK_TAB():
+      if shift == 1:
+        ed.untab()
+      else
+        ed.tab()
+      end
+      reveal()
+    end
+  end
+
+  def Void onKey(Int key, Int shift, Int shortcut, Int alt):
+    was = armed
+    armed = ""
+    message = ""
+    if pal.isOpen() == 1:
+      paletteKey(key, shift, shortcut)
+    else
+      editorKey(key, shift, shortcut, alt)
+    end
+    wake()
+  end
+
+  # The line and column of the text under a pixel.
+  def Int rowAt(Int y):
+    return ed.top + y / rowHeight()
+  end
+
+  def Int colAt(Int x):
+    Int c = (x - textLeft() + scrollX * cell() + cell() / 2) / cell()
+    if x < textLeft():
+      c = 0 - 1
+    end
+    if c < 0:
+      c = 0
+    end
+    return c
+  end
+
+  def Void onMouseDown(Int x, Int y):
+    wake()
+    message = ""
+    if pal.isOpen() == 1:
+      Int w = paletteWidth()
+      Int left = (width - w) / 2
+      Int row = y / rowHeight() - 2
+      if x >= left and x < left + w and row >= 0 and row < pal.results.len():
+        pal.selected = row
+        acceptPalette(0, 0)
+      elif y >= rowHeight() * (2 + pal.results.len()) or x < left or x >= left + w:
+        pal.close()
+      end
+    elif panelOpen == 1 and y >= viewHeight() + 1 and y < height - rowHeight():
+      Int i = (y - viewHeight() - 1) / rowHeight()
+      if i < panel.len():
+        jumpTo(panel.get(i))
+      end
+    elif y < viewHeight():
+      Int row = rowAt(y)
+      Int col = colAt(x)
+      Int now = sdl.ticks()
+      if row == clickedRow and col == clickedCol and now - lastClick < 400:
+        ed.placeAt(row, col, 0)
+        ed.selectWord(ed.cursor)
+        clickedRow = 0 - 1
+      else
+        ed.placeAt(row, col, 0)
+        clickedRow = row
+        clickedCol = col
+        lastClick = now
+        dragging = 1
+      end
+      reveal()
+    end
+  end
+
+  def Void onMouseMove(Int x, Int y):
+    if dragging == 1:
+      ed.placeAt(rowAt(y), colAt(x), 1)
+      reveal()
+    end
+  end
+
+  # Go to the place a line of compiler output names.
+  def Void jumpTo(String line):
+    Int n = BuildLog.line(line)
+    if n < 1:
+      message = "that line names no place"
+    else
+      String file = BuildLog.file(line)
+      String mine = path
+      Int slash = 0 - 1
+      Int i = 0
+      while i < mine.len():
+        if mine.at(i) == 47:
+          slash = i
+        end
+        i = i + 1
+      end
+      mine = mine.substr(slash + 1, mine.len())
+      if file.len() > 0 and file.equals(mine) == 0 and file.equals(path) == 0:
+        message = "that is in ${file}"
+      else
+        ed.goToLine(n)
+        Int c = BuildLog.column(line)
+        if c > 1:
+          ed.placeAt(n - 1, c - 1, 0)
+        end
+        reveal()
+      end
+    end
+  end
+
+  def Void handle:
+    if sdl.isQuit() == 1:
+      was = armed
+      armed = ""
+      runCommand("quit")
+    elif sdl.isResize() == 1:
+      width = win.width()
+      height = win.height()
+      reveal()
+    elif sdl.isKeyDown() == 1:
+      onKey(sdl.key(), sdl.shift(), sdl.shortcut(), sdl.alt())
+    elif sdl.isText() == 1:
+      onText(sdl.text())
+    elif sdl.isMouseDown() == 1:
+      if sdl.mouseButton() == 1:
+        onMouseDown(sdl.mouseX(), sdl.mouseY())
+      end
+    elif sdl.isMouseUp() == 1:
+      dragging = 0
+    elif sdl.isMouseMove() == 1:
+      onMouseMove(sdl.mouseX(), sdl.mouseY())
+    elif sdl.isWheel() == 1:
+      ed.scrollBy(0 - sdl.wheel() * 3)
+      dirty = 1
+    end
+  end
+
+  # ---- the loop -------------------------------------------------------------------------------
+
+  # Wait for something to happen: an event, or the caret's next change.
+  # Nothing is drawn, and no time is used, while nothing does.
+  def Void run:
+    sdl.startText()
+    lastBlink = sdl.ticks()
+    draw()
+    while quitting == 0:
+      Int now = sdl.ticks()
+      Int wait = 500 - (now - lastBlink)
+      if wait < 1:
+        wait = 1
+      end
+      Int got = sdl.wait(wait)
+      while got == 1 and quitting == 0:
+        handle()
+        got = sdl.poll()
+      end
+      now = sdl.ticks()
+      if now - lastBlink >= 500:
+        lastBlink = now
+        if caretOn == 1:
+          caretOn = 0
+        else
+          caretOn = 1
+        end
+        dirty = 1
+      end
+      if dirty == 1:
+        draw()
+      end
+    end
+  end
+
+  # ---- scripted ----------------------------------------------------------------------------------
+
+  def Int keyCode(String name):
+    if name == "enter":
+      return SDL2C.SDLK_RETURN()
+    elif name == "esc":
+      return SDL2C.SDLK_ESCAPE()
+    elif name == "tab":
+      return SDL2C.SDLK_TAB()
+    elif name == "backspace":
+      return SDL2C.SDLK_BACKSPACE()
+    elif name == "delete":
+      return SDL2C.SDLK_DELETE()
+    elif name == "left":
+      return SDL2C.SDLK_LEFT()
+    elif name == "right":
+      return SDL2C.SDLK_RIGHT()
+    elif name == "up":
+      return SDL2C.SDLK_UP()
+    elif name == "down":
+      return SDL2C.SDLK_DOWN()
+    elif name == "home":
+      return SDL2C.SDLK_HOME()
+    elif name == "end":
+      return SDL2C.SDLK_END()
+    elif name == "pageup":
+      return SDL2C.SDLK_PAGEUP()
+    elif name == "pagedown":
+      return SDL2C.SDLK_PAGEDOWN()
+    elif name == "f3":
+      return SDL2C.SDLK_F3()
+    elif name == "f5":
+      return SDL2C.SDLK_F5()
+    elif name.len() == 1:
+      return name.at(0)
+    end
+    throw "unknown key '${name}' in the script"
+  end
+
+  def Int number(Cue c, Int index):
+    String w = c.words.get(index)
+    return w.toInt()
+  end
+
+  # Everything after the first n words, as one string.
+  def String rest(Cue c, Int n):
+    String s = ""
+    Int i = n
+    while i < c.words.len():
+      if i > n:
+        s = s + " "
+      end
+      String w = c.words.get(i)
+      s = s + w
+      i = i + 1
+    end
+    return s
+  end
+
+  def Void send(Cue c):
+    if c.cmd == "key":
+      String name = c.words.get(0)
+      Int mods = 0
+      Int i = 1
+      while i < c.words.len():
+        String m = c.words.get(i)
+        if m == "shift":
+          mods = mods | SDL2C.KMOD_LSHIFT()
+        elif m == "ctrl":
+          mods = mods | SDL2C.KMOD_LCTRL()
+        elif m == "alt":
+          mods = mods | SDL2C.KMOD_LALT()
+        end
+        i = i + 1
+      end
+      sdl.pushKeyWith(keyCode(name), mods)
+    elif c.cmd == "text":
+      # Not an SDL event (see lib/sdl.cmm): what came before is handled first,
+      # so the order the script wrote is the order things happen in.
+      while sdl.poll() == 1:
+        handle()
+      end
+      onText(rest(c, 0))
+    elif c.cmd == "click":
+      sdl.pushMouse(0, number(c, 0), number(c, 1), 1)
+      sdl.pushMouse(1, number(c, 0), number(c, 1), 1)
+    elif c.cmd == "drag":
+      sdl.pushMouse(0, number(c, 0), number(c, 1), 1)
+      sdl.pushMouse(2, number(c, 2), number(c, 3), 1)
+      sdl.pushMouse(1, number(c, 2), number(c, 3), 1)
+    elif c.cmd == "wheel":
+      sdl.pushWheel(number(c, 0))
+    elif c.cmd == "clip":
+      sdl.setClipboard(rest(c, 0))
+    else
+      throw "unknown command '${c.cmd}' in the script"
+    end
+  end
+
+  def List readScript(String file):
+    List cues = new List()
+    File f = new File()
+    if f.open(file, "r") == 0:
+      throw "cannot open ${file}"
+    end
+    while f.eof() == 0:
+      String line = f.readLine().trim()
+      if line.len() > 0 and line.at(0) != 35:
+        List words = line.split(" ")
+        Cue c = new Cue()
+        String first = words.get(0)
+        c.frame = first.toInt()
+        c.cmd = words.get(1)
+        c.words = new List()
+        Int i = 2
+        while i < words.len():
+          c.words.append(words.get(i))
+          i = i + 1
+        end
+        cues.append(c)
+      end
+    end
+    f.close()
+    return cues
+  end
+
+  # Run a script: each frame pushes what is due, handles every event, draws.
+  def Void play(String file, Int frames, String shot):
+    scripted = 1
+    List cues = readScript(file)
+    Int next = 0
+    Int frame = 0
+    sdl.startText()
+    while frame < frames and quitting == 0:
+      while next < cues.len():
+        Cue c = cues.get(next)
+        if c.frame <= frame:
+          send(c)
+          next = next + 1
+        else
+          break
+        end
+      end
+      while sdl.poll() == 1:
+        handle()
+      end
+      draw()
+      frame = frame + 1
+    end
+    if shot.len() > 0:
+      view.saveBMP(shot)
+    end
+    report()
+  end
+
+  # Backslashes and newlines written out, so a state line is one line. (A string
+  # cannot end in an escaped backslash in this lexer, hence chr(92).)
+  def String escaped(String s):
+    String bs = String.chr(92)
+    return s.replace(bs, bs + bs).replace("\n", bs + "n")
+  end
+
+  # What a script's test can ask about.
+  def Void report:
+    out("file ${path}\n")
+    out("text ${escaped(ed.buf.text())}\n")
+    out("cursor ${ed.line()} ${ed.col()}\n")
+    out("selection ${escaped(ed.selected())}\n")
+    out("modified ${ed.buf.modified()}\n")
+    out("message ${message}\n")
+    out("palette ${pal.mode} ${pal.field.buf.text()}\n")
+    String first = "-"
+    if pal.chosen() >= 0:
+      String named = pal.names.get(pal.chosen())
+      first = named
+    end
+    out("results ${pal.results.len()} first ${first}\n")
+    out("panel ${panelOpen} ${panel.len()}\n")
+    out("top ${ed.top} scrollx ${scrollX}\n")
+    out("scale ${scale}\n")
+    out("quit ${quitting}\n")
+    if t == dark:
+      out("theme dark\n")
+    else
+      out("theme light\n")
+    end
+  end
+end
+
+class Main from IO
+  def main:
+    Sdl sdl = new Sdl()
+    Window win = new Window(sdl, "pad", 960, 640)
+    win.resizable()
+    Renderer view = new Renderer(win)
+    Pad pad = new Pad(sdl, win, view)
+    String script = ""
+    String shot = ""
+    Int frames = 1
+    String first = ""
+    Int i = 1
+    while i < args():
+      String a = arg(i)
+      if a == "--catmintc":
+        i = i + 1
+        pad.catmintc = arg(i)
+      elif a == "-I":
+        i = i + 1
+        pad.includes.append(arg(i))
+      elif a == "--play":
+        i = i + 1
+        script = arg(i)
+      elif a == "--frames":
+        i = i + 1
+        String n = arg(i)
+        frames = n.toInt()
+      elif a == "--shot":
+        i = i + 1
+        shot = arg(i)
+      else
+        first = a
+      end
+      i = i + 1
+    end
+    if first.len() > 0:
+      pad.openPath(first)
+      pad.message = ""
+    end
+    if script.len() > 0:
+      pad.play(script, frames, shot)
+    else
+      pad.run()
+    end
+  end
+end

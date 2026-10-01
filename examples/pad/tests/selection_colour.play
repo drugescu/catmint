@@ -1,0 +1,11 @@
+# A selection is drawn behind the text in (58, 72, 100). Selecting all of
+# "ab" and "cd" covers "ab" and the newline after it on the first row, three
+# cells, x = 56 to 80, and "cd" on the second, two cells. Beyond x = 80 on the
+# first row there is none of it.
+# files t.cm=ab\ncd
+# open t.cm
+# frames 3
+# pixels 80 0 960 22 58 72 100 none
+# pixels 56 0 80 22 58 72 100 some
+# pixels 56 22 960 44 58 72 100 some
+1 key a ctrl

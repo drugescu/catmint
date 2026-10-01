@@ -17,7 +17,7 @@
 # few, and selects the best of those. Anything that changes the text goes back
 # to selecting the best, because what was selected may be gone.
 #
-# Modes with no list (find, replace, go to line) are opened with empty lists:
+# Modes with no list (find, replace, go to line, save as) are opened with empty lists:
 # the field is all there is.
 
 using editor
@@ -53,6 +53,11 @@ class Palette from Object
 
   static def Int lineMode:
     return 5
+  end
+
+  # Asking where to save: the field is a path, and there is no list.
+  static def Int saveMode:
+    return 6
   end
 
   constructor():

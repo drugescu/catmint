@@ -1,0 +1,13 @@
+# Find "-", Esc, Ctrl H, "+", Ctrl+Enter: every "-" becomes "+" in one step.
+# files t.txt=a-b-c-d
+# open t.txt
+# frames 10
+# expect text a+b+c+d
+# expect message replaced 3
+# expect palette 0
+1 key f ctrl
+2 text -
+3 key esc
+4 key h ctrl
+5 text +
+6 key enter ctrl

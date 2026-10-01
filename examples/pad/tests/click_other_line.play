@@ -1,0 +1,9 @@
+# A click on a line that names no place does nothing but say so.
+# files bad.cm=class Main from IO\n  def main:\n    Int x = \n  end\nend\n
+# open bad.cm
+# args --catmintc @ROOT@/catmintc
+# frames 6
+# expect cursor 1 1
+# expect message that line names no place
+1 key f5
+2 click 100 450

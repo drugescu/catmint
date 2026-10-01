@@ -1,0 +1,14 @@
+# The palette is a box 64 cells (512 pixels) wide, centred: x = 224 to 736, from
+# y = 22. Its first row is the field, underlined all the way across in the
+# accent colour (232, 176, 74) -- the only 512 pixels of it in that row. Below
+# are the commands, the first selected in (58, 72, 100), each with the key
+# that does the same thing in the dim colour at the right.
+# frames 3
+# pixels 224 43 736 44 232 176 74 512
+# pixels 224 44 736 66 58 72 100 some
+# pixels 224 66 736 88 58 72 100 none
+# pixels 224 44 736 66 223 225 230 some
+# pixels 680 44 736 66 137 147 160 some
+# pixels 224 22 225 221 137 147 160 some
+# pixels 0 22 224 600 35 40 48 none
+1 key p ctrl

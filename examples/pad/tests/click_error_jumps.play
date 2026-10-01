@@ -1,0 +1,9 @@
+# A click on the compiler's line that names a place goes there: line 4, column 3.
+# files bad.cm=class Main from IO\n  def main:\n    Int x = \n  end\nend\n
+# open bad.cm
+# args --catmintc @ROOT@/catmintc
+# frames 6
+# expect cursor 4 3
+# expect panel 1 2
+1 key f5
+2 click 100 470

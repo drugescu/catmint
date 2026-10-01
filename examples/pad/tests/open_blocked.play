@@ -1,0 +1,11 @@
+# Opening another file with unsaved changes is refused the first time, with the
+# palette still open and the reason in the status line; Enter again discards.
+# files a.txt=first
+# frames 8
+# expect palette 2 a
+# expect message unsaved changes
+# absent file a.txt
+1 text x
+2 key o ctrl
+3 text a
+4 key enter

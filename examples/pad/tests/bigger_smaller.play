@@ -1,0 +1,6 @@
+# Ctrl = twice makes text three times the size, Ctrl - once takes one off.
+# frames 6
+# expect scale 2
+1 key = ctrl
+2 key = ctrl
+3 key - ctrl

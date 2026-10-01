@@ -1,0 +1,9 @@
+# The line the cursor is on has a band the full width of the window, in the
+# window's line colour (37, 42, 51); the right-hand part of it, clear of any
+# text, is 260 x 22 pixels of it, and the line below has none.
+# files t.cm=one\ntwo
+# open t.cm
+# frames 2
+# pixels 700 0 960 22 37 42 51 5720
+# pixels 700 22 960 44 37 42 51 none
+1 key home

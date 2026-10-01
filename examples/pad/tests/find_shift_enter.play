@@ -1,0 +1,11 @@
+# In the find box, shift+Enter goes to the previous match. From the first of
+# three it goes round to the last, columns 21 to 23, and the box stays open.
+# files t.txt=one two one two one two
+# open t.txt
+# frames 6
+# expect selection two
+# expect cursor 1 24
+# expect palette 3 two
+1 key f ctrl
+2 text two
+3 key enter shift

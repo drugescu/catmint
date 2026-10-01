@@ -1,0 +1,6 @@
+# Down moves the selection bar to the second row.
+# frames 4
+# pixels 224 44 736 66 58 72 100 none
+# pixels 224 66 736 88 58 72 100 some
+1 key p ctrl
+2 key down

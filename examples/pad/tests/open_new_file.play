@@ -1,0 +1,10 @@
+# A path that matches nothing is a new file: Enter opens an empty buffer under
+# that name, and nothing is written until it is saved.
+# files other.txt=x
+# frames 8
+# expect file newfile.txt
+# expect message new file
+# expect modified 0
+1 key o ctrl
+2 text newfile.txt
+3 key enter

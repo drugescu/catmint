@@ -1,0 +1,13 @@
+# At twice the size a cell is 16 pixels wide and a row 44 high, so the text
+# begins at x = 7 * 16 = 112 and "def" is in the keyword colour from there, and
+# not where it was at x = 56 to 112, now the gutter. The status line, a row
+# high, is at y = 640 - 44 = 596.
+# files s.cm=def f:
+# open s.cm
+# frames 3
+# expect scale 2
+# pixels 112 0 960 44 204 168 239 some
+# pixels 56 0 112 44 204 168 239 none
+# pixels 0 596 960 640 35 40 48 some
+# pixels 0 574 960 596 35 40 48 none
+1 key = ctrl

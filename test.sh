@@ -135,24 +135,38 @@ fi
 # SDL, headless: the video, renderer and audio drivers that need no screen or
 # sound card. The library's own test runs always; the game's two suites (its
 # simulation against an independent port, and scripted input with pixel
-# checks) run with --thorough. Without SDL2 installed this says so.
-printf "\n${BOLD}SDL and the game${NC}\n"
+# checks) and the editor's (scripted input with state and pixel checks, and a
+# measure of the CPU an idle one uses) run with --thorough. Without SDL2
+# installed this says so.
+printf "\n${BOLD}SDL, the game and the editor${NC}\n"
 if sdl_out=$("$ROOT/tools/sdl_test/run.sh" 2>&1); then
   printf "  %s\n" "$sdl_out"
   case "$sdl_out" in
     skipped*) ;;
     *)
       if [ -z "$THOROUGH" ]; then
-        printf "  game: skipped (./test.sh --thorough runs it)\n"
-      elif ( cd "$ROOT/examples/rps-rts" &&
+        printf "  game and editor: skipped (./test.sh --thorough runs them)\n"
+      else
+        if ( cd "$ROOT/examples/rps-rts" &&
              export SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software SDL_AUDIODRIVER=dummy &&
              ./build.sh && ./check.sh && ./play.sh ) > "$ROOT/.game.log" 2>&1; then
-        printf "  %s\n" "$(grep 'simulation matches' "$ROOT/.game.log")"
-        printf "  %s\n" "$(grep 'play tests passed' "$ROOT/.game.log")"
-      else
-        printf "  ${RED}game failed${NC} - see .game.log\n"
-        tail -6 "$ROOT/.game.log" | sed 's/^/  /'
-        failed=1
+          printf "  %s\n" "$(grep 'simulation matches' "$ROOT/.game.log")"
+          printf "  %s\n" "$(grep 'play tests passed' "$ROOT/.game.log")"
+        else
+          printf "  ${RED}game failed${NC} - see .game.log\n"
+          tail -6 "$ROOT/.game.log" | sed 's/^/  /'
+          failed=1
+        fi
+        if ( cd "$ROOT/examples/pad" &&
+             export SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software SDL_AUDIODRIVER=dummy &&
+             ./build.sh && ./play.sh && python3 idle.py ) > "$ROOT/.pad.log" 2>&1; then
+          printf "  %s\n" "$(grep 'play tests passed' "$ROOT/.pad.log")"
+          printf "  %s\n" "$(grep 'idle pad' "$ROOT/.pad.log")"
+        else
+          printf "  ${RED}editor failed${NC} - see .pad.log\n"
+          tail -6 "$ROOT/.pad.log" | sed 's/^/  /'
+          failed=1
+        fi
       fi
       ;;
   esac

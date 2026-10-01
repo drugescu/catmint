@@ -1,0 +1,15 @@
+# The same, but Enter replaces the selected one and moves to the next, which is
+# then selected.
+# files t.txt=a-b-c-d
+# open t.txt
+# frames 10
+# expect text a+b-c-d
+# expect selection -
+# expect cursor 1 5
+# expect palette 4 +
+1 key f ctrl
+2 text -
+3 key esc
+4 key h ctrl
+5 text +
+6 key enter

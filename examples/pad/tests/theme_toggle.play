@@ -1,0 +1,11 @@
+# Ctrl P, "dark": the first match is "Toggle dark and light". Enter runs it and
+# the palette closes. The ground changes from the dark theme's (30, 34, 41) to
+# the light theme's (250, 248, 243); a region with no text in it is all ground.
+# frames 8
+# expect theme light
+# expect palette 0
+# pixels 400 200 500 300 250 248 243 10000
+# pixels 400 200 500 300 30 34 41 none
+1 key p ctrl
+2 text dark
+3 key enter

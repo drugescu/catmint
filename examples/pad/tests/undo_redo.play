@@ -1,0 +1,8 @@
+# Typed letters are one step: undo takes both away, redo brings both back.
+# frames 8
+# expect text ab
+# expect cursor 1 3
+1 text a
+2 text b
+3 key z ctrl
+4 key z ctrl shift

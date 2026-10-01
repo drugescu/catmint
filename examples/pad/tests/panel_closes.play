@@ -1,0 +1,8 @@
+# Esc closes the panel; what it held is still there for a later look.
+# files bad.cm=class Main from IO\n  def main:\n    Int x = \n  end\nend\n
+# open bad.cm
+# args --catmintc @ROOT@/catmintc
+# frames 6
+# expect panel 0 2
+1 key f5
+2 key esc

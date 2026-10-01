@@ -1,0 +1,8 @@
+# Any other key between the two cancels the warning: the second Ctrl Q is a
+# first one again.
+# frames 8
+# expect quit 0
+1 text x
+2 key q ctrl
+3 key left
+4 key q ctrl

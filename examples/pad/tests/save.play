@@ -1,0 +1,11 @@
+# Open a file, go to the end, type, Ctrl S. The file on disk has the new text,
+# the buffer is no longer modified.
+# files notes.txt=one\n
+# open notes.txt
+# frames 8
+# file notes.txt=one\ntwo
+# expect modified 0
+# expect message saved
+1 key end ctrl
+2 text two
+3 key s ctrl

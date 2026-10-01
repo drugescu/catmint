@@ -1,0 +1,12 @@
+# A line break after a colon indents two spaces, and the next keeps that
+# indent. Shift+Tab takes two spaces off the line the cursor is on, and the
+# cursor goes with the text it was after: column 4 on "  y" becomes 2 on "y".
+# frames 10
+# expect text def f:\n  x = 1\ny
+# expect cursor 3 2
+1 text def f:
+2 key enter
+3 text x = 1
+4 key enter
+5 text y
+6 key tab shift

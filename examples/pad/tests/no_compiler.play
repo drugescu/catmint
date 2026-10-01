@@ -1,0 +1,8 @@
+# A compiler that is not there is said so in the panel, not a crash.
+# files t.cm=x
+# open t.cm
+# args --catmintc /nonexistent/catmintc
+# frames 4
+# expect message build failed
+# expect panel 1 1
+1 key f5

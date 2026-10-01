@@ -1,0 +1,7 @@
+# Esc closes the palette and does nothing else.
+# frames 5
+# expect palette 0
+# expect text a
+1 text a
+2 key p ctrl
+3 key esc

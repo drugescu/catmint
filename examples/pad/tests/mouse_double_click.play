@@ -1,0 +1,7 @@
+# Two clicks in one place select the word: "world" is columns 6 to 10.
+# files t.txt=hello world\nsecond line\n
+# open t.txt
+# frames 6
+# expect selection world
+1 click 114 10
+2 click 114 10

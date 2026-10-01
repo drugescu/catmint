@@ -1,0 +1,13 @@
+# Typing, a line break, the cursor keys and extending a selection.
+# "ab", Enter, "cd" leaves the cursor at line 2 column 3. Left puts it between
+# c and d; shift+Left takes the c into a selection, with the cursor before it.
+# frames 8
+# expect text ab\ncd
+# expect cursor 2 1
+# expect selection c
+# expect modified 1
+1 text ab
+2 key enter
+3 text cd
+4 key left
+5 key left shift
