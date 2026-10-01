@@ -12,8 +12,14 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 
-SDL_PREFIX=$(command -v brew >/dev/null 2>&1 && brew --prefix sdl2 2>/dev/null || echo /opt/homebrew)
-[ -d "$SDL_PREFIX/lib" ] || SDL_PREFIX=/opt/homebrew
+# Homebrew keeps SDL2 off the linker's default path; a Linux package manager
+# does not, and there nothing extra is needed.
+LIBS=""
+if command -v brew >/dev/null 2>&1; then
+  SDL_PREFIX=$(brew --prefix sdl2 2>/dev/null || true)
+  [ -n "$SDL_PREFIX" ] && [ -d "$SDL_PREFIX/lib" ] && LIBS="-L $SDL_PREFIX/lib"
+fi
 
-"$ROOT/catmintc" -I "$ROOT/lib" -L "$SDL_PREFIX/lib" -o "$HERE/rps" "$@" "$HERE/rps.cm"
+# shellcheck disable=SC2086
+"$ROOT/catmintc" -I "$ROOT/lib" $LIBS -o "$HERE/rps" "$@" "$HERE/rps.cm"
 echo "build.sh: wrote $HERE/rps"
