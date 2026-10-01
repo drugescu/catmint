@@ -2460,6 +2460,17 @@ static int on_main_thread(void) {
   return gMainThreadKnown && pthread_equal(pthread_self(), gMainThread);
 }
 
+/* Stop the program, having written what it had printed. abort() does not
+ * flush stdio on glibc (it stopped in 2.27; macOS's does), so a program whose
+ * output goes to a file or a pipe -- fully buffered -- lost everything it had
+ * printed when a guard stopped it. exit() flushes; abort() is used here
+ * because the guards run where nothing may be run after them. */
+static CATMINT_NORETURN void abort_flushed(void) {
+  fflush(stdout);
+  fflush(stderr);
+  abort();
+}
+
 static void require_main_thread(const char *what) {
   if (!on_main_thread()) {
     /* Not __cm_runtimeError: that would throw into the main thread's handler
@@ -2467,7 +2478,7 @@ static void require_main_thread(const char *what) {
     fprintf(stderr,
             "Runtime error : %s may only be used on the program's main thread.\n",
             what);
-    abort();
+    abort_flushed();
   }
 }
 
@@ -2593,7 +2604,7 @@ int __cm_callbackEnter(void) {
           "  C called catmint from a thread of its own; the reference counts "
           "are not atomic, so it was stopped.\n",
           stderr);
-    abort();
+    abort_flushed();
   }
   return gPendingError != NULL;
 }
