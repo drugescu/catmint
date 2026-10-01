@@ -1,59 +1,134 @@
-<img src="Product.png"
-     alt="The catmint language logo"
-     style="float: left; margin-right: 10px;"
-     width="50%" height="50%"/>
-# The Catmint Language
-![Size](https://img.shields.io/github/languages/code-size/drugescu/catmint?color=green&label=Code%20Size)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-green.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![CircleCI](https://circleci.com/gh/drugescu/catmint.svg?style=shield)](https://circleci.com/gh/drugescu/catmint)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/catmint-logo-dark.svg">
+    <img src="assets/catmint-logo.svg" alt="Catmint" width="560">
+  </picture>
+</p>
 
-Starter repo for a low-level/high-level hybrid programming language targetting LLVM, seeking ease-of-use and brevity of Python with C-level control over memory and STL-completeness.
+<h3 align="center">Write it like a script. Run it like C.</h3>
 
-As primary starting point, the LLVM class from UPB in Bucharest and its LCPL didactic language which already fits some amount of desired features on the part of the author. The point would be to slowly replace the code base as the language gets developed and to be usable in many of the author's usecases, as explained below, while serving as a base for continued development of an open source project for anyone to particiapte in.
+<p align="center">
+  A small compiled language on LLVM: Python-sized code, native speed,<br>
+  and memory that frees itself, with no garbage collector.
+</p>
 
-Use cases: quick low level scripting (down to the bit), high-level AI and ML applications, Data Science, RAD, GUI, gaming, preferably cross-compilable x86_64 and arm64, Windows and Linux.
+<p align="center">
+  <a href="https://github.com/drugescu/catmint/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/drugescu/catmint/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-8D83CF"></a>
+  <img alt="LLVM 16+" src="https://img.shields.io/badge/LLVM-16%2B-5C2A86">
+  <img alt="Runs on Linux and macOS" src="https://img.shields.io/badge/runs%20on-Linux%20%C2%B7%20macOS-A9A0DD">
+</p>
 
-Should target no garbage collection, but an ingenous system of memory management similar to C++ smart pointers. The C++ auto feature should be taken up a notch to match the ease of use in Python but without losing too much of its speed. Explicit type declaration will be allowed, but type inference should be general enough.
+---
 
-Code should also be a lot more explanatory than c++ but concise like Python! The two requirements are seemingly at odds with each other but the author believes it possible. It's a perfect situation for developing a demo.
+```ruby
+class Cat
+  String name
+  Int lives = 3
 
-Careful design with pointers and templates should be done so as to exclude possible memory problems and compilation issues with incomprehensible messages.
-
-## Prerequisites
-* flex (used version 2.6.4)
-* bison (used version 3.3.2)
-* LLVM (currently using version 8.0)
-
-## Preliminary Lexer Sample (WI_heavy_P)
-```
-# Comment
-
-class Point from IO
-  # var region
-  int32 m = 3
-  float f = 3.4
-  String s = "Hello World!"
-
-  # inferred, auto return type
-  def show Int a, Int b:
-    a + b
+  constructor(String n):
+    name = n
   end
 
-  # empty method
-  def t:
+  def fall:                        # return type inferred: String
+    lives = lives - 1
+    if lives == 0:
+      throw "${name} is out of lives"
+    end
+    return "${name} lands on its feet"
   end
 end
 
-class Line
-  d = 20.1
-
-  # Clearly defined int32 return type
-  def int32 show_stuff Float a, Float b, Float c
-    # return word need not be explicit
-    a + (b-c) / 2
+class Main from IO
+  def main:
+    Cat tom = new Cat("Tom")
+    try:
+      for i in 10:
+        out("${tom.fall()}, ${tom.lives} left\n")
+      end
+    catch e:
+      out("oops: ${e}\n")
+    end
   end
 end
-
-# Will insert into a Main class and main method if they do not exist
-t = t - 1
 ```
+
+```console
+$ ./catmintc --run cats.cm
+catmintc: wrote ./cats
+Tom lands on its feet, 2 left
+Tom lands on its feet, 1 left
+oops: Tom is out of lives
+```
+
+## Why Catmint
+
+- ⚡ **Native speed.** Your program and its runtime are optimised together as
+  one LLVM module, and recursion and tight loops run level with C at `-O2`.
+- 🧹 **No GC, no `free`.** The compiler counts references and a pool per scope
+  sweeps up temporaries, so a loop that builds a million strings leaves nothing
+  behind. Every test runs clean under AddressSanitizer and LeakSanitizer in CI.
+- ✍️ **Script-sized code.** Classes and interfaces, `"${interpolation}"`,
+  inferred return types, `try`/`catch`, `defer`, `elif`, `break`: the everyday
+  things, without the ceremony.
+- 🔌 **C without glue.** `extern class` declares C functions and `link "SDL2"`
+  links the library. `unsafe` unlocks exactly two things, calling out and going
+  through a `Ptr`, so `grep unsafe` is the audit.
+- 🔬 **Tested like a compiler should be.** Every feature ships with a program
+  that runs, and the suite is differential-tested against C, fuzzed, and swept
+  from `-O0` to `-O3`.
+
+| [`bench/run.sh`](bench/run.sh) | Catmint | C `-O2` | C++ `-O2` |
+|---|--:|--:|--:|
+| `fib(35)`, recursive | 0.021 s | 0.021 s | 0.027 s |
+| tight integer loop | 0.037 s | 0.036 s | 0.035 s |
+| prime counting | 0.117 s | 0.112 s | 0.117 s |
+| building 2,000,000 strings | 0.214 s | 0.123 s | 0.089 s |
+
+Strings pay for being counted heap objects; [ASSESSMENT.md](ASSESSMENT.md) has
+the full picture.
+
+## Quick start
+
+```sh
+# Ubuntu 24.04
+sudo apt install build-essential flex bison cmake llvm-18-dev clang-18 zlib1g-dev libzstd-dev
+export PATH=/usr/lib/llvm-18/bin:$PATH
+
+# macOS
+brew install llvm bison flex cmake
+export PATH="$(brew --prefix llvm)/bin:$(brew --prefix bison)/bin:$PATH"
+
+./test.sh                            # build the compiler, run every test
+./catmintc --run examples/tour.cm    # compile a program and run it
+```
+
+## Built with Catmint
+
+<p align="center">
+  <img src="assets/rps-rts.png" alt="An isometric rock-paper-scissors RTS written in Catmint" width="720">
+</p>
+
+**RPS RTS** is an isometric rock-paper-scissors strategy game: about 1,600
+lines of Catmint over SDL2 bindings generated from SDL's own headers, with no C
+glue. Its simulation matches a reference implementation bit for bit. It lives
+on the [`sdl-rps-rts`](https://github.com/drugescu/catmint/tree/sdl-rps-rts/examples/rps-rts)
+branch.
+
+Closer to home: [`examples/mini.cm`](examples/mini.cm) is a 250-line
+interpreter, and [`lib/`](lib) is a standard library written in Catmint itself.
+
+## Learn more
+
+- **[LANGUAGE.md](LANGUAGE.md)**: every feature in one short entry, each backed by a test
+- **[COMPILING.md](COMPILING.md)**: building the compiler and your programs, and what surprises people
+- **[ASSESSMENT.md](ASSESSMENT.md)**: what works, what doesn't yet, and benchmarks against C and C++
+- **[ROADMAP.md](ROADMAP.md)**: what comes next, and why
+
+## Status
+
+A work in progress, and contributions are welcome. Catmint began as LCPL, the
+teaching language of the LLVM course at UPB Bucharest, and is being rewritten
+piece by piece, so some internals still carry `lcpl` names.
+
+Licensed under the [GPL-3.0](LICENSE).
