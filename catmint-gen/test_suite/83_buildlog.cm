@@ -1,0 +1,32 @@
+# Finding where the compiler says an error is, so a click on the line in the
+# editor's output panel can jump there. The compiler writes two forms of it:
+#   syntax.cm | Line : 4 | Column : 3 | Error: syntax error, unexpected KW_END
+#   [ ERROR ] : Line 284 : Signature of method 'type' in class 'Editor' ...
+# and some failures have no place at all (a module that is not found, a runtime
+# error). A line is a whole word `Line`, a colon or not, and a number from 1;
+# the file is the name before ` | Line`, when there is one.
+
+using buildlog
+
+class Main from IO
+  def show(String text):
+    out("[${BuildLog.file(text)}] line ${BuildLog.line(text)} column ${BuildLog.column(text)}\n")
+  end
+
+  def main:
+    show("syntax.cm | Line : 4 | Column : 3 | Error: syntax error, unexpected KW_END")
+    show("[ ERROR ] : Line 284 : Signature of method 'type' in class 'Editor' doesn't match")
+    show("catmintc: cannot find module nothere")
+    show("Runtime error : List index out of bounds.")
+    show("lib/x.cm | Line : 12 | Column : 1 | Error: oops")
+    show("Line 0 is not a place")
+    show("Line : 99999999999 is too long to be one")
+    show("The Underline 5 is not a Line")
+    show("OnLine 7 is a word that ends in Line")
+    show("OnLine 7, and then Line 9 is the place")
+    show("")
+    show("Line")
+    show("Line :")
+    show("Line : x")
+  end
+end

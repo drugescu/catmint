@@ -1,0 +1,79 @@
+# Where the compiler says an error is, so that a click on the line in an output
+# panel can go there.
+#
+#   using buildlog
+#   BuildLog.line("syntax.cm | Line : 4 | Column : 3 | Error: ...")     # 4
+#   BuildLog.line("[ ERROR ] : Line 284 : Signature of method ...")     # 284
+#   BuildLog.file("syntax.cm | Line : 4 | ...")                          # "syntax.cm"
+#
+# The compiler writes a place in two forms (the parser's, with a file and a
+# column, and the checker's, with only a line), and nothing at all for some
+# failures, such as a module that is not found. Anything without a place gives
+# -1. A line is the whole word `Line`, a colon or not, then a number from 1 up
+# to nine digits.
+
+class BuildLog from Object
+  static def Int isLetter(Int c):
+    if (c >= 65 and c <= 90) or (c >= 97 and c <= 122):
+      return 1
+    end
+    return 0
+  end
+
+  # The number after the first whole-word occurrence of `word`, with an
+  # optional colon between, or -1.
+  static def Int numberAfter(String text, String word):
+    Int n = text.len()
+    Int start = 0
+    while start < n:
+      Int found = text.substr(start, n).indexOf(word)
+      if found < 0:
+        return 0 - 1
+      end
+      Int at = start + found
+      Int p = at + word.len()
+      while p < n and text.at(p) == 32:
+        p = p + 1
+      end
+      if p < n and text.at(p) == 58:
+        p = p + 1
+      end
+      while p < n and text.at(p) == 32:
+        p = p + 1
+      end
+      Int value = 0
+      Int digits = 0
+      while p < n and text.at(p) >= 48 and text.at(p) <= 57 and digits < 10:
+        value = value * 10 + text.at(p) - 48
+        digits = digits + 1
+        p = p + 1
+      end
+      Int whole = 1
+      if at > 0 and BuildLog.isLetter(text.at(at - 1)) == 1:
+        whole = 0
+      end
+      if whole == 1 and digits >= 1 and digits <= 9 and value >= 1:
+        return value
+      end
+      start = at + 1
+    end
+    return 0 - 1
+  end
+
+  static def Int line(String text):
+    return BuildLog.numberAfter(text, "Line")
+  end
+
+  static def Int column(String text):
+    return BuildLog.numberAfter(text, "Column")
+  end
+
+  # The file the parser names before its ` | Line`, or "".
+  static def String file(String text):
+    Int at = text.indexOf(" | Line")
+    if at < 0:
+      return ""
+    end
+    return text.substr(0, at).trim()
+  end
+end
