@@ -1,0 +1,18 @@
+# SDL's own words in the safe layer's errors.
+#
+# Asking for a video driver that does not exist makes SDL_Init fail, and SDL
+# says which one it could not find. The error that reaches the program has to
+# carry that, not just "could not initialise".
+
+using sdl
+
+class Main from IO
+  def main:
+    try:
+      Sdl sdl = new Sdl()
+      out("initialised, and should not have\n")
+    catch e:
+      out("${e}\n")
+    end
+  end
+end

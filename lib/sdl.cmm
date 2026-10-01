@@ -41,8 +41,22 @@ class Sdl from Object
       status = SDL2.SDL_Init(SDL2C.SDL_INIT_VIDEO())
     end
     if status != 0:
-      throw "could not initialise SDL"
+      throw "could not initialise SDL: ${Sdl.error()}"
     end
+  end
+
+  # SDL's own account of the last thing that failed, which it keeps and C
+  # gives back as text: SDL_GetError is bound as a String, so the copy is made
+  # for us. Empty when nothing has.
+  static def String error:
+    String why = null
+    unsafe:
+      why = SDL2.SDL_GetError()
+    end
+    if why == null:
+      return ""
+    end
+    return why
   end
 
   # 1 while there is an event to look at; isQuit, key and the mouse
@@ -180,7 +194,7 @@ class Window from Object
                                      SDL2C.SDL_WINDOW_SHOWN())
     end
     if handle == null:
-      throw "could not create window"
+      throw "could not create window: ${Sdl.error()}"
     end
   end
 
@@ -209,7 +223,7 @@ class Renderer from Object
                                        SDL2C.SDL_RENDERER_ACCELERATED() | SDL2C.SDL_RENDERER_PRESENTVSYNC())
     end
     if handle == null:
-      throw "could not create renderer"
+      throw "could not create renderer: ${Sdl.error()}"
     end
     # Blending on, so a colour's alpha means something: fading effects and
     # the translucent bar behind a health bar. Opaque drawing is unaffected.
