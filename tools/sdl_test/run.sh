@@ -40,4 +40,5 @@ if ! SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software SDL_AUDIODRIVER=dummy \
   cat "$work/texture.out"; exit 1
 fi
 grep -q "width 72" "$work/texture.out" || { echo "Font.width is wrong:"; cat "$work/texture.out"; exit 1; }
+grep -q "cells 16" "$work/texture.out" || { echo "Font.width counts bytes, not characters:"; cat "$work/texture.out"; exit 1; }
 python3 "$HERE/check_texture.py" "$work/texture.bmp" "$ROOT/lib/fontdata.cmm"

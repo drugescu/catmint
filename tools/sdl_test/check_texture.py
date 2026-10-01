@@ -77,6 +77,8 @@ expect("outside the texture", pixel(5, 5), (0, 0, 0))
 glyph_cell("H at scale 1", 72, 50, 10, 1, (255, 255, 0))
 glyph_cell("H at scale 2", 72, 50, 40, 2, (0, 255, 255))
 glyph_cell("a character with no glyph is a ?", 63, 80, 10, 1, (255, 255, 255))
+glyph_cell("a two-byte character is one ?", 63, 100, 10, 1, (255, 255, 255))
+glyph_cell("the H after it is in the next cell", 72, 108, 10, 1, (255, 255, 255))
 
 # Clip: "HHHH" from x=40 clipped at x<60 shows 1.5 glyphs of the first three
 # cells' pixels and nothing from 60 on.

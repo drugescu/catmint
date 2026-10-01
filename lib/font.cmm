@@ -7,9 +7,9 @@
 #   Font font = new Font(renderer)
 #   font.draw("hello", 10, 10, 1, 231, 226, 214)
 #
-# Fixed pitch, so a column of text is arithmetic. Anything that is not printable
-# ASCII is drawn as `?`: this is a font for code and tools, not for prose in
-# every script.
+# Fixed pitch, so a column of text is arithmetic: one cell for each character.
+# Anything that is not printable ASCII is drawn as one `?`, however many bytes it
+# takes: this is a font for code and tools, not for prose in every script.
 
 using sdl
 using fontdata
@@ -57,13 +57,35 @@ class Font from Object
     return Font.digit(hex.at(at)) * 16 + Font.digit(hex.at(at + 1))
   end
 
+  # How many cells text takes: one for each character, so a character of
+  # several UTF-8 bytes is one, as TextBuffer.next counts them.
+  static def Int cells(String text):
+    Int n = text.len()
+    Int count = 0
+    Int i = 0
+    while i < n:
+      i = i + 1
+      while i < n and (text.at(i) & 192) == 128:
+        i = i + 1
+      end
+      count = count + 1
+    end
+    return count
+  end
+
   # Draw text with its top left at (x, y), each glyph pixel scale pixels
   # square, in colour (r, g, b). The width drawn, in pixels.
   def Int draw(String text, Int x, Int y, Int scale, Int r, Int g, Int b):
     atlas.tint(r, g, b)
+    Int n = text.len()
+    Int cell = 0
     Int i = 0
-    while i < text.len():
+    while i < n:
       Int c = text.at(i)
+      i = i + 1
+      while i < n and (text.at(i) & 192) == 128:
+        i = i + 1
+      end
       if c < 32 or c > 126:
         c = 63
       end
@@ -71,15 +93,15 @@ class Font from Object
         Int index = c - 32
         Int row = index / 16
         atlas.draw((index - row * 16) * 8, row * 16, 8, 16,
-                   x + i * 8 * scale, y, 8 * scale, 16 * scale)
+                   x + cell * 8 * scale, y, 8 * scale, 16 * scale)
       end
-      i = i + 1
+      cell = cell + 1
     end
-    return text.len() * 8 * scale
+    return cell * 8 * scale
   end
 
   # How wide text would be drawn, in pixels.
   def Int width(String text, Int scale):
-    return text.len() * 8 * scale
+    return Font.cells(text) * 8 * scale
   end
 end

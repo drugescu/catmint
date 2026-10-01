@@ -40,7 +40,10 @@ class Main from IO
     font.draw("H", 50, 10, 1, 255, 255, 0)
     font.draw("H", 50, 40, 2, 0, 255, 255)
     font.draw(String.chr(200), 80, 10, 1, 255, 255, 255)
+    # A character of several bytes is one cell: a ? and then the H beside it.
+    font.draw("éH", 100, 10, 1, 255, 255, 255)
     out("width ${font.width("abc", 3)}\n")
+    out("cells ${font.width("éH", 1)}\n")
 
     # Clipped: only what is inside x < 60 is drawn.
     view.clip(0, 0, 60, 120)
