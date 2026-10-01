@@ -92,11 +92,11 @@ the full picture.
 
 ```sh
 # Ubuntu 24.04
-sudo apt install build-essential flex bison cmake llvm-18-dev clang-18 zlib1g-dev libzstd-dev
+sudo apt install build-essential flex bison cmake llvm-18-dev lld-18 zlib1g-dev libzstd-dev
 export PATH=/usr/lib/llvm-18/bin:$PATH
 
 # macOS
-brew install llvm bison flex cmake
+brew install llvm lld bison flex cmake
 export PATH="$(brew --prefix llvm)/bin:$(brew --prefix bison)/bin:$PATH"
 
 ./test.sh                            # build the compiler, run every test
@@ -109,13 +109,12 @@ export PATH="$(brew --prefix llvm)/bin:$(brew --prefix bison)/bin:$PATH"
   <img src="assets/rps-rts.png" alt="An isometric rock-paper-scissors RTS written in Catmint" width="720">
 </p>
 
-**RPS RTS** is an isometric rock-paper-scissors strategy game: about 1,600
+**RPS RTS** is an isometric rock-paper-scissors strategy game: about 2,100
 lines of Catmint over SDL2 bindings generated from SDL's own headers, with no C
-glue. Its simulation matches a reference implementation bit for bit. It lives
-on the [`sdl-rps-rts`](https://github.com/drugescu/catmint/tree/sdl-rps-rts/examples/rps-rts)
-branch.
+glue. Its simulation matches a reference implementation bit for bit, and a
+recorded game replays exactly. It lives in [`examples/rps-rts`](examples/rps-rts).
 
-Closer to home: [`examples/mini.cm`](examples/mini.cm) is a 250-line
+For something smaller, [`examples/mini.cm`](examples/mini.cm) is a 250-line
 interpreter, and [`lib/`](lib) is a standard library written in Catmint itself.
 
 ## Learn more
