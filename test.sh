@@ -105,6 +105,19 @@ else
   failed=1
 fi
 
+# A file generated from the lexer must not drift from it: regenerate in memory
+# and compare. The editor colours exactly the words the lexer treats as keywords.
+printf "\n${BOLD}generated files${NC}\n"
+if ! command -v python3 >/dev/null 2>&1; then
+  printf "  skipped: needs python3\n"
+elif keywords_out=$(python3 "$ROOT/tools/make_keywords.py" --check 2>&1); then
+  printf "  %s\n" "$keywords_out"
+else
+  printf "  ${RED}failed${NC}\n"
+  printf "%s\n" "$keywords_out" | sed 's/^/  /'
+  failed=1
+fi
+
 # Callbacks from a C library: every width of argument, a struct, userdata
 # through a handle, an error, and a call from a thread C made, which must be
 # refused. The C library is built by clang, so without clang this says so.
