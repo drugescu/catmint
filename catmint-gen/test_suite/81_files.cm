@@ -1,0 +1,139 @@
+# Reading, saving and listing files for an editor, which must never lose or
+# weaken a file it is asked to save:
+#   - a save goes to a temporary file beside the target and is renamed over it,
+#     so a failure leaves the original as it was, and none of the temporary is
+#     left behind; every byte must have arrived before the rename;
+#   - the target keeps its permissions (a private file does not become
+#     readable by others) and a symbolic link stays a link, the text going to
+#     what it points at;
+#   - a read has a size limit, and a file over it is refused, not truncated;
+#   - a name full of shell metacharacters is just a name, nothing runs;
+#   - a listing is relative to the directory, leaves out what is hidden, and
+#     can be limited in depth and in count.
+# Everything happens in a directory made for the test, removed at the end.
+
+using files
+
+class Main from IO
+  String base = ""
+
+  def Int exec(String line):
+    return Process.runArgs(line.split(" "))
+  end
+
+  def Int has(List names, String name):
+    Int i = 0
+    while i < names.len():
+      String n = names.get(i)
+      if n.equals(name):
+        return 1
+      end
+      i = i + 1
+    end
+    return 0
+  end
+
+  def Int count(List names, String part):
+    Int found = 0
+    Int i = 0
+    while i < names.len():
+      String n = names.get(i)
+      if n.indexOf(part) >= 0:
+        found = found + 1
+      end
+      i = i + 1
+    end
+    return found
+  end
+
+  # The first ten characters of `ls -ld`: the type and the permissions.
+  def String mode(String path):
+    Process p = new Process()
+    List args = new List()
+    args.append("ls")
+    args.append("-ld")
+    args.append(path)
+    p.openArgs(args)
+    String line = p.readLine()
+    p.finish()
+    return line.substr(0, 10)
+  end
+
+  def main:
+    base = "/tmp/catmint_files_test_${Process.pid()}"
+    exec("rm -rf ${base}")
+    exec("mkdir -p ${base}/sub ${base}/.hidden")
+
+    out("new file saved: ${Files.save("${base}/a.txt", "hello\n")}\n")
+    String text = Files.read("${base}/a.txt", 1000)
+    out("reads back: ${text.equals("hello\n")}\n")
+    out("replaced: ${Files.save("${base}/a.txt", "second")}\n")
+    text = Files.read("${base}/a.txt", 1000)
+    out("reads back the new text: ${text.equals("second")}\n")
+
+    Files.save("${base}/sub/b.txt", "b")
+    Files.save("${base}/sub/c.cm", "c")
+    Files.save("${base}/.hidden/d.txt", "d")
+    Files.save("${base}/sub/.dot", "dot")
+    out("no temporary left behind: ${count(Files.list(base, 5, 100), "save~") == 0}\n")
+
+    String limited = Files.read("${base}/a.txt", 5)
+    out("over the limit is refused: ${limited == null}\n")
+    limited = Files.read("${base}/a.txt", 6)
+    out("exactly at the limit is read: ${limited != null}\n")
+    String missing = Files.read("${base}/none.txt", 1000)
+    out("a missing file is null: ${missing == null}\n")
+    String dirText = Files.read("${base}/sub", 1000)
+    out("a directory is not a file: ${dirText == null}\n")
+
+    String raw = "a" + String.chr(0) + "b" + String.chr(255)
+    Files.save("${base}/raw", raw)
+    String back = Files.read("${base}/raw", 100)
+    out("a NUL and a stray byte survive: ${back.equals(raw)} ${back.len()}\n")
+
+    out("holds exactly its size: ${Files.holds("${base}/raw", 4)}\n")
+    out("does not hold more than it has: ${Files.holds("${base}/raw", 5)}\n")
+    out("does not hold fewer than it has: ${Files.holds("${base}/raw", 3)}\n")
+    out("a file that is not there holds nothing: ${Files.holds("${base}/none", 0)}\n")
+
+    out("a directory cannot be overwritten: ${Files.save("${base}/sub", "x")}\n")
+    out("and is intact: ${File.exists("${base}/sub/b.txt")}\n")
+    out("a missing directory: ${Files.save("${base}/nope/x.txt", "x")}\n")
+    out("nothing was made there: ${File.exists("${base}/nope") == 0}\n")
+    out("no temporary left after failures: ${count(Files.list(base, 5, 100), "save~") == 0}\n")
+
+    exec("chmod 600 ${base}/a.txt")
+    Files.save("${base}/a.txt", "private")
+    out("a private file stays private: ${mode("${base}/a.txt").equals("-rw-------")}\n")
+    exec("chmod 755 ${base}/a.txt")
+    Files.save("${base}/a.txt", "program")
+    out("an executable stays executable: ${mode("${base}/a.txt").equals("-rwxr-xr-x")}\n")
+
+    exec("ln -s ${base}/a.txt ${base}/link")
+    out("saved through a link: ${Files.save("${base}/link", "through the link")}\n")
+    out("the link is still a link: ${mode("${base}/link").substr(0, 1).equals("l")}\n")
+    text = Files.read("${base}/a.txt", 1000)
+    out("and its target has the text: ${text.equals("through the link")}\n")
+
+    String odd = "${base}/we; rm -rf x $(id) `id`.txt"
+    out("a name full of metacharacters: ${Files.save(odd, "meta")}\n")
+    text = Files.read(odd, 100)
+    out("is read back: ${text.equals("meta")}\n")
+
+    List all = Files.list(base, 5, 100)
+    out("lists a.txt: ${has(all, "a.txt")}\n")
+    out("lists sub/b.txt: ${has(all, "sub/b.txt")}\n")
+    out("lists the odd name: ${has(all, "we; rm -rf x $(id) `id`.txt")}\n")
+    out("leaves out hidden directories: ${has(all, ".hidden/d.txt") == 0}\n")
+    out("leaves out hidden files: ${has(all, "sub/.dot") == 0}\n")
+    out("names are relative: ${count(all, base) == 0}\n")
+    List top = Files.list(base, 1, 100)
+    out("depth 1 has a.txt: ${has(top, "a.txt")}\n")
+    out("depth 1 has no sub/b.txt: ${has(top, "sub/b.txt") == 0}\n")
+    out("a limit of 2 gives ${Files.list(base, 5, 2).len()}\n")
+    out("a directory that is not there: ${Files.list("${base}/nope", 5, 100).len()}\n")
+
+    exec("rm -rf ${base}")
+    out("cleaned up: ${File.exists(base) == 0}\n")
+  end
+end

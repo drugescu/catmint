@@ -1,0 +1,37 @@
+new file saved: 1
+reads back: 1
+replaced: 1
+reads back the new text: 1
+no temporary left behind: 1
+over the limit is refused: 1
+exactly at the limit is read: 1
+a missing file is null: 1
+a directory is not a file: 1
+a NUL and a stray byte survive: 1 4
+holds exactly its size: 1
+does not hold more than it has: 0
+does not hold fewer than it has: 0
+a file that is not there holds nothing: 0
+a directory cannot be overwritten: 0
+and is intact: 1
+a missing directory: 0
+nothing was made there: 1
+no temporary left after failures: 1
+a private file stays private: 1
+an executable stays executable: 1
+saved through a link: 1
+the link is still a link: 1
+and its target has the text: 1
+a name full of metacharacters: 1
+is read back: 1
+lists a.txt: 1
+lists sub/b.txt: 1
+lists the odd name: 1
+leaves out hidden directories: 1
+leaves out hidden files: 1
+names are relative: 1
+depth 1 has a.txt: 1
+depth 1 has no sub/b.txt: 1
+a limit of 2 gives 2
+a directory that is not there: 0
+cleaned up: 1
