@@ -1,0 +1,172 @@
+# Fuzzy matching: the ranking behind the command palette and the file picker.
+#
+#   using fuzzy
+#   List top = Fuzzy.best("fn", names, 8)     # indexes into names, best first
+#   Fuzzy.score("fn", "Find next")            # how good a single match is
+#
+# The letters typed have to appear in the text in that order, in any case. How
+# good a match is follows what people expect of one:
+#   - a match at the start of a word -- after a space, `_`, `-`, `/` or `.`, at
+#     the start of the text, or at a capital inside a name -- beats one in the
+#     middle of a word;
+#   - letters that sit together beat letters spread out;
+#   - a match nearer the start beats one further on, and a shorter text beats
+#     a longer one, other things equal;
+# and an empty query matches everything with the same score, so the order it
+# was given is kept: equal scores never reorder.
+#
+# The score is the best of every way the letters could be placed, found by the
+# usual table (as fzy does it), in whole numbers a thousand to a point.
+
+class Fuzzy from Object
+  # The score of a text that does not match. No real score comes near it.
+  static def Int none:
+    return 0 - 1000000000
+  end
+
+  # How much a match is worth at j in text, by what comes before it.
+  static def Int bonus(String text, Int j):
+    if j == 0:
+      return 900
+    end
+    Int before = text.at(j - 1)
+    Int here = text.at(j)
+    if before == 47:
+      return 900
+    end
+    if before == 32 or before == 95 or before == 45:
+      return 800
+    end
+    if before == 46:
+      return 600
+    end
+    if before >= 97 and before <= 122 and here >= 65 and here <= 90:
+      return 700
+    end
+    return 0
+  end
+
+  # 1 if the letters of query appear in text, in order, in any case.
+  static def Int matches(String query, String text):
+    String q = query.lower()
+    String t = text.lower()
+    Int i = 0
+    Int j = 0
+    while i < q.len() and j < t.len():
+      if q.at(i) == t.at(j):
+        i = i + 1
+      end
+      j = j + 1
+    end
+    if i == q.len():
+      return 1
+    end
+    return 0
+  end
+
+  # How good the best match is, or none() for no match.
+  static def Int score(String query, String text):
+    String q = query.lower()
+    String t = text.lower()
+    Int n = q.len()
+    Int m = t.len()
+    if n == 0:
+      return 0
+    end
+    if n > m or Fuzzy.matches(query, text) == 0:
+      return Fuzzy.none()
+    end
+    Int low = Fuzzy.none()
+    # ends[i * m + j]: the best score with query[i] matched at text[j].
+    # upto[i * m + j]: the best score for query[0..i] within text[0..j].
+    Ints ends = new Ints(n * m)
+    Ints upto = new Ints(n * m)
+    Int i = 0
+    while i < n:
+      Int gap = 0 - 10
+      if i == n - 1:
+        gap = 0 - 5
+      end
+      Int carried = low
+      Int j = 0
+      while j < m:
+        Int d = low
+        if q.at(i) == t.at(j):
+          if i == 0:
+            d = j * (0 - 5) + Fuzzy.bonus(text, j)
+          elif j > 0:
+            Int a = upto.get((i - 1) * m + j - 1)
+            Int b = ends.get((i - 1) * m + j - 1)
+            if a > low:
+              d = a + Fuzzy.bonus(text, j)
+            end
+            if b > low and b + 1000 > d:
+              d = b + 1000
+            end
+          end
+        end
+        ends.set(i * m + j, d)
+        Int best = low
+        if carried > low:
+          best = carried + gap
+        end
+        if d > best:
+          best = d
+        end
+        upto.set(i * m + j, best)
+        carried = best
+        j = j + 1
+      end
+      i = i + 1
+    end
+    return upto.get(n * m - 1)
+  end
+
+  # The indexes of the count best matches among the names, best first. Equal
+  # scores keep the order the names were given in.
+  static def List best(String query, List names, Int count):
+    List result = new List()
+    Ints scores = new Ints(count + 1)
+    Int k = 0
+    while k < names.len():
+      String name = names.get(k)
+      Int s = Fuzzy.score(query, name)
+      if s > Fuzzy.none():
+        # It goes after everything it does not beat.
+        Int at = result.len()
+        while at > 0 and s > scores.get(at - 1):
+          at = at - 1
+        end
+        if at < count:
+          result = Fuzzy.insert(result, scores, at, k, s, count)
+        end
+      end
+      k = k + 1
+    end
+    return result
+  end
+
+  # The list with index put in at `at`, and the list kept to count entries;
+  # scores moves along with it.
+  static def List insert(List result, Ints scores, Int at, Int index, Int s, Int count):
+    List grown = new List()
+    Int i = 0
+    while i < at:
+      grown.append(result.get(i))
+      i = i + 1
+    end
+    grown.append(index)
+    i = at
+    while i < result.len() and grown.len() < count:
+      grown.append(result.get(i))
+      i = i + 1
+    end
+    Int p = grown.len() - 1
+    while p > at:
+      scores.set(p, scores.get(p - 1))
+      p = p - 1
+    end
+    scores.set(at, s)
+    return grown
+  end
+end

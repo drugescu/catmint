@@ -1,0 +1,101 @@
+# Fuzzy matching for the command palette, which is also the file picker. What a
+# person expects of one, written down before the code:
+#   - the letters typed must appear in the text in that order, in any case;
+#   - a match that starts a word (after a space, `_`, `-`, `/` or `.`, or at a
+#     capital inside a name) beats one in the middle of a word;
+#   - letters that sit together beat letters spread out;
+#   - of two otherwise equal matches the shorter text wins;
+#   - an empty query matches everything and keeps the order it was given.
+# The pictures below are the rankings those rules give; each was worked out by
+# hand from them.
+
+using fuzzy
+
+class Main from IO
+  List commands = null
+  List files = null
+
+  def rank(String label, List names, String query, Int count):
+    List best = Fuzzy.best(query, names, count)
+    String line = "[${query}] ->"
+    if best.len() == 0:
+      line = line + " nothing"
+    end
+    Int i = 0
+    while i < best.len():
+      if i > 0:
+        line = line + " |"
+      end
+      Int index = best.get(i)
+      String name = names.get(index)
+      line = line + " " + name
+      i = i + 1
+    end
+    out("${label} ${line}\n")
+  end
+
+  def main:
+    commands = new List()
+    commands.append("Save")
+    commands.append("Save as")
+    commands.append("Open file")
+    commands.append("Find")
+    commands.append("Find next")
+    commands.append("Go to line")
+    commands.append("Run")
+    commands.append("Toggle dark and light")
+    commands.append("Undo")
+    commands.append("Redo")
+    commands.append("Quit")
+    commands.append("Select all")
+    commands.append("Bigger text")
+    commands.append("Smaller text")
+    files = new List()
+    files.append("lib/editor.cmm")
+    files.append("lib/textbuffer.cmm")
+    files.append("lib/theme.cmm")
+    files.append("catmint-gen/test_suite/79_editor.cm")
+    files.append("examples/pad/pad.cm")
+    files.append("tools/make_font.py")
+
+    rank("commands", commands, "sav", 5)
+    rank("commands", commands, "fn", 5)
+    rank("commands", commands, "dl", 5)
+    rank("commands", commands, "u", 5)
+    rank("commands", commands, "", 5)
+    rank("commands", commands, "zq", 5)
+    rank("commands", commands, "SAV", 5)
+    rank("commands", commands, "text", 5)
+    rank("commands", commands, "u", 2)
+    rank("files", files, "edi", 5)
+    rank("files", files, "pad", 5)
+    rank("files", files, "tbuf", 5)
+    rank("files", files, "mk", 5)
+
+    out("a word start beats the middle of a word: ${Fuzzy.score("n", "Find next") > Fuzzy.score("n", "Find")}\n")
+    out("consecutive beats scattered: ${Fuzzy.score("sav", "Save") > Fuzzy.score("sav", "Sxaxv")}\n")
+    out("the shorter wins when otherwise equal: ${Fuzzy.score("sav", "Save") > Fuzzy.score("sav", "Save as")}\n")
+    out("together beats apart, even where the second letter starts a word: ${Fuzzy.score("ab", "ab") > Fuzzy.score("ab", "a b")}\n")
+    out("closer beats further apart: ${Fuzzy.score("ab", "axb") > Fuzzy.score("ab", "axxxb")}\n")
+    out("nearer the start beats further on: ${Fuzzy.score("b", "ab") > Fuzzy.score("b", "aaab")}\n")
+    out("a capital inside a name starts a word: ${Fuzzy.score("tb", "TextBuffer") > Fuzzy.score("tb", "Textbuffer")}\n")
+    out("an empty query scores 0: ${Fuzzy.score("", "anything") == 0}\n")
+    out("no match scores as none: ${Fuzzy.score("zq", "Quit") == Fuzzy.none()}\n")
+    out("matches: ${Fuzzy.matches("qu", "Quit")} ${Fuzzy.matches("QU", "quit")} ${Fuzzy.matches("quiet", "Quit")} ${Fuzzy.matches("zq", "Quit")}\n")
+
+    # Five thousand paths, a dozen letters: the work done on a keystroke in a
+    # big project. The bound is generous; it is there to catch something that
+    # takes seconds, not to time the machine.
+    List many = new List()
+    Int i = 0
+    while i < 5000:
+      many.append("src/module${i}/component_${i * 7}/handler_${i * 13}.cmm")
+      i = i + 1
+    end
+    Int started = ticks()
+    List top = Fuzzy.best("mod3comp7hand", many, 10)
+    Int took = ticks() - started
+    out("ranked 5000 paths in a fair time: ${took < 3000}\n")
+    out("and found ${top.len()} of them\n")
+  end
+end
