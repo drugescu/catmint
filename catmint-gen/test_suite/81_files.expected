@@ -16,6 +16,10 @@ a directory cannot be overwritten: 0
 and is intact: 1
 a missing directory: 0
 nothing was made there: 1
+a rename that cannot happen: 0
+takes the temporary with it: 1
+a rename that can: 1
+puts the text there: 1 and the temporary is gone: 1
 no temporary left after failures: 1
 a private file stays private: 1
 an executable stays executable: 1

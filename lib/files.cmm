@@ -133,6 +133,11 @@ class Files from Object
       File.remove(temp)
       return 0
     end
+    return Files.replace(temp, target)
+  end
+
+  # Move temp over target. 1 if it is there now; 0, with temp removed, if not.
+  static def Int replace(String temp, String target):
     Int renamed = 1
     unsafe:
       renamed = FilesC.rename(temp, target)
