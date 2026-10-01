@@ -1,0 +1,118 @@
+# Colours for a program that is mostly text, and the rule they were chosen by.
+#
+#   using theme
+#   Theme t = Theme.dark()
+#   renderer.setColor(Theme.red(t.text), Theme.green(t.text), Theme.blue(t.text))
+#
+# A colour is one Int, 0xRRGGBB. Two themes, dark and light, each a dark or
+# light ground, one text colour, one dim colour for what should recede (line
+# numbers, comments, hints), one accent for the caret, the focus and what is
+# live, a muted red for errors, and three more hues for syntax. Colour is
+# rationed: nothing else is coloured.
+#
+# They are not eyeballed. Every colour clears a WCAG contrast ratio on every
+# background it is drawn on -- 7:1 for the text and the syntax colours against
+# the ground and the current line, 4.5:1 for dim text, errors and syntax over a
+# selection, 3:1 for the accent -- and test 77 computes the ratios and fails if
+# one slips. The numbers below were fitted to that rule, each colour moved no
+# further than it had to be, so the hues survive.
+
+class Theme from Object
+  Int ground
+  Int line
+  Int panel
+  Int selection
+  Int text
+  Int dim
+  Int comment
+  Int accent
+  Int keyword
+  Int string
+  Int number
+  Int error
+  Int isDark
+
+  static def Int rgb(Int r, Int g, Int b):
+    return r * 65536 + g * 256 + b
+  end
+
+  static def Int red(Int c):
+    return (c >> 16) & 255
+  end
+
+  static def Int green(Int c):
+    return (c >> 8) & 255
+  end
+
+  static def Int blue(Int c):
+    return c & 255
+  end
+
+  # sRGB to linear light: the gamma curve undone.
+  static def Float linear(Int channel):
+    Float x = channel / 255.0
+    if x <= 0.04045:
+      return x / 12.92
+    end
+    return Math.pow((x + 0.055) / 1.055, 2.4)
+  end
+
+  # How bright a colour is to the eye: green counts most, blue least.
+  static def Float luminance(Int c):
+    return 0.2126 * Theme.linear(Theme.red(c)) + 0.7152 * Theme.linear(Theme.green(c)) + 0.0722 * Theme.linear(Theme.blue(c))
+  end
+
+  # The WCAG contrast ratio, 1 (the same colour) to 21 (black on white).
+  static def Float contrast(Int a, Int b):
+    Float la = Theme.luminance(a)
+    Float lb = Theme.luminance(b)
+    if la < lb:
+      return (lb + 0.05) / (la + 0.05)
+    end
+    return (la + 0.05) / (lb + 0.05)
+  end
+
+  # How different two colours are, as the sum of the channel differences.
+  static def Int distance(Int a, Int b):
+    Int dr = Theme.red(a) - Theme.red(b)
+    Int dg = Theme.green(a) - Theme.green(b)
+    Int db = Theme.blue(a) - Theme.blue(b)
+    return Math.abs(dr) + Math.abs(dg) + Math.abs(db)
+  end
+
+  static def Theme dark:
+    Theme t = new Theme()
+    t.isDark = 1
+    t.ground = Theme.rgb(30, 34, 41)
+    t.line = Theme.rgb(37, 42, 51)
+    t.panel = Theme.rgb(35, 40, 48)
+    t.selection = Theme.rgb(58, 72, 100)
+    t.text = Theme.rgb(223, 225, 230)
+    t.dim = Theme.rgb(137, 147, 160)
+    t.comment = Theme.rgb(137, 147, 160)
+    t.accent = Theme.rgb(232, 176, 74)
+    t.keyword = Theme.rgb(204, 168, 239)
+    t.string = Theme.rgb(158, 198, 138)
+    t.number = Theme.rgb(227, 172, 123)
+    t.error = Theme.rgb(232, 120, 128)
+    return t
+  end
+
+  static def Theme light:
+    Theme t = new Theme()
+    t.isDark = 0
+    t.ground = Theme.rgb(250, 248, 243)
+    t.line = Theme.rgb(240, 237, 229)
+    t.panel = Theme.rgb(243, 240, 233)
+    t.selection = Theme.rgb(206, 219, 243)
+    t.text = Theme.rgb(38, 42, 50)
+    t.dim = Theme.rgb(98, 106, 118)
+    t.comment = Theme.rgb(98, 106, 118)
+    t.accent = Theme.rgb(168, 104, 8)
+    t.keyword = Theme.rgb(103, 50, 154)
+    t.string = Theme.rgb(36, 90, 28)
+    t.number = Theme.rgb(127, 58, 9)
+    t.error = Theme.rgb(178, 40, 52)
+    return t
+  end
+end
