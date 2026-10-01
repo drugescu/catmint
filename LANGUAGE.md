@@ -324,7 +324,9 @@ a `Float` given where C takes an integer is a compile error.
 `UInt8`, `UInt16`, `UInt32` and `UInt64` are C's unsigned types, for extern
 declarations only. Read, each becomes the smallest catmint integer that holds
 every value -- `Int` for the first two, `Int64` for `UInt32` -- and `UInt64`
-an `Int64` holding the same bits. Anywhere else they are an error saying what
+an `Int64` holding the same bits. Given, a `UInt8` or `UInt16` takes the low 8
+or 16 bits of the number passed, as a cast in C would, and reaches C extended
+to 32 bits, as C's callees expect. Anywhere else they are an error saying what
 to write instead.
 
 `link "name"` adds `-lname`, and `catmintc -l name -L dir` does the same from
@@ -510,6 +512,23 @@ and every handle released by `finalize`. Underneath is `sdl2.cmm`, SDL's whole
 API as extern structs, functions and constants, generated from SDL's own
 headers by `tools/bindgen.py` and never edited by hand. Nothing in either is
 C. Needs SDL2 installed; on Homebrew build with `-L /opt/homebrew/lib`.
+
+`sdl` also has `Texture` (from a `Bytes` of pixels; draw a part of it, tint,
+opacity), text input, the clipboard, the wheel and modifier keys. `font` draws
+text from Unscii's printable ASCII, built into a texture when the `Font` is
+made: a fixed 8 x 16 cell, anything else one `?`, no font file.
+
+For a program that edits text, also in `lib/`, each testable without a window:
+`textbuffer` (a gap buffer with a line index and undo), `editor` (cursor,
+selection, movement, typing, auto-indent, find and replace), `highlight` and
+`keywords` (colour a line of catmint by the lexer's own keyword list, which
+`tools/make_keywords.py` reads out of `catmint.l`), `theme` (dark and light
+colours chosen by WCAG contrast ratio), `fuzzy` and `palette` (the command
+palette and file picker), `files` (read with a size limit, save through a
+temporary file and a rename that keeps permissions and follows links, list a
+directory tree without a shell) and `buildlog` (the place a compiler message
+names). `examples/pad` is an editor made of them.
+→ `76_textbuffer.cm` to `83_buildlog.cm`, `examples/pad/tests/`
 
 A `Map` key may be a String, an Int, or a class that `does Hashable` --
 `def Int hash` and `def Int equalTo(Object other)`. String and Int are

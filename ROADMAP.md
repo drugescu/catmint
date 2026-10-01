@@ -1051,9 +1051,18 @@ How it is verified, since there is no Windows machine here:
   verified through the headless route (saved frames and pixel assertions), as
   on macOS today.
 
-### D. Textures and text
+### D. Textures and text — **done**, on the `editor` branch
 
 Both phases after this want them, so they are built here, in `lib/sdl.cmm`.
+
+**As built:** `Texture` is made from a `Bytes` of pixels (no BMP loader was
+needed), with `draw`, `tint` and `opacity`; `Font` builds its atlas in catmint
+from the 95 printable ASCII glyphs of Unscii (public domain, 8 x 16;
+`tools/make_font.py` turns `unscii-16.hex` into `lib/fontdata.cmm`), and draws a
+character of several UTF-8 bytes as one `?`. `tools/sdl_test` checks glyphs at
+two sizes, tint, opacity, the clip and the `?`, pixel for pixel. Latin-1 was
+not done; the editor has not needed it. The design that follows is kept as it
+was written.
 
 - **`Texture`**: from a BMP file (`SDL_LoadBMP_RW`, in SDL itself, so no new
   library) or from a `Bytes` of pixels; `copy(source rect, destination rect)`,
@@ -1068,7 +1077,37 @@ Both phases after this want them, so they are built here, in `lib/sdl.cmm`.
 - **Headless**: textures render under the software renderer, so a saved frame
   has real pixels to assert on.
 
-### E. The GUI toolkit, and the application
+### E. The GUI toolkit, and the application — **built**, on the `editor` branch
+
+**Status.** `examples/pad` exists and is tested (CLAUDE.md, "The editor"): the
+text buffer, the editor core, highlighting from the lexer's own keywords, the
+theme, the fuzzy palette (commands, open by path fragment, find, replace, go to
+line, save as), safe save, F5 build with click-to-jump, dark and light, and
+sizes by whole numbers. It is not built on a general toolkit as designed below:
+the design's own argument was that rationing leaves very little (a label, a
+list, one field, an editor), and all of that is drawn directly by `pad.cm`
+because there is only one program to want it. A toolkit would be extracted when
+a second program asks. **Measured, as the design said:** every theme colour's
+contrast ratio (`77_theme`), idle CPU (`examples/pad/idle.py`, 0.09 s in 5
+against 1.0 for a loop that polls), the palette's ranking for typed fragments
+(`80_fuzzy`), the pixels of the syntax colours, the palette and the panel
+(`examples/pad/tests`).
+
+**What it does not do, and why.** *Run* the program it built: reading a child's
+output without blocking the window needs a non-blocking read the language does
+not have, so F5 builds and shows the compiler's messages. More than one file at
+a time ("switch file" is Open). Block indentation of a multi-line selection.
+Wrapping. Focus mode. Windows (6C was skipped). A 5 MB file is checked at the
+buffer (`84_bigtext`: 150,000 lines opened, searched, edited in the middle and
+undone in well under a second, and the memory comes back); scrolling it in the
+window was not timed, though only the rows on screen are drawn.
+
+**What building it found:** an FFI miscompile (a narrow unsigned argument
+reached C with the register's other bits set: the whole window came out cyan);
+that sdl2-compat cannot take a pushed text event and misreads a pushed wheel
+event; that a string literal cannot end in an escaped backslash (the lexer, not
+fixed); and that `Font` counted bytes where an editor needs characters. The
+first and fourth are fixed and tested.
 
 **The application is an editor for catmint programs**, `examples/pad`:
 open, edit, save, run. Chosen because it is the canonical GUI program, so it

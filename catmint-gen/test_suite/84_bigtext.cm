@@ -1,0 +1,65 @@
+# A big file through the text buffer: 150,000 lines, about 5 MB. What an editor
+# is asked to do with one -- open it, find something near the end, edit in the
+# middle, undo, look at a line -- must take a moment and no more, and when it is
+# let go the memory must come back.
+#
+# The line index and the search are independent ways of finding the same place,
+# so the test asks both and they must agree. The time bounds are generous: they
+# catch an operation that has become proportional to the size of the file when
+# it should not be, not the speed of the machine.
+
+using textbuffer
+
+class Main from IO
+  def chunk(Int first):
+    String s = ""
+    Int i = 0
+    while i < 1000:
+      s = s + "line ${first + i}: the quick brown fox jumps over it\n"
+      i = i + 1
+    end
+    return s
+  end
+
+  def work:
+    TextBuffer b = new TextBuffer()
+    Int started = ticks()
+    Int c = 0
+    while c < 150:
+      b.insert(b.length(), chunk(c * 1000))
+      c = c + 1
+    end
+    Int built = ticks() - started
+    out("built, ${b.lines()} lines, ${b.length() > 5000000} over 5 MB: ${built < 5000}\n")
+
+    started = ticks()
+    Int at = b.find("line 149999:", 0, 1)
+    Int searched = ticks() - started
+    out("found near the end where the index says: ${at == b.lineStart(149999)}, in a fair time: ${searched < 3000}\n")
+    out("the line there: ${b.lineText(149999)}\n")
+    out("a line in the middle: ${b.lineText(75000)}\n")
+
+    started = ticks()
+    Int middle = b.lineStart(100000)
+    b.insert(middle, "X")
+    Int edited = ticks() - started
+    out("typed in the middle, the line index follows: ${b.lineStart(100001) == b.find("line 100001:", 0, 1)}, in a fair time: ${edited < 3000}\n")
+    out("the line after it: ${b.lineText(100000)}\n")
+
+    started = ticks()
+    b.undo()
+    Int undone = ticks() - started
+    out("undone: ${b.lineText(100000)}, in a fair time: ${undone < 3000}\n")
+
+    started = ticks()
+    String text = b.text()
+    Int whole = ticks() - started
+    out("the whole text out again: ${text.len() == b.length()}, in a fair time: ${whole < 3000}\n")
+  end
+
+  def main:
+    Int before = allocated()
+    work()
+    out("memory back to where it was: ${allocated() == before}\n")
+  end
+end

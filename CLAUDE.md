@@ -952,6 +952,39 @@ means `Void`), and lists and dictionaries.
 `catmint-gen/ASTCodeGen.cpp.old` and `include/ASTCodeGen.h` are a superseded
 earlier attempt, not built and not included by anything.
 
+## The editor
+
+`examples/pad` is a small editor for catmint programs, built to find what the
+language and its libraries lacked (it found four things; see the traps). It is
+`pad.cm` -- drawing, and turning events into calls -- over modules in `lib/`
+that have no window in them and are tested without one:
+
+| module | what | test |
+|---|---|---|
+| `textbuffer` | gap buffer, line index, undo that joins typed runs | `76_textbuffer` (against a model, 4000 steps) |
+| `theme` | dark and light colours, WCAG contrast computed | `77_theme` (7:1 body, 4.5:1 dim, in both) |
+| `highlight`, `keywords` | colour a line; keywords read out of `catmint.l` | `78_highlight`; `test.sh` runs `tools/make_keywords.py --check` |
+| `editor` | cursor, selection, movement, edits, find/replace, scroll | `79_editor` (scripted, and 3000 random operations) |
+| `fuzzy`, `palette` | ranking, and the one-field list over it | `80_fuzzy`, `82_palette` |
+| `files` | capped read, safe save, tree listing | `81_files` (permissions, links, failures) |
+| `buildlog` | the place in a compiler message | `83_buildlog` |
+
+`font` and `Texture` (in `sdl`) draw text and sprites; `tools/sdl_test` checks
+them pixel for pixel. The pad itself is tested by `examples/pad/play.sh` (52
+scripted runs: input in, printed state and pixel counts out, expectations
+written by hand) and `examples/pad/idle.py` (the CPU an idle pad uses, measured
+with `wait4`; a busy loop costs 1.0 s in 5, the real one 0.09). `test.sh
+--thorough` runs both. Every one of these was checked by breaking the code it
+tests and watching the test fail; several first passed against a break, and
+were strengthened (`find_previous` needs three matches to tell next from
+previous, `page_down_once` is needed because the end of the text hides a page
+that is one row short).
+
+Not done, on purpose: running the built program from the editor (reading a
+child's output without blocking needs a poll the language does not have, so F5
+builds and shows what the compiler said), more than one file open, Windows,
+multi-line selections indented as a block, a tab drawn as anything but `?`.
+
 ## Building on Linux
 
 Verified, not assumed: a clean checkout builds and passes everything on
@@ -1156,6 +1189,34 @@ Each of these produced a crash or a silent miscompile during development.
   left the declaration undefined, so a class with an attribute of a
   later-declared class did not link. `emitInitFunction` now reuses the
   declaration (`56_forward_attribute`).
+- **A narrow integer argument to C must be extended by the caller.** Apple's
+  arm64 ABI makes the caller extend a `uint8_t` to 32 bits, clang's callees
+  rely on it, and an LLVM `trunc` to `i8` without `zeroext` leaves whatever was
+  in the register. Worse, the optimizer knows only the low byte is wanted, so
+  `(c >> 8) & 255` loses its mask and leaves the shift: `Theme.green(c)` came
+  out as 0x1E22 and SDL clamped it to 255, a whole window cyan. Passing a
+  constant, or a number loaded a byte at a time, hides it. `emitExternCall`
+  now puts `zeroext` on `UInt8` and `UInt16` arguments, on the call and the
+  declaration; `tools/callback_test/narrow.cm` passes shifted-and-masked random
+  numbers to a C function compiled by clang and fails 2000 of 2000 without it.
+  A new path that calls C with a narrow argument must do the same.
+- **sdl2-compat is what `brew install sdl2` is now**, and it cannot be handed
+  an `SDL_TEXTINPUT` event: `SDL_PushEvent` crashes dereferencing NULL. A script
+  gives typed text to the program's own handler (`Pad.send`). A pushed wheel
+  event arrives with `y` 0 and the amount in `preciseY`, which `Sdl.wheel`
+  reads. Real SDL2 (Linux) has neither problem.
+- **A string literal cannot end in an escaped backslash.** The lexer's rule is
+  `["]([^"]|(\\\"))*["]`, which takes `\"` as an escaped quote after a
+  backslash, so `"\\"` swallows the quote that should close it and the string
+  runs to the next one in the file. Write `String.chr(92)`. Not fixed; the
+  highlighter colours such a string the way it was meant (a backslash keeps the
+  next character) and so disagrees with the lexer on it.
+- **`type`, `copy`, `abort`, `retain`, `release` and `refs` are `Object`'s.** A
+  method of that name on your class is an override and must match the
+  signature: "doesn't match that of overriden method". `Texture.copy` became
+  `draw` and `Editor.type` became `typeText` for this.
+- **`readAll` is not a size check, and `fopen` opens a directory.** `Files.read`
+  counts with `readBytes` first and refuses a directory with `test -d`.
 
 ## Documents
 
