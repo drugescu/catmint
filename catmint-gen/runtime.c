@@ -1625,11 +1625,24 @@ void M2_IO_exit(struct TIO *self, int code) {
   exit(code);
 }
 
-/* Objects allocated and not yet given back. Compare two readings around a
- * piece of work to see whether it leaks. */
+static int pool_held_objects(void);
+
+/* Objects allocated and not yet given back, and held by something other than
+ * a temporary. Compare two readings around a piece of work to see whether it
+ * leaks.
+ *
+ * "Not yet given back" alone made the number useless inside the method that
+ * did the work: an object made there stays on that method's pool until it
+ * returns, so letting go of it did not lower the count, and every string
+ * out() built stayed counted too. What is left out is exactly what closing the
+ * pools would free -- see pool_held_objects. A cycle is not among it, which is
+ * the point: counting never frees one, and this keeps saying so. */
 int M2_IO_allocated(struct TIO *self) {
+  int held;
+
   (void)self;
-  return gLiveObjects;
+  held = gLiveObjects - pool_held_objects();
+  return held < 0 ? 0 : held;
 }
 
 /* -------------------------------------------------------------------------
@@ -2071,6 +2084,179 @@ void __cm_poolAddSlot(void **slot) {
 
 int __cm_poolDepth(void) {
   return gPoolDepth;
+}
+
+/* ---- what the pools alone are keeping alive ------------------------------
+ *
+ * A trial deletion, as a cycle collector does, and with nothing freed. Every
+ * object an open pool holds is owed one release per entry. If that is all its
+ * count has left -- nothing else holds it -- closing the pools would free it,
+ * and freeing it would release what it holds in turn, which may free those. So:
+ * count each object down by its pool entries, and where that reaches zero
+ * follow its references (the offsets the generator wrote into the type
+ * information, and a List's items, exactly as object_free does), counting each
+ * down by one, and so on. Everything that reaches zero is what closing the
+ * pools would free. Anything a variable, a field or a container still holds
+ * does not reach zero, and neither does a cycle.
+ *
+ * This reads the pool and the counts and writes nothing of the program's.
+ * It is a diagnostic, run when asked, and costs what the pools and the
+ * freeable part hold. */
+struct trial_entry {
+  struct TObject *object;
+  long left;
+  int freeable;
+};
+
+struct trial {
+  struct trial_entry *slots;
+  size_t capacity;
+  size_t used;
+};
+
+static size_t trial_slot(const struct TObject *object, size_t mask) {
+  uint64_t v = (uint64_t)(uintptr_t)object >> 4;
+
+  v *= 0x9E3779B97F4A7C15ull;
+  v ^= v >> 32;
+  return (size_t)v & mask;
+}
+
+static void trial_grow(struct trial *t) {
+  size_t capacity = t->capacity ? t->capacity * 2 : 256;
+  struct trial_entry *slots = (struct trial_entry *)calloc(capacity, sizeof(*slots));
+  size_t i;
+
+  if (!slots) {
+    printf("Runtime error : out of memory counting allocations.\n");
+    exit(1);
+  }
+  for (i = 0; i < t->capacity; i++) {
+    if (t->slots[i].object) {
+      size_t at = trial_slot(t->slots[i].object, capacity - 1);
+
+      while (slots[at].object) {
+        at = (at + 1) & (capacity - 1);
+      }
+      slots[at] = t->slots[i];
+    }
+  }
+  free(t->slots);
+  t->slots = slots;
+  t->capacity = capacity;
+}
+
+/* The entry for an object, made on first sight with all of its count still
+ * to account for. The address is good only until the next call. */
+static struct trial_entry *trial_for(struct trial *t, struct TObject *object) {
+  size_t at;
+
+  if (t->used * 2 >= t->capacity) {
+    trial_grow(t);
+  }
+  at = trial_slot(object, t->capacity - 1);
+  while (t->slots[at].object && t->slots[at].object != object) {
+    at = (at + 1) & (t->capacity - 1);
+  }
+  if (!t->slots[at].object) {
+    t->slots[at].object = object;
+    t->slots[at].left = object->refs;
+    t->slots[at].freeable = 0;
+    t->used += 1;
+  }
+  return &t->slots[at];
+}
+
+struct trial_work {
+  struct TObject **items;
+  size_t length;
+  size_t capacity;
+};
+
+static void trial_push(struct trial_work *w, struct TObject *object) {
+  if (w->length == w->capacity) {
+    size_t capacity = w->capacity ? w->capacity * 2 : 64;
+    struct TObject **items =
+        (struct TObject **)realloc(w->items, capacity * sizeof(*items));
+
+    if (!items) {
+      printf("Runtime error : out of memory counting allocations.\n");
+      exit(1);
+    }
+    w->items = items;
+    w->capacity = capacity;
+  }
+  w->items[w->length++] = object;
+}
+
+/* One reference from an object that would be freed, given back. */
+static void trial_release(struct trial *t, struct trial_work *w,
+                          struct TObject *object) {
+  struct trial_entry *entry;
+
+  if (object == NULL || object->refs <= 0) {
+    return; /* nothing there, or static: never freed, never counted */
+  }
+  entry = trial_for(t, object);
+  if (entry->freeable) {
+    return;
+  }
+  entry->left -= 1;
+  if (entry->left == 0) {
+    entry->freeable = 1;
+    trial_push(w, object);
+  }
+}
+
+static int pool_held_objects(void) {
+  struct trial t = {NULL, 0, 0};
+  struct trial_work work = {NULL, 0, 0};
+  int freeable = 0;
+  int i;
+  size_t s;
+
+  for (i = 0; i < gPoolCount; i++) {
+    struct TObject *object;
+
+    if (pool_is_slot(gPoolItems[i])) {
+      continue; /* a variable's address, not an object: it holds a count */
+    }
+    object = (struct TObject *)gPoolItems[i];
+    if (object == NULL || object->refs <= 0) {
+      continue;
+    }
+    trial_for(&t, object)->left -= 1;
+  }
+  for (s = 0; s < t.capacity; s++) {
+    if (t.slots[s].object && t.slots[s].left == 0) {
+      t.slots[s].freeable = 1;
+      trial_push(&work, t.slots[s].object);
+    }
+  }
+  while (work.length > 0) {
+    struct TObject *object = work.items[--work.length];
+
+    freeable += 1;
+    if (object->rtti != NULL && object->rtti->fields != NULL) {
+      const int *offset;
+
+      for (offset = object->rtti->fields; *offset >= 0; ++offset) {
+        trial_release(&t, &work,
+                      *(struct TObject **)((char *)object + *offset));
+      }
+    }
+    if (object->rtti == RTTI(RList)) {
+      struct TList *list = (struct TList *)object;
+      int item;
+
+      for (item = 0; item < list->length; ++item) {
+        trial_release(&t, &work, (struct TObject *)list->items[item]);
+      }
+    }
+  }
+  free(t.slots);
+  free(work.items);
+  return freeable;
 }
 
 /* A throw jumps over every pool the try body opened, so the handler asks for
