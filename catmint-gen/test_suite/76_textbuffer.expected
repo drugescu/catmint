@@ -1,0 +1,8 @@
+3173 edits among 4000 steps agree with the model, undo and redo included: 1
+next 1 3 4, prev 3 1 0
+empty: 1 line, '', length 0
+crlf: 3 lines, 'one' 'two' '', length 9
+find: 0 8 16 -1 -1
+find back: 16 8 0 0 -1
+large: 90112 bytes, 8193 lines; after three edits 8194 lines, line 1 '0123456789', first 'X0123456789', last 'Y'
+large, undone: 1 1 1
