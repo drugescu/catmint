@@ -1,0 +1,73 @@
+start: |one two/three//four five
+right x3: one| two/three//four five
+down: one two/thr|ee//four five
+down onto the empty line: one two/three/|/four five
+down remembers the column: one two/three//fou|r five
+down from the last line: one two/three//four five|
+up: one two/three/|/four five
+up clamps to the line: one two/three|//four five
+home goes to the code:     |if x:/
+home again goes to the start: |    if x:/
+end:     if x:|/
+home from the end:     |if x:/
+word right: alpha| beta gamma
+word right, extending: alpha[ beta|] gamma
+word left, extending: alpha[ |]beta gamma
+right collapses to the end: alpha |beta gamma
+select all: [alpha beta gamma|]
+left collapses to the start: |alpha beta gamma
+select a word: alpha [beta|] gamma
+select a separator: alpha[ |]beta gamma
+select backwards: alpha [|beta]
+drag over a word: hello [world|]
+typed over it: hello there|
+undone: hello world|
+redone: hello there|
+typed three: abc|
+one undo: |
+redo: abc|
+moving breaks the run: x|
+column 3 after two characters
+three characters in: añb|
+two backspaces: a|
+delete at the end: a|
+delete: |
+backspace at the start: |
+newline after a colon: def f:/  |/  x = 1
+newline keeps the indent: def f:/  /  |/  x = 1
+newline at the end: def f:/  /  /  x = 1/  |
+newline inside the indent:   /  |  ab
+pasted: a/b/cd|
+tab:   |x
+untab: |x
+untab again: |x
+untab one space: |x
+untab with the cursor inside the indent: |  x
+untab with the cursor further on:  | x
+find 1: one [two|] one two
+find next 1: one two one [two|]
+find wraps 1: one [two|] one two
+find previous wraps 1: one two one [two|]
+find previous 1: one [two|] one two
+find nothing 0: one [two|] one two
+replaced 2
+replace all: |a--b--c
+replace all is one undo: a-b-c|
+replace next: z y [x|]
+go to 3: one two/three/|/four five
+go to 99: one two/three//|four five
+line 4 col 1
+go to 0: |one two/three//four five
+click below the text: one two/three//fo|ur five
+click above and past the end: one two|/three//four five
+top 40
+top 40
+top 0
+top 5
+top 0
+top 100
+3000 operations, cursor off a character 0 times
+most of them changed the text: 1
+undone to the start: 1
+redone to the end: 1
+as many steps back as forward: 1
