@@ -1,0 +1,5 @@
+sum 100, called 5 times, last index 4
+a Void callback ran: 6
+every width arrived intact: 1
+a struct arrived as a view: 304
+caught: gave up at index 2

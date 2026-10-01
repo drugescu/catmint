@@ -1,0 +1,109 @@
+# Callbacks into catmint from a C library, the cases qsort cannot show.
+
+link "cb"
+
+extern def EachCallback(Ptr userdata, Int index) Int
+extern def OnceCallback(Ptr userdata) Void
+extern def WideCallback(UInt8 small, UInt16 medium, UInt32 large, Int64 big, Float d, Float32 f) UInt32
+extern def PairCallback(CbPair pair, Ptr userdata) Int
+
+extern struct CbPair @ 8
+  Int32 a @ 0
+  Int32 b @ 4
+end
+
+extern class CbLib
+  def Int64 cb_sum(Int n, EachCallback fn, Ptr userdata)
+  def Void cb_once(OnceCallback fn, Ptr userdata)
+  def UInt32 cb_wide(WideCallback fn)
+  def Int cb_pair_call(PairCallback fn, Ptr userdata)
+end
+
+class Counter
+  Int n
+  Int last
+end
+
+class Handlers
+  # fn(userdata, i) returns i * 10, and remembers the last index it saw.
+  static def Int each(Ptr userdata, Int index):
+    unsafe:
+      Counter counter = Handles.get(userdata)
+      counter.n = counter.n + 1
+      counter.last = index
+    end
+    return index * 10
+  end
+
+  static def Void once(Ptr userdata):
+    unsafe:
+      Counter counter = Handles.get(userdata)
+      counter.n = counter.n + 1
+    end
+  end
+
+  # Every argument must arrive as what C passed, not as its bit pattern read
+  # under another type: 4000000000 is positive, not negative.
+  static def Int64 wide(Int small, Int medium, Int64 large, Int64 big, Float d, Float32 f):
+    if small == 200 and medium == 60000 and large == 4000000000 and big == 0 - 5000000000 and d == 2.5 and f == 0.5:
+      return 1
+    end
+    return 0
+  end
+
+  # The struct C passes a pointer to arrives as a view of it.
+  static def Int pair(CbPair pair, Ptr userdata):
+    return pair.a * 100 + pair.b
+  end
+
+  static def Int explode(Ptr userdata, Int index):
+    if index == 2:
+      throw "gave up at index 2"
+    end
+    return 1
+  end
+end
+
+class Main from IO
+  def main:
+    Counter counter = new Counter()
+    Ptr handle = Handles.make(counter)
+
+    Int64 total = 0
+    unsafe:
+      total = CbLib.cb_sum(5, Handlers.each, handle)
+    end
+    out("sum ${total}, called ${counter.n} times, last index ${counter.last}\n")
+
+    unsafe:
+      CbLib.cb_once(Handlers.once, handle)
+    end
+    out("a Void callback ran: ${counter.n}\n")
+
+    Int64 agreed = 0
+    unsafe:
+      agreed = CbLib.cb_wide(Handlers.wide)
+    end
+    out("every width arrived intact: ${agreed}\n")
+
+    Int seen = 0
+    unsafe:
+      seen = CbLib.cb_pair_call(Handlers.pair, null)
+    end
+    out("a struct arrived as a view: ${seen}\n")
+
+    # An error in the callback stops the loop's remaining work and surfaces
+    # after C returns -- here the loop is C's, so it ran to the end, but the
+    # method ran only until it threw.
+    try:
+      unsafe:
+        CbLib.cb_sum(5, Handlers.explode, handle)
+      end
+      out("not caught\n")
+    catch e:
+      out("caught: ${e}\n")
+    end
+
+    Handles.drop(handle)
+  end
+end

@@ -111,6 +111,7 @@ fuzz/failures/
 .portability.log
 .bindgen.log
 .game.log
+.callbacks.log
 
 # Compiled programs and the intermediates that make them. Four of these were
 # committed by accident early on -- two arm64 binaries among them -- and had

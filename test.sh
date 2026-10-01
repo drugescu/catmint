@@ -105,6 +105,20 @@ else
   failed=1
 fi
 
+# Callbacks from a C library: every width of argument, a struct, userdata
+# through a handle, an error, and a call from a thread C made, which must be
+# refused. The C library is built by clang, so without clang this says so.
+printf "\n${BOLD}callbacks${NC}\n"
+if [ ! -x "${LLVM_BIN:-/nonexistent}/clang" ] && ! command -v clang >/dev/null 2>&1; then
+  printf "  skipped: needs clang\n"
+elif "$ROOT/tools/callback_test/run.sh" > "$ROOT/.callbacks.log" 2>&1; then
+  printf "  %s\n" "$(tail -1 "$ROOT/.callbacks.log")"
+else
+  printf "  ${RED}failed${NC} - see .callbacks.log\n"
+  tail -6 "$ROOT/.callbacks.log" | sed 's/^/  /'
+  failed=1
+fi
+
 # SDL, headless: the video, renderer and audio drivers that need no screen or
 # sound card. The library's own test runs always; the game's two suites (its
 # simulation against an independent port, and scripted input with pixel
