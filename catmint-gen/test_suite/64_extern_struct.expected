@@ -1,0 +1,19 @@
+pair zero 0 0
+pair 7 -3
+mixed flag 255 count -1 small -1 wide 65535
+mixed value 2.5 ratio 0.5
+nested 5 9
+copy 1 original 5
+assigned 1
+word low 84281096 first 8 last 1
+word low 4278585096
+word real bits 4607182418800017408
+bytes[8] refused
+tm 71 0 1 5 wday 5 yday 0
+through the view 6
+frexp 0.5 4
+at(null) is null
+strlen 5
+opaque declared null
+NUL refused
+done

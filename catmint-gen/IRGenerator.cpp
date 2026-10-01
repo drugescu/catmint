@@ -303,6 +303,8 @@ llvm::Type *IRGenerator::lowerType(const std::string &TypeName) {
     return llvm::Type::getVoidTy(Context);
   if (int Width = TypeTable::integerWidth(TypeName))
     return llvm::Type::getIntNTy(Context, static_cast<unsigned>(Width));
+  if (TypeName == strings::Float32)
+    return llvm::Type::getFloatTy(Context);
   if (TypeName == strings::Float)
     return llvm::Type::getDoubleTy(Context);
   if (TypeName == strings::Void)
@@ -347,6 +349,9 @@ bool IRGenerator::collectClasses() {
     // The class says whether it is one the compiler supplies; this used to
     // be a second list of names here, which is one more place to forget.
     CI.Builtin = C->isBuiltin();
+    CI.IsCStruct = C->isCStruct();
+    CI.CUnion = C->isCUnion();
+    CI.COpaque = C->isOpaque();
     const std::string Name = C->getName();
     // Two definitions of one name used to overwrite each other here, so a
     // program importing two modules that both define a Point silently got
@@ -470,6 +475,9 @@ bool IRGenerator::layoutClass(ClassInfo *CI) {
     return true;
   }
 
+  if (CI->IsCStruct)
+    return layoutCStruct(CI);
+
   // { rtti, refs, inherited fields..., own fields... }
   if (CI->Parent) {
     CI->Elements = CI->Parent->Elements;
@@ -490,6 +498,100 @@ bool IRGenerator::layoutClass(ClassInfo *CI) {
   }
 
   CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.T" + Name);
+  return true;
+}
+
+namespace {
+/// Size and alignment of a C scalar on the targets catmint supports (LP64:
+/// x86-64 and arm64, Linux and macOS), where they are the same number.
+uint64_t cScalarSize(const std::string &T) {
+  if (T == "UInt8" || T == strings::Int8) return 1;
+  if (T == "UInt16" || T == strings::Int16) return 2;
+  if (T == "UInt32" || T == strings::Int || T == strings::Int32 ||
+      T == strings::Float32)
+    return 4;
+  if (T == "UInt64" || T == strings::Int64 || T == strings::Float ||
+      T == strings::Ptr)
+    return 8;
+  return 0;
+}
+
+uint64_t alignUp(uint64_t Value, uint64_t Align) {
+  return (Value + Align - 1) / Align * Align;
+}
+} // namespace
+
+/// C's rule, which is the same on every target catmint supports: each field
+/// at the next offset aligned to its own alignment, a union's all at 0, and
+/// the whole padded to the largest alignment. An `@ n` that disagrees is an
+/// error here, where it is one line to fix, rather than memory corrupted at
+/// run time. Nested structs are laid out first, on demand, since ClassOrder
+/// only promises parents before children.
+bool IRGenerator::layoutCStruct(ClassInfo *CI) {
+  if (CI->CLaidOut)
+    return true;
+  const std::string Name = CI->AST->getName();
+  if (CI->CLaying)
+    fail(CI->AST->getLineNumber(),
+         "'" + Name + "' holds itself by value, so it has no finite size");
+  CI->CLaying = true;
+
+  uint64_t Next = 0, Size = 0, Align = 1;
+  for (auto *F : *CI->AST) {
+    auto *A = dynamic_cast<Attribute *>(F);
+    if (!A)
+      continue;
+    ClassInfo::CField Field;
+    Field.CType = A->getCType();
+    Field.Type = A->getType();
+    Field.ArrayLen = static_cast<unsigned>(A->getArrayLength());
+
+    uint64_t ElemSize = 0, ElemAlign = 0;
+    ClassInfo *Nested = lookupClass(Field.CType);
+    if (Nested && Nested->IsCStruct) {
+      layoutCStruct(Nested);
+      ElemSize = Nested->CSize;
+      ElemAlign = Nested->CAlign;
+      Field.Nested = Nested;
+    } else {
+      ElemSize = ElemAlign = cScalarSize(Field.CType);
+      if (ElemSize == 0)
+        fail(A->getLineNumber(), "'" + Name + "." + A->getName() + "' is a " +
+                                     Field.CType + ", which has no C layout");
+    }
+    Field.ElemSize = ElemSize;
+    const uint64_t FieldSize = ElemSize * (Field.ArrayLen ? Field.ArrayLen : 1);
+    const uint64_t At = CI->CUnion ? 0 : alignUp(Next, ElemAlign);
+    if (A->getAssertedOffset() >= 0 &&
+        static_cast<uint64_t>(A->getAssertedOffset()) != At)
+      fail(A->getLineNumber(),
+           "'" + Name + "." + A->getName() + "' is at offset " +
+               std::to_string(At) + " by C's layout rule, and the declaration "
+               "says " + std::to_string(A->getAssertedOffset()));
+    Field.Offset = At;
+    Next = At + FieldSize;
+    Size = std::max(Size, At + FieldSize);
+    Align = std::max(Align, ElemAlign);
+    CI->FieldType[A->getName()] = Field.Type;
+    CI->CFields[A->getName()] = Field;
+  }
+  Size = alignUp(Size, Align);
+  if (CI->AST->getAssertedSize() >= 0 &&
+      static_cast<uint64_t>(CI->AST->getAssertedSize()) != Size)
+    fail(CI->AST->getLineNumber(),
+         "'" + Name + "' is " + std::to_string(Size) +
+             " bytes by C's layout rule, and the declaration says " +
+             std::to_string(CI->AST->getAssertedSize()));
+  CI->CSize = Size;
+  CI->CAlign = Align;
+
+  auto Ptr = llvm::PointerType::getUnqual(Context);
+  CI->Elements = {Ptr, llvm::Type::getInt32Ty(Context), Ptr,
+                  llvm::ArrayType::get(llvm::Type::getInt8Ty(Context), Size)};
+  CI->Ty = llvm::StructType::create(Context, CI->Elements,
+                                    "struct.C" + symbolName(Name));
+  CI->CLaying = false;
+  CI->CLaidOut = true;
   return true;
 }
 
@@ -755,8 +857,12 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
     return true;
   }
 
-  CI->Init = llvm::Function::Create(FT, llvm::GlobalValue::ExternalLinkage,
-                                    InitName, &Module);
+  // Not Function::Create: an earlier class whose attribute is of this class
+  // type has already called <Class>_init through constructObject, which
+  // declared it. Create would leave that declaration undefined and name this
+  // one <Class>_init.1, so the earlier class failed to link.
+  CI->Init = llvm::cast<llvm::Function>(
+      Module.getOrInsertFunction(InitName, FT).getCallee());
 
   auto *Entry = llvm::BasicBlock::Create(Context, "entry", CI->Init);
   Builder.SetInsertPoint(Entry);
@@ -785,6 +891,10 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
   }
 
   for (auto *F : *CI->AST) {
+    // A C struct's bytes arrive zeroed and are all there is: its fields are
+    // not catmint attributes to construct or initialise.
+    if (CI->IsCStruct)
+      break;
     auto *A = dynamic_cast<Attribute *>(F);
     if (!A)
       continue;
@@ -799,7 +909,7 @@ bool IRGenerator::emitInitFunction(ClassInfo *CI) {
       // ancestor of it: constructing that would recurse forever. Such an
       // attribute starts null, which is what a linked structure wants anyway.
       ClassInfo *FieldClass = lookupClass(A->getType());
-      if (!FieldClass || FieldClass->IsInterface ||
+      if (!FieldClass || FieldClass->IsInterface || FieldClass->COpaque ||
           isSubclassOf(CI->AST->getName(), A->getType()))
         continue;
 
@@ -1013,6 +1123,13 @@ void IRGenerator::emitProgramMain() {
   Builder.SetInsertPoint(Entry);
   beginDebugScope(F, MainCI, "main", MainCI->AST->getLineNumber());
 
+  // The ABI stamp, read volatile so that no optimisation can drop the
+  // reference: a runtime that does not define this exact symbol is one this
+  // compiler does not agree with, and must not link.
+  auto *Stamp = Module.getOrInsertGlobal(
+      "__catmint_abi_" + std::to_string(CatmintAbi), I32);
+  Builder.CreateLoad(I32, Stamp, /*isVolatile=*/true, "abi");
+
   auto SetArgs = Module.getOrInsertFunction(
       "__cm_setArgs",
       llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {I32, Ptr},
@@ -1163,7 +1280,7 @@ llvm::Value *IRGenerator::attributeAddress(const std::string &Name,
 
 bool IRGenerator::isReferenceTypeName(const std::string &TypeName) {
   if (TypeName.empty() || TypeName == "auto" || TypeName == strings::Void ||
-      TypeName == strings::Float || TypeTable::integerWidth(TypeName))
+      TypeTable::floatWidth(TypeName) || TypeTable::integerWidth(TypeName))
     return false;
   // A Ptr is a machine pointer and nothing else -- no run-time type
   // information in front of it, so no count to touch and nothing to release.
@@ -1172,6 +1289,38 @@ bool IRGenerator::isReferenceTypeName(const std::string &TypeName) {
     return false;
   // Null is a reference, but a null needs no counting and no release.
   return TypeName != strings::Null;
+}
+
+bool IRGenerator::yieldsPtr(Expression *E) {
+  if (!E)
+    return false;
+  // A block's value is its last statement's, and staticTypeOf cannot see
+  // through an assignment, so look at that statement itself.
+  if (auto *B = dynamic_cast<Block *>(E)) {
+    Expression *LastSub = nullptr;
+    for (auto *Sub : *B)
+      LastSub = Sub;
+    return yieldsPtr(LastSub);
+  }
+  // `x = expr` parses as a definition of type "auto", and is an assignment
+  // when x already exists; the value is then x's, so x's type is the answer.
+  if (auto *LD = dynamic_cast<LocalDefinition *>(E)) {
+    std::string T = LD->getType();
+    if (T == "auto") {
+      T = staticTypeOf(LD->getInit());
+      for (const auto &Name : LD->getName()) {
+        if (auto *L = findLocal(Name)) {
+          T = L->TypeName;
+        } else if (CurrentClass) {
+          auto It = CurrentClass->FieldType.find(Name);
+          if (It != CurrentClass->FieldType.end())
+            T = It->second;
+        }
+      }
+    }
+    return T == strings::Ptr;
+  }
+  return staticTypeOf(E) == strings::Ptr;
 }
 
 void IRGenerator::emitRetain(llvm::Value *V) {
@@ -1310,7 +1459,9 @@ void IRGenerator::emitPoolAdd(llvm::Value *V) {
 }
 
 void IRGenerator::emitCleanupAndReturn(llvm::Value *RV) {
-  const bool Reference = RV && RV->getType()->isPointerTy();
+  // A Ptr result is not a reference, whatever its LLVM type says: see emitBlock.
+  const bool Reference = RV && RV->getType()->isPointerTy() &&
+                         CurrentReturnType != strings::Ptr;
 
   // Retain first: everything below is about giving references back, and the
   // result must not be one of the things given back.
@@ -1350,9 +1501,9 @@ llvm::Value *IRGenerator::toCondition(llvm::Value *V, const std::string &Name) {
     return Builder.CreateICmpNE(
         V, llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(Context)),
         Name);
-  if (V->getType()->isDoubleTy())
-    return Builder.CreateFCmpONE(
-        V, llvm::ConstantFP::get(llvm::Type::getDoubleTy(Context), 0.0), Name);
+  if (V->getType()->isFloatingPointTy())
+    return Builder.CreateFCmpONE(V, llvm::ConstantFP::get(V->getType(), 0.0),
+                                 Name);
   return Builder.CreateICmpNE(V, llvm::ConstantInt::get(V->getType(), 0), Name);
 }
 
@@ -1398,8 +1549,13 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
     std::string R = staticTypeOf(BO->getRHS());
     if (L == strings::String || R == strings::String)
       return strings::String; // '+' concatenates
-    if (L == strings::Float || R == strings::Float)
-      return strings::Float;
+    const int LFloat = TypeTable::floatWidth(L);
+    const int RFloat = TypeTable::floatWidth(R);
+    if (LFloat || RFloat) {
+      if (LFloat && RFloat)
+        return LFloat >= RFloat ? L : R;
+      return LFloat ? L : R;
+    }
     const int LWidth = TypeTable::integerWidth(L);
     const int RWidth = TypeTable::integerWidth(R);
     if (LWidth && RWidth)
@@ -1439,7 +1595,12 @@ std::string IRGenerator::staticTypeOf(Expression *E) {
   if (dynamic_cast<SpawnStatement *>(E))        return strings::Int;
 
   if (auto *D = dynamic_cast<Dispatch *>(E)) {
+    ClassInfo::CField ArrayField;
+    if (cArrayField(D, ArrayField))
+      return ArrayField.Type;
     if (ClassInfo *Target = staticReceiver(D)) {
+      if (Target->IsCStruct)
+        return Target->AST->getName();
       auto It = Target->StaticImpl.find(D->getName());
       if (It != Target->StaticImpl.end())
         return It->second.second->getReturnType();
@@ -1503,18 +1664,28 @@ llvm::Value *IRGenerator::coerce(llvm::Value *V, const std::string &From,
     V = coerce(V, From, strings::Int, Line);
     return Builder.CreateCall(Runtime.intToString(), {V}, "int.str");
   }
-  if (From == strings::Float && To == strings::String) {
+  const int FromFloat = TypeTable::floatWidth(From);
+  const int ToFloat = TypeTable::floatWidth(To);
+  if (FromFloat && To == strings::String) {
     noteAllocation();
+    // The runtime prints a double; a Float32 widens exactly.
+    if (FromFloat != 64)
+      V = Builder.CreateFPExt(V, llvm::Type::getDoubleTy(Context), "f32.wide");
     return Builder.CreateCall(Runtime.floatToString(), {V}, "float.str");
   }
-  if (FromWidth && To == strings::Float)
-    return Builder.CreateSIToFP(V, llvm::Type::getDoubleTy(Context), "int.fp");
-  if (From == strings::Float && ToWidth)
+  if (FromWidth && ToFloat)
+    return Builder.CreateSIToFP(V, lowerType(To), "int.fp");
+  if (FromFloat && ToWidth)
     return Builder.CreateFPToSI(
         V, llvm::Type::getIntNTy(Context, static_cast<unsigned>(ToWidth)),
         "fp.int");
-  const bool FromIsValue = (FromWidth != 0 || From == strings::Float);
-  const bool ToIsValue = (ToWidth != 0 || To == strings::Float);
+  // Between the two float widths, as between the integer ones: both directions
+  // are implicit, extending to widen and rounding to narrow.
+  if (FromFloat && ToFloat)
+    return FromFloat < ToFloat ? Builder.CreateFPExt(V, lowerType(To), "fp.wide")
+                               : Builder.CreateFPTrunc(V, lowerType(To), "fp.narrow");
+  const bool FromIsValue = (FromWidth != 0 || FromFloat != 0);
+  const bool ToIsValue = (ToWidth != 0 || ToFloat != 0);
 
   // An integer put where object references live is boxed into an Integer, and
   // taken back out it is unboxed, checked. This is what lets a List hold
@@ -1596,10 +1767,12 @@ llvm::Value *IRGenerator::emit(Expression *E) {
 llvm::Value *IRGenerator::emitBlock(Block *B) {
   Scopes.emplace_back();
   llvm::Value *Last = nullptr;
+  Expression *LastExpr = nullptr;
   for (auto *Sub : *B) {
     if (blockTerminated())
       break;
     Last = emit(Sub);
+    LastExpr = Sub;
   }
 
   if (!blockTerminated()) {
@@ -1607,7 +1780,12 @@ llvm::Value *IRGenerator::emitBlock(Block *B) {
     // release -- a method whose last expression names a local. Handing it to
     // the pool keeps it alive for the rest of the enclosing statement, which
     // is exactly as long as anyone can still be looking at it.
-    if (Last && Last->getType()->isPointerTy()) {
+    //
+    // Not a Ptr, though: it is a machine pointer into memory this program
+    // does not own, so retaining it bumps an integer inside a C library's
+    // structure and releasing it can free that structure. `unsafe: h =
+    // SDL.CreateWindow(...) end` is a block whose value is exactly that.
+    if (Last && Last->getType()->isPointerTy() && !yieldsPtr(LastExpr)) {
       emitRetain(Last);
       emitPoolAdd(Last);
     }
@@ -1746,7 +1924,8 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
   // one produces a null reference waiting to be given an object. A class
   // with an abstract method left in it is the same case: there is no body to
   // run for that method, so there is nothing to build.
-  if (DeclClass && (DeclClass->IsInterface || DeclClass->IsAbstract))
+  if (DeclClass &&
+      (DeclClass->IsInterface || DeclClass->IsAbstract || DeclClass->COpaque))
     DeclClass = nullptr;
   // A self-contained initialiser supplies the whole value, so there is nothing
   // to default-construct first.
@@ -1767,9 +1946,8 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
       Builder.CreateStore(llvm::ConstantPointerNull::get(
                               llvm::PointerType::getUnqual(Context)),
                           Slot);
-    } else if (DeclaredType == strings::Float) {
-      Builder.CreateStore(
-          llvm::ConstantFP::get(llvm::Type::getDoubleTy(Context), 0.0), Slot);
+    } else if (TypeTable::floatWidth(DeclaredType)) {
+      Builder.CreateStore(llvm::ConstantFP::get(Lowered, 0.0), Slot);
     } else {
       // The declared width, not Int's: an Int64 was being given a 32-bit
       // zero and then immediately overwritten.
@@ -1799,9 +1977,18 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
   ClassInfo *DeclaredClass = lookupClass(DeclaredType);
   const bool Assignable =
       InitType == DeclaredType || isSubclassOf(InitType, DeclaredType) ||
-      InitType == strings::Int || InitType == strings::Float ||
+      // Any number: coerce widens, truncates or converts between every pair
+      // of numeric types, as the language documents. Listing only Int here
+      // dropped `Int n = someInt64` and left n zero.
+      TypeTable::integerWidth(InitType) || TypeTable::floatWidth(InitType) ||
       InitType == strings::Null || InitType == strings::Object ||
       (DeclaredType == strings::Int && lookupClass(InitType) != nullptr) ||
+      // A downcast from a class that is not Object: `Dog d = animal`. The
+      // `=` was written, so the value is wanted; coerce inserts the checked
+      // cast. Without this the initialiser was dropped and d stayed the
+      // default Dog the declaration had built, every field zero.
+      (DeclaredClass && lookupClass(InitType) != nullptr &&
+       isSubclassOf(DeclaredType, InitType)) ||
       // An interface-typed variable takes any object; whether it really does
       // what the interface asks is settled at run time.
       (DeclaredClass && DeclaredClass->IsInterface &&
@@ -1994,10 +2181,17 @@ llvm::Value *IRGenerator::emitBinaryOperator(BinaryOperator *BO) {
         llvm::Type::getInt32Ty(Context), "objne");
   }
 
-  const bool Floating = (LT == strings::Float || RT == strings::Float);
+  // Arithmetic and comparison happen at the wider float of the two operands,
+  // so a Float32 with a Float is done as a double, and a Float32 with an
+  // integer stays a float.
+  const int LFloat = TypeTable::floatWidth(LT);
+  const int RFloat = TypeTable::floatWidth(RT);
+  const bool Floating = (LFloat || RFloat);
   if (Floating) {
-    L = coerce(L, LT, strings::Float, BO->getLineNumber());
-    R = coerce(R, RT, strings::Float, BO->getLineNumber());
+    const std::string FloatType =
+        (LFloat && RFloat) ? (LFloat >= RFloat ? LT : RT) : (LFloat ? LT : RT);
+    L = coerce(L, LT, FloatType, BO->getLineNumber());
+    R = coerce(R, RT, FloatType, BO->getLineNumber());
     switch (Op) {
     case BK::Add: return Builder.CreateFAdd(L, R, "fadd");
     case BK::Sub: return Builder.CreateFSub(L, R, "fsub");
@@ -2092,7 +2286,7 @@ llvm::Value *IRGenerator::emitUnaryOperator(UnaryOperator *UO) {
   if (!V)
     return nullptr;
   if (UO->getOperatorKind() == UnaryOperator::Minus) {
-    if (V->getType()->isDoubleTy())
+    if (V->getType()->isFloatingPointTy())
       return Builder.CreateFNeg(V, "neg");
     return Builder.CreateNeg(V, "neg");
   }
@@ -2550,12 +2744,31 @@ llvm::Value *IRGenerator::marshalToC(llvm::Value *V,
   Builder.CreateCall(Runtime.checkNull(), {V});
   auto *Shape = llvm::StructType::get(Context, {PtrTy, I32, I32, PtrTy});
   auto *Field = Builder.CreateStructGEP(Shape, V, 3, "c.contents");
-  return Builder.CreateLoad(PtrTy, Field, "c.raw");
+  auto *Raw = Builder.CreateLoad(PtrTy, Field, "c.raw");
+  if (TypeName == strings::String) {
+    // C reads a string up to its first NUL, and a catmint String may hold
+    // one, so C would see less than was passed -- a path that is not the path
+    // it looks like. Refused, catchably, rather than truncated.
+    auto *Length = Builder.CreateLoad(
+        I32, Builder.CreateStructGEP(Shape, V, 2, "c.len.addr"), "c.len");
+    auto *I64 = llvm::Type::getInt64Ty(Context);
+    auto Memchr = Module.getOrInsertFunction(
+        "memchr", llvm::FunctionType::get(PtrTy, {PtrTy, I32, I64}, false));
+    auto *Nul = Builder.CreateCall(
+        Memchr, {Raw, llvm::ConstantInt::get(I32, 0),
+                 Builder.CreateZExt(Length, I64)}, "c.nul");
+    emitRuntimeErrorIf(
+        Builder.CreateICmpNE(Nul, llvm::ConstantPointerNull::get(PtrTy)),
+        "a String passed to C contains a NUL, which C would read as its end");
+  }
+  return Raw;
 }
 
 llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,
                                          const std::vector<Expression *> &Args,
                                          int Line) {
+  if (Owner->IsExtern)
+    return emitExternCall(M, Args, Line);
   auto *FT = methodType(Owner, M);
 
   std::vector<llvm::Value *> CallArgs;
@@ -2589,13 +2802,85 @@ llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,
              : static_cast<llvm::Value *>(Call);
 }
 
+/// A call to C. Every argument becomes what the C signature says it is: an
+/// extern struct its bytes (or NULL), a String or an array the address of
+/// its contents, a number C's own width. The result comes back the other way:
+/// an unsigned type widened, a struct pointer as a view.
+llvm::Value *IRGenerator::emitExternCall(Method *M,
+                                         const std::vector<Expression *> &Args,
+                                         int Line) {
+  auto *FT = externFunctionType(M);
+  std::vector<llvm::Value *> CallArgs;
+  auto ParamIt = M->begin();
+  for (auto *Arg : Args) {
+    if (ParamIt == M->end())
+      fail(Line, "too many arguments to '" + M->getName() + "'");
+    const std::string FromTy = staticTypeOf(Arg);
+    const std::string ParamTy = (*ParamIt)->getType();
+    const std::string CTy = (*ParamIt)->getCType();
+    llvm::Value *V = emit(Arg);
+    if (!V)
+      fail(Line, "argument to '" + M->getName() + "' produced no value");
+
+    ClassInfo *ParamClass = lookupClass(ParamTy);
+    ClassInfo *ArgClass = lookupClass(FromTy);
+    if (ParamClass && ParamClass->IsCStruct) {
+      V = structPointerOrNull(V, ParamClass);
+    } else if (ParamTy == strings::Ptr && ArgClass && ArgClass->IsCStruct) {
+      V = structPointerOrNull(V, ArgClass);
+    } else if (ParamTy == strings::Ptr &&
+               (FromTy == strings::Bytes || FromTy == strings::Ints ||
+                FromTy == strings::Floats)) {
+      V = marshalToC(V, FromTy, Line);
+    } else {
+      V = coerce(V, FromTy, ParamTy, Line);
+      V = marshalToC(V, ParamTy, Line);
+      llvm::Type *CT = lowerCType(CTy);
+      if (V->getType() != CT && V->getType()->isIntegerTy() && CT->isIntegerTy())
+        V = Builder.CreateTrunc(V, CT, "c.narrow");
+    }
+    CallArgs.push_back(V);
+    ++ParamIt;
+  }
+  if (CallArgs.size() != FT->getNumParams())
+    fail(Line, "wrong number of arguments to '" + M->getName() + "'");
+
+  if (isReferenceTypeName(M->getReturnType()))
+    noteAllocation();
+
+  // An extern function keeps its own name: the symbol already exists in a
+  // library, and mangling it would name something that does not.
+  auto Callee = Module.getOrInsertFunction(M->getName(), FT);
+  llvm::Value *Result = Builder.CreateCall(Callee, CallArgs);
+  const std::string Ret = M->getReturnType();
+  if (Ret == strings::Void || Ret == "auto")
+    return nullptr;
+  if (ClassInfo *RetClass = lookupClass(Ret); RetClass && RetClass->IsCStruct)
+    return makeView(RetClass, Result);
+  const std::string CRet = M->getCReturnType();
+  if (CRet == "UInt8" || CRet == "UInt16")
+    return Builder.CreateZExt(Result, llvm::Type::getInt32Ty(Context), "c.widen");
+  if (CRet == "UInt32")
+    return Builder.CreateZExt(Result, llvm::Type::getInt64Ty(Context), "c.widen");
+  return Result;
+}
+
 llvm::Value *IRGenerator::emitDispatch(Dispatch *D) {
   std::vector<Expression *> DispatchArgs;
   for (auto *A : *D)
     DispatchArgs.push_back(A);
 
+  ClassInfo::CField ArrayField;
+  if (cArrayField(D, ArrayField))
+    return emitCArrayElement(D);
+
   // A call on a class name: no receiver is evaluated at all.
   if (ClassInfo *Target = staticReceiver(D)) {
+    if (Target->IsCStruct) {
+      // S.at(p): the one call an extern struct answers.
+      llvm::Value *P = emit(DispatchArgs.at(0));
+      return makeView(Target, P);
+    }
     auto It = Target->StaticImpl.find(D->getName());
     if (It == Target->StaticImpl.end())
       fail(D->getLineNumber(), "class '" + Target->AST->getName() +
@@ -2742,6 +3027,9 @@ llvm::Value *IRGenerator::emitFieldAccess(FieldAccess *FA) {
          "'" + ObjType + "' is not a class, so it has no field '" +
              FA->getField() + "'");
 
+  if (CI->IsCStruct)
+    return emitCFieldAccess(FA);
+
   auto Field = CI->FieldIndex.find(FA->getField());
   if (Field == CI->FieldIndex.end())
     fail(FA->getLineNumber(), "class '" + ObjType + "' has no field '" +
@@ -2772,6 +3060,259 @@ llvm::Value *IRGenerator::emitFieldAccess(FieldAccess *FA) {
   }
 
   return Builder.CreateLoad(lowerType(FieldType), Addr, FA->getField());
+}
+
+
+// ---------------------------------------------------------------------------
+// C structs and unions
+//
+// An instance is { rtti, refs, ptr view, [n x i8] bytes }. An owned struct's
+// view is null and its bytes are the inline array; a view's is C's pointer.
+// Every access goes through dataPointer, one select, so the two kinds never
+// need telling apart anywhere else -- and Object.copy of either is right: the
+// copy of an owned struct keeps a null view and its own copied bytes, and the
+// copy of a view points at the same C memory.
+// ---------------------------------------------------------------------------
+
+llvm::Value *IRGenerator::dataPointer(llvm::Value *Obj, ClassInfo *CI) {
+  auto Ptr = llvm::PointerType::getUnqual(Context);
+  auto *ViewAddr = Builder.CreateStructGEP(CI->Ty, Obj, 2, "c.view.addr");
+  auto *View = Builder.CreateLoad(Ptr, ViewAddr, "c.view");
+  auto *Inline = Builder.CreateStructGEP(CI->Ty, Obj, 3, "c.inline");
+  auto *IsOwned = Builder.CreateICmpEQ(
+      View, llvm::ConstantPointerNull::get(Ptr), "c.owned");
+  return Builder.CreateSelect(IsOwned, Inline, View, "c.bytes");
+}
+
+llvm::Type *IRGenerator::lowerCType(const std::string &CType) {
+  if (CType == "UInt8")  return llvm::Type::getInt8Ty(Context);
+  if (CType == "UInt16") return llvm::Type::getInt16Ty(Context);
+  if (CType == "UInt32") return llvm::Type::getInt32Ty(Context);
+  if (CType == "UInt64") return llvm::Type::getInt64Ty(Context);
+  return lowerType(CType);
+}
+
+/// Read a scalar at C's width and widen it to what catmint sees: an unsigned
+/// type zero-extends, so 255 in a UInt8 is 255 and not -1. Alignment 1,
+/// because a view may point anywhere C chose.
+llvm::Value *IRGenerator::loadCScalar(llvm::Value *Addr, const std::string &CType) {
+  auto *V = Builder.CreateAlignedLoad(lowerCType(CType), Addr, llvm::Align(1),
+                                      "c.field");
+  if (CType == "UInt8" || CType == "UInt16")
+    return Builder.CreateZExt(V, llvm::Type::getInt32Ty(Context), "c.widen");
+  if (CType == "UInt32")
+    return Builder.CreateZExt(V, llvm::Type::getInt64Ty(Context), "c.widen");
+  return V;
+}
+
+void IRGenerator::storeCScalar(llvm::Value *Addr, llvm::Value *V,
+                               const std::string &CType) {
+  llvm::Type *T = lowerCType(CType);
+  if (V->getType() != T && V->getType()->isIntegerTy() && T->isIntegerTy())
+    V = Builder.CreateTrunc(V, T, "c.narrow");
+  Builder.CreateAlignedStore(V, Addr, llvm::Align(1));
+}
+
+llvm::Value *IRGenerator::cFieldAddress(FieldAccess *FA, ClassInfo::CField &Out) {
+  ClassInfo *CI = lookupClass(staticTypeOf(FA->getObject()));
+  if (!CI || !CI->IsCStruct)
+    fail(FA->getLineNumber(), "'." + FA->getField() + "' is not on an extern struct");
+  auto It = CI->CFields.find(FA->getField());
+  if (It == CI->CFields.end())
+    fail(FA->getLineNumber(), "extern struct '" + CI->AST->getName() +
+                                  "' has no field '" + FA->getField() + "'");
+  Out = It->second;
+
+  // A field reached through another field held by value is one more offset
+  // into the same bytes, not a copy.
+  llvm::Value *Base = nullptr;
+  auto *Inner = dynamic_cast<FieldAccess *>(FA->getObject());
+  if (Inner && !Inner->getValue()) {
+    ClassInfo *InnerCI = lookupClass(staticTypeOf(Inner->getObject()));
+    if (InnerCI && InnerCI->IsCStruct) {
+      ClassInfo::CField Holder;
+      Base = cFieldAddress(Inner, Holder);
+    }
+  }
+  if (!Base) {
+    llvm::Value *Obj = emit(FA->getObject());
+    if (!Obj)
+      fail(FA->getLineNumber(), "the object of '." + FA->getField() +
+                                    "' produced no value");
+    Builder.CreateCall(Runtime.checkNull(), {Obj});
+    Base = dataPointer(Obj, CI);
+  }
+  return Builder.CreateConstInBoundsGEP1_64(llvm::Type::getInt8Ty(Context), Base,
+                                            Out.Offset, FA->getField() + ".c");
+}
+
+llvm::Value *IRGenerator::emitCFieldAccess(FieldAccess *FA) {
+  ClassInfo::CField F;
+  llvm::Value *Addr = cFieldAddress(FA, F);
+  const int Line = FA->getLineNumber();
+
+  if (auto *Value = FA->getValue()) {
+    const std::string FromType = staticTypeOf(Value);
+    llvm::Value *V = emit(Value);
+    if (!V)
+      return nullptr;
+    if (F.Nested) {
+      // Assigning a whole struct copies its bytes, as C does.
+      Builder.CreateCall(Runtime.checkNull(), {V});
+      Builder.CreateMemCpy(Addr, llvm::Align(1), dataPointer(V, F.Nested),
+                           llvm::Align(1), F.ElemSize);
+      return V;
+    }
+    V = coerce(V, FromType, F.Type, Line);
+    storeCScalar(Addr, V, F.CType);
+    return V;
+  }
+
+  if (F.Nested) {
+    // Used whole, a nested struct is a copy: a new owned struct, like C's
+    // `struct rect r = box.rect;`.
+    auto *Copy = constructObject(F.Nested, {}, Line, "c.copy");
+    Builder.CreateMemCpy(dataPointer(Copy, F.Nested), llvm::Align(1), Addr,
+                         llvm::Align(1), F.ElemSize);
+    return Copy;
+  }
+  return loadCScalar(Addr, F.CType);
+}
+
+ClassInfo *IRGenerator::cArrayField(Dispatch *D, ClassInfo::CField &Out) {
+  auto *FA = dynamic_cast<FieldAccess *>(D->getObject());
+  if (!FA || FA->getValue() || (D->getName() != "get" && D->getName() != "set"))
+    return nullptr;
+  ClassInfo *CI = lookupClass(staticTypeOf(FA->getObject()));
+  if (!CI || !CI->IsCStruct)
+    return nullptr;
+  auto It = CI->CFields.find(FA->getField());
+  if (It == CI->CFields.end() || It->second.ArrayLen == 0)
+    return nullptr;
+  Out = It->second;
+  return CI;
+}
+
+void IRGenerator::emitRuntimeErrorIf(llvm::Value *Cond, const std::string &Message) {
+  auto *F = Builder.GetInsertBlock()->getParent();
+  auto *Bad = llvm::BasicBlock::Create(Context, "c.error", F);
+  auto *Good = llvm::BasicBlock::Create(Context, "c.ok", F);
+  Builder.CreateCondBr(Cond, Bad, Good);
+  Builder.SetInsertPoint(Bad);
+  auto Error = Module.getOrInsertFunction(
+      "__cm_runtimeError",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context),
+                              {llvm::PointerType::getUnqual(Context)}, false));
+  Builder.CreateCall(Error, {Builder.CreateGlobalString(Message, ".c.error", 0,
+                                                        &Module)});
+  Builder.CreateUnreachable();
+  Builder.SetInsertPoint(Good);
+}
+
+/// s.pad[i], and s.pad[i] = v (which the parser made set(i, v)). The index is
+/// checked against the declared length, so an array in a C struct is as
+/// bounds-safe as a Bytes.
+llvm::Value *IRGenerator::emitCArrayElement(Dispatch *D) {
+  ClassInfo::CField F;
+  cArrayField(D, F);
+  auto *FA = dynamic_cast<FieldAccess *>(D->getObject());
+  const int Line = D->getLineNumber();
+  llvm::Value *Base = cFieldAddress(FA, F);
+
+  std::vector<Expression *> Args;
+  for (auto *A : *D)
+    Args.push_back(A);
+  llvm::Value *Index = emit(Args.at(0));
+  Index = coerce(Index, staticTypeOf(Args.at(0)), strings::Int64, Line);
+  auto *I64 = llvm::Type::getInt64Ty(Context);
+  // One unsigned comparison catches both a negative index and one too large.
+  auto *OutOfRange = Builder.CreateICmpUGE(
+      Index, llvm::ConstantInt::get(I64, F.ArrayLen), "c.oob");
+  emitRuntimeErrorIf(OutOfRange, "index out of range for the " +
+                                     std::to_string(F.ArrayLen) +
+                                     " elements of '" + FA->getField() + "'");
+  auto *Offset = Builder.CreateMul(Index, llvm::ConstantInt::get(I64, F.ElemSize));
+  auto *Addr = Builder.CreateInBoundsGEP(llvm::Type::getInt8Ty(Context), Base,
+                                         Offset, "c.element");
+
+  if (D->getName() == "set") {
+    const std::string FromType = staticTypeOf(Args.at(1));
+    llvm::Value *V = emit(Args.at(1));
+    if (F.Nested) {
+      Builder.CreateCall(Runtime.checkNull(), {V});
+      Builder.CreateMemCpy(Addr, llvm::Align(1), dataPointer(V, F.Nested),
+                           llvm::Align(1), F.ElemSize);
+      return V;
+    }
+    V = coerce(V, FromType, F.Type, Line);
+    storeCScalar(Addr, V, F.CType);
+    return V;
+  }
+  if (F.Nested) {
+    auto *Copy = constructObject(F.Nested, {}, Line, "c.copy");
+    Builder.CreateMemCpy(dataPointer(Copy, F.Nested), llvm::Align(1), Addr,
+                         llvm::Align(1), F.ElemSize);
+    return Copy;
+  }
+  return loadCScalar(Addr, F.CType);
+}
+
+/// A view: a counted catmint object whose bytes are C's. The object is
+/// counted and freed like any other; what it points at never is -- nothing
+/// in the object's type information names the view as a reference, so
+/// object_free walks right past it.
+llvm::Value *IRGenerator::makeView(ClassInfo *CI, llvm::Value *P) {
+  auto Ptr = llvm::PointerType::getUnqual(Context);
+  noteAllocation();
+  auto *F = Builder.GetInsertBlock()->getParent();
+  auto *From = Builder.GetInsertBlock();
+  auto *Make = llvm::BasicBlock::Create(Context, "c.view.make", F);
+  auto *Done = llvm::BasicBlock::Create(Context, "c.view.done", F);
+  auto *IsNull = Builder.CreateICmpEQ(P, llvm::ConstantPointerNull::get(Ptr),
+                                      "c.view.isnull");
+  Builder.CreateCondBr(IsNull, Done, Make);
+  Builder.SetInsertPoint(Make);
+  auto *Obj = Builder.CreateCall(Runtime.catmintNew(), {CI->RTTI}, "c.view.obj");
+  Builder.CreateStore(P, Builder.CreateStructGEP(CI->Ty, Obj, 2, "c.view.addr"));
+  Builder.CreateBr(Done);
+  Builder.SetInsertPoint(Done);
+  auto *Result = Builder.CreatePHI(Ptr, 2, "c.view");
+  Result->addIncoming(llvm::ConstantPointerNull::get(Ptr), From);
+  Result->addIncoming(Obj, Make);
+  return Result;
+}
+
+llvm::Value *IRGenerator::structPointerOrNull(llvm::Value *Obj, ClassInfo *CI) {
+  auto Ptr = llvm::PointerType::getUnqual(Context);
+  if (llvm::isa<llvm::ConstantPointerNull>(Obj))
+    return Obj;
+  auto *F = Builder.GetInsertBlock()->getParent();
+  auto *From = Builder.GetInsertBlock();
+  auto *Have = llvm::BasicBlock::Create(Context, "c.arg.have", F);
+  auto *Done = llvm::BasicBlock::Create(Context, "c.arg.done", F);
+  Builder.CreateCondBr(
+      Builder.CreateICmpEQ(Obj, llvm::ConstantPointerNull::get(Ptr), "c.arg.isnull"),
+      Done, Have);
+  Builder.SetInsertPoint(Have);
+  auto *Bytes = dataPointer(Obj, CI);
+  auto *HaveEnd = Builder.GetInsertBlock();
+  Builder.CreateBr(Done);
+  Builder.SetInsertPoint(Done);
+  auto *Result = Builder.CreatePHI(Ptr, 2, "c.arg");
+  Result->addIncoming(llvm::ConstantPointerNull::get(Ptr), From);
+  Result->addIncoming(Bytes, HaveEnd);
+  return Result;
+}
+
+llvm::FunctionType *IRGenerator::externFunctionType(Method *M) {
+  std::vector<llvm::Type *> Params;
+  for (auto *P : *M)
+    Params.push_back(lowerCType(P->getCType()));
+  const std::string Ret = M->getCReturnType();
+  llvm::Type *RetTy = (Ret == strings::Void || Ret == "auto" || Ret.empty())
+                          ? llvm::Type::getVoidTy(Context)
+                          : lowerCType(Ret);
+  return llvm::FunctionType::get(RetTy, Params, false);
 }
 
 // ---------------------------------------------------------------------------

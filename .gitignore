@@ -78,6 +78,9 @@ _deps
 catmint-ast/build/
 catmint-gen/bin/*
 catmint-gen/*.bc
+# ...except the prebuilt runtimes, which ship: nothing compiles runtime.c for a user.
+!catmint-gen/runtime-darwin.bc
+!catmint-gen/runtime-linux.bc
 catmint-gen/*.sem
 
 # Generated host-portable runtime (produced by make-host-runtime.sh)
@@ -106,6 +109,7 @@ difftest/failures/
 fuzz/failures/
 .fuzz.log
 .portability.log
+.bindgen.log
 
 # Compiled programs and the intermediates that make them. Four of these were
 # committed by accident early on -- two arm64 binaries among them -- and had
@@ -116,3 +120,7 @@ fuzz/failures/
 /mem
 *.cm.ast
 *.cm.ast.ll
+
+# examples/rps-rts: the SDL shim's static lib is caught by *.a above; the
+# linked executable has no extension, so it needs its own line.
+examples/rps-rts/rps

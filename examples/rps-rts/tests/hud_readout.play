@@ -1,0 +1,11 @@
+# The HUD draws gold and the selection count in its own digit font, each font
+# pixel a 4 x 4 block. Two units bought leave 30 gold, and 45 steps add 4.5:
+# "34" is 11 + 9 = 20 blocks, 320 pixels. Six units selected: "6" is 12
+# blocks, 192 pixels, right-aligned 20 pixels from the edge.
+# frames 45
+# expect gold 34  selected 6
+# pixels 44 16 76 36 231 226 214 320
+# pixels 920 16 944 36 231 226 214 192
+1 key 49
+1 key 51
+2 key 97

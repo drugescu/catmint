@@ -1,0 +1,30 @@
+#!/bin/sh
+# Link the program with a runtime whose stamp is from another ABI -- the real
+# one with its stamp renamed -- and require that it does not run, and that
+# the error names the stamp.
+set -e
+src=$1
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v llvm-link 2>/dev/null || \
+                                  echo /opt/homebrew/opt/llvm@22/bin/llvm-link)")}
+here=$(pwd)
+../catmint-lex/bin/catmint-parser "$src" "$work/p.ast" >/dev/null 2>&1
+(cd "$work" && "$here/bin/catmint-gen" p.ast p.sem) >/dev/null 2>&1
+runtime=${CATMINT_RUNTIME:-"runtime-$(uname -s | tr '[:upper:]' '[:lower:]').bc"}
+"$LLVM_BIN/llvm-dis" "$runtime" -o "$work/runtime.ll"
+if ! grep -q '__catmint_abi_[0-9]' "$work/runtime.ll"; then
+  echo "the runtime defines no ABI stamp"
+  exit 1
+fi
+sed 's/__catmint_abi_[0-9][0-9]*/__catmint_abi_0/' "$work/runtime.ll" > "$work/stale.ll"
+"$LLVM_BIN/llvm-link" "$work/p.ast.ll" "$work/stale.ll" -o "$work/stale.bc"
+if "$LLVM_BIN/lli" "$work/stale.bc" > "$work/out" 2>&1; then
+  echo "the program ran against a runtime with another ABI stamp"
+  exit 1
+fi
+if ! grep -q '__catmint_abi_' "$work/out"; then
+  echo "it failed, but the error does not name the stamp:"
+  head -5 "$work/out"
+  exit 1
+fi

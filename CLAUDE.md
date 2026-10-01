@@ -15,7 +15,7 @@ Three components, built in order, each depending on the previous:
 
 ```
 .cm source ─► catmint-lex ─► .ast (JSON) ─► catmint-gen ─► .ll ─► llvm-link ─► lli / clang
-              flex+bison                    semantic analysis      + runtime.ll
+              flex+bison                    semantic analysis      + runtime-<os>.bc
               → AST objects                 + IR generation
 ```
 
@@ -44,7 +44,7 @@ Three components, built in order, each depending on the previous:
    types via `TypeVisitor`), then `IRGenerator` emits a `.ll` file.
 
 The emitted IR is not self-contained: it declares `M2_IO_out`, `M2_IO_in` and
-`__catmint_new` and must be linked against `runtime.ll` before running.
+`__catmint_new` and must be linked against the runtime before running.
 
 ## Build
 
@@ -135,44 +135,60 @@ the symbol table and the grammar's running commentary all go to `std::cout`,
 which is redirected to nowhere by default. Diagnostics go to `std::cerr` and
 are never swallowed, so a failing build still says why.
 
-`catmintc` compiles the linked bitcode at `-O2`, and `-O0` on its command
-line turns that off. This is not a nicety: at `-O0` clang uses the fast
+`catmintc` runs LLVM's tools and nothing else: `llvm-link` with the prebuilt
+runtime, `opt` and `llc` at `-O2` (`-O0` on its command line turns that off),
+and lld to link. **No clang in a user's path.** Clang is for developers: it
+builds the runtime from `runtime.c` and runs `--asan`, whose run-time library
+ships with it; `catmintc --asan` without clang says so and stops. The module
+names no target, so `opt -mtriple=<host>` supplies the host's triple and data
+layout, and on Apple silicon `-mcpu=apple-m1`, which is what clang assumed;
+`bench/run.sh` was unchanged or faster for the switch. The link line is
+`link_executable` in `catmintc`, and it carries the hardening clang's driver
+used to add: position-independent executables, and on Linux `-z relro -z now
+-z noexecstack` -- `tools/linux/test.sh` checks the result with `readelf`.
+The optimisation level is not a nicety: at `-O0` llc uses the fast
 register allocator, which spills every value to the stack, and a counted loop
 ran more than twice as slowly for it. Running LLVM's pass pipeline inside
 `catmint-gen` as well was tried and made no measurable difference on top of
 that, so the generator emits plain IR, which is also far easier to read when
 working on it.
 
-## The runtime, and why it needs a build step
+## The runtime ships prebuilt
 
 `catmint-gen/runtime.c` is the object model and I/O library: `TObject`,
 `TString`, `TIO`, `TList`, `TInteger`, `TFile`, `TMath`, the
-`__catmint_rtti` type-info struct, `__catmint_new`, and the built-in methods. `build-runtime.sh` compiles it for the host into
-`runtime.host.ll`, which is what programs link against.
+`__catmint_rtti` type-info struct, `__catmint_new`, and the built-in methods.
+Users never compile it. What ships is **`runtime-darwin.bc` and
+`runtime-linux.bc`**, and `catmintc` links the one for the host
+(`CATMINT_RUNTIME` overrides it, which is how the test suite links the one it
+has just built).
 
-`runtime.c` is the source of truth and `runtime.ll` is a checked-in copy of
-what it compiles to, with the target triple, the data layout and the build
-path stripped, so that one copy serves every 64-bit host -- the runtime uses
-only pointers, `int`, `long long` and `double`, whose layouts agree
-everywhere this compiler runs.
+- **Bitcode built by LLVM 16**, the oldest catmint supports: newer LLVM reads
+  older bitcode by policy, so one file serves every LLVM from 16 on. Textual
+  IR has no such promise, which is why the old `runtime.ll` written by LLVM 22
+  could not be read by 18.
+- **One per OS**, because the C library's headers are not neutral. Built on
+  macOS the IR calls `\01_fputs` and `\01_fopen` (Darwin's aliases) and
+  `__maskrune`; on Linux it calls glibc's `stdin`, `stderr` and
+  `__ctype_b_loc`. The old claim that one `runtime.ll` served every host held
+  only because `build-runtime.sh` quietly recompiled `runtime.c` wherever
+  there was a C compiler. Within one OS the file is architecture-neutral, and
+  `portability.sh` compiles each for both architectures of its OS.
+- **Stamped.** `runtime.c` defines `__catmint_abi_<CATMINT_ABI>`; the
+  generated `main` reads it volatile, so every program needs that exact
+  symbol and a runtime from another agreement fails to link. **Bump
+  `CATMINT_ABI` in `runtime.c` and `CatmintAbi` in `IRGenerator.h` together
+  whenever a layout, an RTTI field or a slot changes.** Test 63 checks a
+  renamed stamp is refused.
 
-`build-runtime.sh` keeps the two honest. With a C compiler it compiles the
-`.c` fresh, and refreshes the checked-in `.ll` whenever `runtime.c` is newer,
-so the copy in the repository never falls behind the source that a
-contributor with a compiler is editing. Without a C compiler it uses the
-`.ll` as it stands and warns if it looks stale. **If you change `runtime.c`,
-commit the regenerated `runtime.ll` with it** -- running the test suite will
-have regenerated it for you.
-
-That staleness is not a theoretical worry: the original `runtime.ll` was
-committed without its source, built for x86_64 Linux, and drifted far enough
-from the object model that using it would have been a silent miscompile
-rather than a link error. Hence the refresh-on-build.
-
-A C compiler is still needed to produce a *native executable*, because
-`catmintc` ends by calling clang; what the checked-in IR removes is the need
-for one to have a usable runtime, which is enough to run programs under
-`lli`.
+`build-runtime.sh` is a developer tool that nothing in `catmintc` calls. It
+strips the triple, data layout, CPU, features and probe-stack, normalises the
+module name, and assembles bitcode; it prefers LLVM 16 (`brew install
+llvm@16`). `tools/linux/run.sh catmint-gen/build-runtime.sh` builds the Linux
+one in a container. **If you change `runtime.c`, rebuild both files and commit
+them**; `build-runtime.sh --check` fails when the committed file is not what
+`runtime.c` builds to. `ctest.sh` builds a fresh runtime into its work
+directory, so the suite tests the source being edited even before you do.
 
 The layouts and the virtual table slot order in `runtime.c` are fixed by
 agreement with `IRGenerator.cpp`; changing one without the other silently
@@ -351,7 +367,7 @@ For each class the generator emits an LLVM struct laid out as
 that chains to the parent initialiser and then runs the attribute initialisers.
 Virtual table slots are the parent's followed by the class's new methods in
 declaration order, with an override reusing the parent's slot. Built-in classes
-are seeded to match the order already fixed in `runtime.ll`, so `Object` holds
+are seeded to match the order already fixed in `runtime.c`, so `Object` holds
 slots 0-2 and `IO` adds `input` and `out` at 3 and 4.
 
 Dispatch loads the function pointer from the receiver's vtable, after a
@@ -400,6 +416,17 @@ numbers. A literal too large for an `Int` is an `Int64`; arithmetic on two
 `Int`s stays 32 bits, so a 64-bit computation needs a 64-bit operand to start
 from. Boxing goes through a 64-bit `Integer`, so no width loses anything on
 the way into a container. `IO.epoch()` is an `Int64` and works past 2038.
+
+Floats come in two widths, `Float` (a double) and `Float32` (a C `float`);
+`Float64` is folded into `Float` by the parser, as `Int32` is into `Int`.
+`TypeTable::floatWidth` is the float counterpart of `integerWidth`, and the
+rules mirror the integer ones: two floats meet at the wider, an integer meets
+a float at that float, and `coerce` extends or truncates between the widths
+implicitly. **Every float literal is a double** -- `FloatConstant` stores one.
+It stored a `float` until test 59, so every literal in every program was
+rounded to seven digits before the generator saw it; printing at six digits
+hid it, and a bit-for-bit comparison with an independent port of a game
+found it. `Floats` still holds doubles.
 
 Namespaces: `using math as m` declares that module's classes as `m::Name`.
 A qualified name is joined into a single `IDENTIFIER` by the lexer, because
@@ -580,14 +607,54 @@ nothing frees it, it never reaches the temporary pool. It meets `null` and
 nothing else: no conversion to or from `Int` in either direction, because a
 pointer reachable by arithmetic is one nobody can reason about.
 
-Only what has an unambiguous machine representation may cross: the integers
-and `Float` by value, `Ptr` as itself, `String` and the three arrays as the
+Only what has an unambiguous machine representation may cross: the integers,
+`Float` (as a `double`) and `Float32` (as a `float`) by value, `Ptr` as itself, `String` and the three arrays as the
 address of their contents. `marshalToC` does that last part -- all four put
 that pointer at the same offset, so one struct shape serves -- and keeps the
 null check, because handing C a null where it wants a buffer is a fault with
 no message. An `Object`, a `List` or a user class in an extern signature is a
 compile error, since what would cross is the catmint object, type information
 and reference count and all.
+
+**C structs and unions.** `extern struct` and `extern union` are classes
+with `Class::isCStruct()`, fields only (the `c_field` rule), and the
+generator gives them their own shape: `{ rtti, refs, ptr view, [n x i8] }`.
+An owned instance has a null `view` and its bytes inline; a view (an extern
+function returning the struct type, or `S.at(ptr)`) has C's pointer there.
+`dataPointer` picks between them with one select, so nothing else ever tells
+them apart, and `Object.copy` is right for both without special handling.
+The layout is `layoutCStruct`: C's natural-alignment rule, which is the same
+on every target catmint supports; every `@ n` is checked there. Because a
+view's pointer is a plain `ptr` field with no entry in the RTTI's list of
+reference fields, `object_free` never touches C's memory.
+
+The unsigned C types are rewritten **in the parser**: `cBoundaryType` turns
+`UInt8`/`UInt16` into `Int` and `UInt32`/`UInt64` into `Int64` for everything
+downstream, and keeps the C type as `Attribute::getCType` and
+`Method::getCReturnType` for the generator's `lowerCType`, `loadCScalar` and
+`storeCScalar`, which zero-extend and truncate at the real width. So the
+semantic pass and `staticTypeOf` never see a `UInt`, and a `UInt` anywhere
+else is refused by `refuseCBoundaryType`. Extern calls go through
+`emitExternCall`, not `emitStaticCall`'s ordinary path, because what C
+receives is decided by the C signature (`externFunctionType`).
+
+**Bindings are generated, not written.** `tools/bindgen.py` reads a C
+library's headers through clang -- declarations from the JSON AST, layouts
+from `-fdump-record-layouts-complete`, constant values from clang evaluating
+each one as an enumerator initialiser -- and writes a `.cmm` of extern
+structs with every `@` asserted, one extern class of functions, and a class
+of constants as static methods. `lib/sdl2.cmm` is its output for SDL2 and is
+**never edited by hand**; the command is in its header. `lib/sdl.cmm` is the
+hand-written safe layer on top. When the generator gets something wrong the
+compile fails on an `@` assertion rather than corrupting memory, which is
+the point of writing clang's offsets out. Two things it has already got wrong
+and now handles: a typedef of a function pointer whose parameters mention a
+struct is not that struct (only the typedef's own type counts), and a record
+with a bitfield or an anonymous member becomes an array of integers of the
+record's alignment, so records holding it still lay out right.
+`tools/bindgen_test/run.sh` binds a test header against a C library built
+from it; `test.sh` runs it and says "skipped: needs clang" rather than
+nothing when it cannot.
 
 `link "SDL2"` names a library. The preprocessor removes the line, so there is
 no grammar rule and no AST node; `catmintc` greps the sources for it, as it
@@ -718,8 +785,9 @@ broken until it was tried, all of them invisible on macOS.
   inside `find_package(LLVM)` before any of our code runs, which was worth
   establishing, since the first guess was a missing `find_package(ZLIB)` and
   that turned out not to be it.
-- **The checked-in `runtime.ll` only reads on an LLVM close to the one that
-  wrote it.** The IR text format is not stable across major versions;
+- ~~**The checked-in `runtime.ll` only reads on an LLVM close to the one that
+  wrote it.**~~ **Replaced** by bitcode built with LLVM 16; see "The runtime
+  ships prebuilt". Kept for the history: The IR text format is not stable across major versions;
   `captures(none)` replaced `nocapture` in LLVM 21. The file carries a stamp
   saying what wrote it and `build-runtime.sh` checks before falling back.
 
@@ -833,13 +901,24 @@ Each of these produced a crash or a silent miscompile during development.
   current expression or begins a new one, and it resolves every such case by
   shifting -- the longest expression wins. `Int c = a` followed by `- b` on
   the next line computes `a - b`; `twice` followed by `(x)` is a call. That
-  accounts for all ten shift/reduce conflicts, on `(`, `[`, `.`, `::`, `-`,
+  accounts for all twelve shift/reduce conflicts, on `(`, `[`, `.`, `::`, `-`,
   `:` and IDENTIFIER, and `bison -Wcounterexamples` prints the derivations.
+  Two of them came with `s.pad[i]`, subscripting a field: `a.b` followed by
+  `[` on the next line now continues it. The only statement that begins
+  with `[` is a bare list literal whose value is thrown away, so no program
+  that means something changed meaning.
   Like the `%` precedence this is **settled, not open**: making newlines
   significant would change what existing programs mean. The one remaining
   reduce/reduce conflict is `type_name -> IDENTIFIER` against
   `rvalue_identifier_expression -> IDENTIFIER`, the declaration-versus-
   expression ambiguity, resolved in favour of the earlier rule.
+- ~~**`wtest.sh` exited 0 with a test failing.**~~ **Fixed.** It printed its
+  failures and exited 0, and `test.sh` trusted the status, so the parser
+  suite printed nothing at all and the run still said "everything passed" --
+  for as long as the float-literal fix had left `class_test.cm.ref` stale.
+  `wtest.sh` now exits 1, and `test.sh` also requires the "All N tests
+  passed" line. **When a section of `test.sh` prints nothing, it has not
+  passed.**
 - **String escapes are decoded in the lexer**, not by the AST's JSON round
   trip. They used to be decoded by accident, because JSON spells `\n` and
   `\t` the same way; a quote or a backslash then produced an AST file the
@@ -866,6 +945,31 @@ Each of these produced a crash or a silent miscompile during development.
   the arithmetic operators. Unlike the `%` question this was safe to change:
   the affected expressions did not compile at all, so no program's meaning
   could move.
+- ~~**A `Ptr` was counted wherever an LLVM `ptr` was.**~~ **Fixed.** A block's
+  value and a method's result are kept alive by retaining them and handing
+  them to the pool, and `emitBlock` and `emitCleanupAndReturn` asked whether
+  the value was a reference by looking at its *LLVM* type -- which a `Ptr`
+  shares. So `unsafe: h = SDL.CreateWindow(...) end`, whose value is a Ptr,
+  retained and later released a pointer into memory C owns. `retain` adds one
+  to the int at offset 8 only if it is positive; `release` takes one off
+  whenever it is not zero, and frees at zero; a C struct with a pointer at
+  offset 8 is negative half the time, so one program in two ended with a
+  pointer decremented by one and `free` of an address that was never
+  allocated, inside the library, after `main` had printed its last line. Tests
+  49 and 50 hid it because the pointer was `malloc`'d scratch that nothing
+  reads back. `yieldsPtr` now asks the catmint type; `57_ptr_uncounted` fills
+  a C block with 0xFF (the negative case) and checks it is untouched. **Any new
+  place that decides "is this value counted" must ask `isReferenceTypeName`,
+  never `isPointerTy()`.** `Ptr == null` still compiles to `__cm_equals`,
+  which is only safe because one side is null: two non-null Ptrs would have
+  their first words read as type information.
+- ~~**A class's initialiser was declared, then created again.**~~ **Fixed.**
+  Constructing an attribute of class type calls `<Class>_init` before that
+  class's own initialiser has been emitted, which declared it;
+  `Function::Create` afterwards renamed the definition `<Class>_init.1` and
+  left the declaration undefined, so a class with an attribute of a
+  later-declared class did not link. `emitInitFunction` now reuses the
+  declaration (`56_forward_attribute`).
 
 ## Documents
 

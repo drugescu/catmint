@@ -1,0 +1,5 @@
+# Clicking one of your units selects it.
+# frames 5
+# expect selected 1  over
+# expect unit 0 at 320 300 selected 1 idle
+1 click 3.2 3.0 0.3

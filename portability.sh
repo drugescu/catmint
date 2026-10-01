@@ -10,10 +10,11 @@
 #      string and bakes the number into the run-time type information. If a
 #      target disagreed, every allocation would be the wrong size, silently.
 #      Asserted at compile time, so nothing has to run.
-#   2. Does the checked-in runtime.ll -- the one that exists so a C compiler
-#      is optional -- compile for those targets? It once said
-#      "target-cpu"="apple-m1" on all thirty of its functions while claiming
-#      to be portable.
+#   2. Do the prebuilt runtimes -- one bitcode file per OS, which is all a
+#      user gets, since nothing compiles runtime.c for them -- compile for
+#      both architectures of their OS, pinned to nothing? The old runtime.ll
+#      once said "target-cpu"="apple-m1" on all thirty of its functions while
+#      claiming to be portable.
 #   3. Does a generated program's IR?
 #
 # What this cannot answer is whether the result *runs* on Linux. Only CI on a
@@ -72,44 +73,54 @@ for target in $TARGETS; do
   fi
 done
 
-# ---- 2. the checked-in runtime --------------------------------------------
-printf "\nchecked-in runtime.ll\n"
-for pinned in "target triple" "target datalayout" "target-cpu" \
-              "target-features" "probe-stack"; do
-  if grep -q "$pinned" "$ROOT/catmint-gen/runtime.ll"; then
-    printf "  ${RED}pinned to this machine: %s${NC}\n" "$pinned"
+# ---- 2. the prebuilt runtimes ---------------------------------------------
+# One bitcode file per operating system, since the C library's headers differ
+# (Darwin's `\01_fputs` and `__maskrune` against glibc's `stdin` and
+# `__ctype_b_loc`). Each must exist, carry the ABI stamp, pin nothing to the
+# machine that built it, and compile for both architectures of its OS. A
+# missing file is a failure, not a skip: this section once passed by grepping
+# a file that had been deleted.
+printf "\nprebuilt runtimes\n"
+LLC="$LLVM_BIN/llc"
+for os in darwin linux; do
+  bc="$ROOT/catmint-gen/runtime-$os.bc"
+  if [ ! -f "$bc" ]; then
+    printf "  %-30s ${RED}MISSING${NC}\n" "runtime-$os.bc"
+    failed=1
+    continue
+  fi
+  if ! "$LLVM_BIN/llvm-dis" "$bc" -o "$WORK/rt-$os.ll" 2>"$WORK/log"; then
+    printf "  %-30s ${RED}UNREADABLE${NC}\n" "runtime-$os.bc"
+    sed 's/^/      /' "$WORK/log" | head -3
+    failed=1
+    continue
+  fi
+  for pinned in "target triple" "target datalayout" "target-cpu" \
+                "target-features" "probe-stack"; do
+    if grep -q "$pinned" "$WORK/rt-$os.ll"; then
+      printf "  ${RED}runtime-%s.bc is pinned to its machine: %s${NC}\n" "$os" "$pinned"
+      failed=1
+    fi
+  done
+  if ! grep -q '@__catmint_abi_[0-9]' "$WORK/rt-$os.ll"; then
+    printf "  ${RED}runtime-%s.bc has no ABI stamp${NC}\n" "$os"
     failed=1
   fi
-done
-# Whether this LLVM can read the file at all is a separate question from
-# whether the file is pinned to a machine. The textual IR format changes
-# between LLVM major versions -- `captures(none)` replaced `nocapture` in
-# LLVM 21 -- so a copy written by a newer LLVM is a parse error on an older
-# one everywhere equally. That is a real limitation, recorded in
-# COMPILING.md and diagnosed by build-runtime.sh, but it is not this script's
-# question and failing here would only say the same thing four times.
-# Compiling it is the only honest probe: `-fsyntax-only` on IR input does
-# nothing at all and exits 0, which made this branch pass vacuously.
-if "$CLANG" -Wno-override-module -c "$ROOT/catmint-gen/runtime.ll" \
-      -o "$WORK/probe.o" 2>/dev/null; then
-  for target in $TARGETS; do
-    if "$CLANG" --target="$target" -O2 -Wno-override-module -c \
-          "$ROOT/catmint-gen/runtime.ll" -o /dev/null 2>"$WORK/log"; then
-      printf "  %-30s ${GREEN}compiles${NC}\n" "$target"
+  case $os in
+    darwin) triples="arm64-apple-darwin x86_64-apple-darwin" ;;
+    linux)  triples="x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu" ;;
+  esac
+  for target in $triples; do
+    if "$LLC" -O2 -filetype=obj -mtriple="$target" "$bc" -o /dev/null \
+          2>"$WORK/log"; then
+      printf "  %-30s ${GREEN}compiles${NC}\n" "runtime-$os.bc for $target"
     else
-      printf "  %-30s ${RED}FAILS${NC}\n" "$target"
+      printf "  %-30s ${RED}FAILS${NC}\n" "runtime-$os.bc for $target"
       sed 's/^/      /' "$WORK/log" | head -4
       failed=1
     fi
   done
-else
-  WROTE=$(sed -n 's/^; written by //p' "$ROOT/catmint-gen/runtime.ll" | head -1)
-  printf "  skipped: this LLVM cannot parse it\n"
-  printf "    written by: %s\n" "${WROTE:-unknown}"
-  printf "    reading it: %s\n" "$("$CLANG" --version | grep -im1 version)"
-  printf "    The IR text format changes between LLVM major versions; the\n"
-  printf "    pinning checks above still apply and still passed.\n"
-fi
+done
 
 # ---- 3. a generated program -----------------------------------------------
 printf "\ngenerated program IR\n"

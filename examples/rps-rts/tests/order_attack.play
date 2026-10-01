@@ -1,0 +1,7 @@
+# A click on an enemy sends the whole selection after it.
+# frames 5
+# expect selected 4  over
+# absent idle
+# absent moving
+1 key 97
+2 click 10.8 3.2 0.3

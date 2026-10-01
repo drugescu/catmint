@@ -1,0 +1,35 @@
+# A declaration keeps its initialiser across any two numeric types.
+#
+# Whether a declaration used its initialiser at all was decided from a list of
+# initialiser types, and an integer only counted if it was exactly an Int. So
+# `Int n = someInt64` and `Int16 h = someInt8` evaluated the initialiser and
+# threw it away, leaving zero -- with no error, and although assigning across
+# widths is documented as implicit. `Ints.get` returns an Int64, so every
+# `Int x = ints.get(i)` read zero; a digit font stored in an Ints drew
+# nothing at all.
+
+class Main from IO
+  def main:
+    Int64 small = 42
+    Int n = small
+    out("int from int64 ${n}\n")
+
+    Int8 b = 7
+    Int16 h = b
+    out("int16 from int8 ${h}\n")
+
+    # 5000000000 does not fit in 32 bits: it truncates, as it does in C.
+    Int64 big = 5000000000
+    Int t = big
+    out("int from big int64 ${t}\n")
+
+    Ints xs = new Ints(1)
+    xs.set(0, 31599)
+    Int fromArray = xs.get(0)
+    out("from ints ${fromArray}\n")
+
+    Float32 f = 2.75
+    Int16 fromFloat32 = f
+    out("int16 from float32 ${fromFloat32}\n")
+  end
+end

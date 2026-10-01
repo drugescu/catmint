@@ -1,114 +1,114 @@
 #!/bin/sh
-# Produce the runtime LLVM IR to link programs against.
+# Rebuild the prebuilt runtime from runtime.c. This is for people working on
+# catmint: nothing a user runs calls it, and it is the one place clang is
+# needed.
 #
-# runtime.c is the source of truth. runtime.ll is a checked-in copy of what
-# it compiles to, with the target triple and data layout stripped so that it
-# works on any 64-bit host: the runtime uses only pointers, int, long long
-# and double, whose layouts agree everywhere this compiler runs.
+#   ./build-runtime.sh              rebuild runtime-<os>.bc beside runtime.c
+#   ./build-runtime.sh --out F.bc   build into F.bc instead (the test suite)
+#   ./build-runtime.sh --check      rebuild into a temporary file and fail if
+#                                   it differs from the committed one
 #
-# With a C compiler available the .c is compiled fresh, and the checked-in
-# .ll is refreshed whenever it has fallen behind. Without one, the .ll is
-# used as it stands, which is the point of keeping it in the repository.
+# The runtime ships as bitcode, one file per operating system:
 #
-# Usage: ./build-runtime.sh [output.ll]
+# - Bitcode, not textual IR. The text format changes between LLVM major
+#   versions -- `captures(none)` replaced `nocapture` in LLVM 21, and LLVM 18
+#   could not read a runtime.ll written by 22 -- while newer LLVM reads older
+#   bitcode by policy. So the runtime is built by the oldest LLVM catmint
+#   supports and every newer one can link it. RUNTIME_LLVM_BIN chooses that
+#   LLVM; the default is LLVM 16 when it is installed.
+#
+# - One per OS. The C library's headers are not neutral: built on macOS, the
+#   IR calls `\01_fputs` and `\01_fopen` (Darwin's symbol aliases) and
+#   `__maskrune` (its ctype), and `stdin`/`stderr` name different globals on
+#   glibc. Within one OS the IR does not depend on the architecture, which
+#   portability.sh checks by compiling it for both.
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
-OUT=${1:-"$HERE/runtime.host.ll"}
 SOURCE="$HERE/runtime.c"
-CHECKED_IN="$HERE/runtime.ll"
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+COMMITTED="$HERE/runtime-$OS.bc"
 
-# llvm-link first, not clang: catmintc links and compiles with one toolchain,
-# and the runtime has to be built by that same one. Picking clang off PATH
-# instead is how a program ends up compiled by one vendor's front end and one
-# vendor's back end, which do not always agree on what a function attribute
-# means.
-LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v llvm-link 2>/dev/null || \
+MODE=build
+OUT="$COMMITTED"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --out)   OUT="$2"; MODE=out; shift 2 ;;
+    --check) MODE=check; shift ;;
+    *) echo "usage: build-runtime.sh [--out file.bc | --check]" >&2; exit 2 ;;
+  esac
+done
+
+# The oldest supported LLVM if it is here, else the one catmintc uses.
+if [ -z "$RUNTIME_LLVM_BIN" ]; then
+  for candidate in /opt/homebrew/opt/llvm@16/bin /usr/local/opt/llvm@16/bin \
+                   /usr/lib/llvm-16/bin; do
+    if [ -x "$candidate/clang" ]; then RUNTIME_LLVM_BIN=$candidate; break; fi
+  done
+fi
+if [ -z "$RUNTIME_LLVM_BIN" ]; then
+  RUNTIME_LLVM_BIN=${LLVM_BIN:-$(dirname "$(command -v llvm-link 2>/dev/null || \
                                   echo /opt/homebrew/opt/llvm@22/bin/llvm-link)")}
-CLANG="$LLVM_BIN/clang"
+fi
+CLANG="$RUNTIME_LLVM_BIN/clang"
+LLVM_AS="$RUNTIME_LLVM_BIN/llvm-as"
 
-# A module with no triple and no data layout takes the host's, which is what
-# makes one checked-in copy serve every machine. clang says so on every link,
-# hence -Wno-override-module in catmintc.
-#
-# Do not be tempted to pin a data layout here instead: its mangling field
-# decides whether symbols get a leading underscore, so a fixed one is wrong
-# on Mach-O and the JIT then cannot resolve anything.
-#
-# The module id and source filename are normalised so the committed copy does
-# not carry whoever's absolute build path.
-# target-cpu and target-features go too. clang pins them to the machine it ran
-# on -- "apple-m1", "+neon", "+sha3" -- and a copy carrying those is not a
-# portable runtime, whatever the triple says.
-#
-# So does probe-stack, which is worse than unportable: Apple clang puts
-# "probe-stack"="__chkstk_darwin" on the two functions here with a 4K buffer,
-# and LLVM 22's AArch64 back end accepts only the value "inline-asm" and calls
-# report_fatal_error on anything else. One vendor's front end and another's
-# back end then cannot build hello world. Dropping it costs those two
-# functions their stack-clash hardening, which for a 4K frame under a 16K
-# guard page is nothing, and it makes the checked-in IR independent of
-# whichever clang happened to produce it.
-strip_target() {
+if [ ! -x "$CLANG" ] || [ ! -x "$LLVM_AS" ]; then
+  if [ "$MODE" = out ] && [ -f "$COMMITTED" ]; then
+    # The test suite on a machine without clang tests what users get.
+    cp "$COMMITTED" "$OUT"
+    exit 0
+  fi
+  echo "build-runtime: needs clang and llvm-as in $RUNTIME_LLVM_BIN" >&2
+  echo "  (only to rebuild the runtime; compiling catmint programs does not)" >&2
+  exit 1
+fi
+
+# The module is made independent of the machine that built it. No triple and
+# no data layout, so it takes the host's when linked -- do not pin a layout:
+# its mangling field decides whether symbols get a leading underscore, so a
+# fixed one is wrong on Mach-O. No target-cpu or target-features, which clang
+# pins to the builder ("apple-m1", "+neon"). And no probe-stack, which is
+# worse than unportable: Apple clang puts "probe-stack"="__chkstk_darwin" on
+# functions with a 4K buffer, and LLVM 22's AArch64 back end calls
+# report_fatal_error on any value but "inline-asm". The module id and source
+# name are normalised so the file does not carry anyone's build path.
+build() {
+  tmp="$1.tmp.$$"
+  # -O2, not -O0: at -O0 clang marks every function `optnone noinline`, and
+  # nothing in the runtime could then be inlined into a program.
+  "$CLANG" -O2 -emit-llvm -S "$SOURCE" -o "$tmp.ll"
   sed -e '/^target datalayout = /d' \
       -e '/^target triple = /d' \
       -e 's/ "target-cpu"="[^"]*"//g' \
       -e 's/ "target-features"="[^"]*"//g' \
       -e 's/ "probe-stack"="[^"]*"//g' \
+      -e 's/ "tune-cpu"="[^"]*"//g' \
       -e "s|^; ModuleID = .*|; ModuleID = 'runtime.c'|" \
-      -e 's|^source_filename = .*|source_filename = "runtime.c"|' "$1" > "$2"
+      -e 's|^source_filename = .*|source_filename = "runtime.c"|' \
+      "$tmp.ll" > "$tmp.clean.ll"
+  "$LLVM_AS" "$tmp.clean.ll" -o "$1"
+  rm -f "$tmp.ll" "$tmp.clean.ll"
 }
 
-if [ -x "$CLANG" ] && [ -f "$SOURCE" ]; then
-  TMP="$OUT.tmp.$$"
-  # -O2, not -O0: at -O0 clang marks every function `optnone noinline`,
-  # which stops the program that links against it from inlining anything --
-  # every array element access stayed a function call because of it.
-  "$CLANG" -O2 -emit-llvm -S "$SOURCE" -o "$TMP"
-  strip_target "$TMP" "$OUT"
-  rm -f "$TMP"
-
-  # Stamp which LLVM wrote it. The textual IR format is not stable across
-  # major versions -- `captures(none)` replaced `nocapture` in LLVM 21, and a
-  # file using it is a parse error on LLVM 18 -- so the copy has to say what
-  # can read it.
-  STAMP=$("$CLANG" --version 2>/dev/null | head -1)
-  printf '; written by %s\n%s' "$STAMP" "$(cat "$OUT")" > "$OUT.stamped"
-  mv "$OUT.stamped" "$OUT"
-
-  # Keep the checked-in copy current, so the next person without a compiler
-  # gets a runtime that matches this runtime.c rather than an older one.
-  if [ ! -f "$CHECKED_IN" ] || [ "$SOURCE" -nt "$CHECKED_IN" ]; then
-    cp "$OUT" "$CHECKED_IN"
-    echo "build-runtime: refreshed $CHECKED_IN from runtime.c" >&2
-  fi
-  exit 0
-fi
-
-if [ -f "$CHECKED_IN" ]; then
-  [ -f "$SOURCE" ] && [ "$SOURCE" -nt "$CHECKED_IN" ] && \
-    echo "build-runtime: warning: runtime.c is newer than runtime.ll and no C compiler was found; using the checked-in IR" >&2
-
-  # Can this LLVM actually read it? The textual IR format changes between
-  # major versions, so the checked-in copy is only as portable as the
-  # spellings in it -- one written by LLVM 22 says `captures(none)`, which
-  # LLVM 18 rejects with "expected ')' at end of argument list" and no hint
-  # about why. Say what is actually wrong, and what to do about it.
-  if [ -x "$LLVM_BIN/llvm-as" ]; then
-    if ! "$LLVM_BIN/llvm-as" "$CHECKED_IN" -o /dev/null 2>/dev/null; then
-      WROTE=$(sed -n 's/^; written by //p' "$CHECKED_IN" | head -1)
-      echo "build-runtime: this LLVM cannot read $CHECKED_IN" >&2
-      [ -n "$WROTE" ] && echo "  it was written by: $WROTE" >&2
-      echo "  and read by:        $("$LLVM_BIN/llvm-as" --version 2>/dev/null | grep -im1 version)" >&2
-      echo "  The textual IR format changes between LLVM major versions." >&2
-      echo "  Install a C compiler so runtime.c can be rebuilt, or use an" >&2
-      echo "  LLVM close to the one that wrote the file." >&2
+case "$MODE" in
+  build)
+    build "$COMMITTED"
+    echo "build-runtime: wrote $COMMITTED with $("$CLANG" --version | head -1)" >&2
+    ;;
+  out)
+    build "$OUT"
+    ;;
+  check)
+    fresh=$(mktemp)
+    trap 'rm -f "$fresh"' EXIT
+    build "$fresh"
+    if cmp -s "$fresh" "$COMMITTED"; then
+      echo "build-runtime: $COMMITTED is what runtime.c builds to"
+    else
+      echo "build-runtime: $COMMITTED differs from what runtime.c builds to" >&2
+      echo "  built with: $("$CLANG" --version | head -1)" >&2
+      echo "  Rebuild it with ./build-runtime.sh, with the same LLVM, and commit it." >&2
       exit 1
     fi
-  fi
-
-  cp "$CHECKED_IN" "$OUT"
-  exit 0
-fi
-
-echo "build-runtime: neither a C compiler nor $CHECKED_IN is available" >&2
-exit 1
+    ;;
+esac

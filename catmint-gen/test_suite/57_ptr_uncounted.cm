@@ -1,0 +1,73 @@
+# A Ptr is never counted, even where an object reference would be.
+#
+# A block's value and a method's result are kept alive by retaining them and
+# handing them to the pool, and the test for "is this a reference" was the
+# LLVM type -- which a Ptr shares. So `unsafe: raw = seed end`, whose value
+# is a Ptr, retained and later released a pointer into memory that belongs to
+# C: retain adds one to the int at offset 8 only when it is positive, release
+# takes one off whenever it is not zero, and freeing at zero. Filling a block
+# with 0xFF makes that int negative, the case where the two disagree, and
+# what comes out is a block with one of its bytes changed. Against a real
+# library (SDL's window struct keeps a pointer there) it was a crash on about
+# half of all runs. malloc'd scratch space hid it from tests 49 and 50.
+
+link "m"
+
+extern class Libc
+  def Ptr malloc(Int size)
+  def Void free(Ptr block)
+  def Ptr memset(Ptr dest, Int value, Int count)
+  def Int memcmp(Ptr a, Bytes b, Int count)
+end
+
+class Holder
+  Ptr raw
+  Int size
+
+  constructor(Int bytes):
+    size = bytes
+    Ptr seed
+    # Ends in a call that returns a Ptr, so the block's value is one.
+    unsafe:
+      seed = Libc.malloc(bytes)
+      Libc.memset(seed, 255, bytes)
+    end
+    # Ends in an assignment to a Ptr field.
+    unsafe:
+      raw = seed
+    end
+  end
+
+  # A Ptr result.
+  def Ptr get:
+    return raw
+  end
+
+  def Int intact(Ptr p):
+    Bytes want = new Bytes(size)
+    want.fill(255)
+    unsafe:
+      if Libc.memcmp(p, want, size) == 0:
+        return 1
+      end
+    end
+    return 0
+  end
+
+  def Void finalize:
+    unsafe:
+      Libc.free(raw)
+    end
+  end
+end
+
+class Main from IO
+  def main:
+    Holder h = new Holder(64)
+    out("intact ${h.intact(h.raw)}\n")
+
+    Ptr q = h.get()
+    out("returned intact ${h.intact(q)}\n")
+    out("done\n")
+  end
+end

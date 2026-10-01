@@ -28,6 +28,12 @@ const auto Static = "Static";
 const auto Abstract = "Abstract";
 const auto Unsafe = "Unsafe";
 const auto Extern = "Extern";
+const auto CKind = "CKind";
+const auto AssertedSize = "AssertedSize";
+const auto CType = "CType";
+const auto ArrayLength = "ArrayLength";
+const auto AssertedOffset = "AssertedOffset";
+const auto CReturnType = "CReturnType";
 const auto Body = "Body";
 const auto FormalParams = "FormalParams";
 const auto Value = "Value";
@@ -193,6 +199,14 @@ bool ASTSerializer::visit(Class *C) {
     writer->Key(keys::Extern);
     writer->Bool(true);
   }
+  // Written only for extern structs and unions, so every other AST is what
+  // it was before they existed.
+  if (C->isCStruct()) {
+    writePair(keys::CKind, C->getCKind());
+    if (C->getAssertedSize() >= 0) {
+      writePair(keys::AssertedSize, C->getAssertedSize());
+    }
+  }
   if (!C->getInterfaces().empty()) {
     writer->Key(keys::Implements);
     CreateJSONArray implemented(*this);
@@ -219,6 +233,15 @@ bool ASTSerializer::visit(Attribute *A) {
   writePair(keys::LineNumber, A->getLineNumber());
   writePair(keys::Name, A->getName());
   writePair(keys::Type, A->getType());
+  if (A->hasCType()) {
+    writePair(keys::CType, A->getCType());
+  }
+  if (A->getArrayLength() > 0) {
+    writePair(keys::ArrayLength, A->getArrayLength());
+  }
+  if (A->getAssertedOffset() >= 0) {
+    writePair(keys::AssertedOffset, A->getAssertedOffset());
+  }
 
   if (auto Init = A->getInit()) {
     writer->Key(keys::Initializer);
@@ -241,6 +264,9 @@ bool ASTSerializer::visit(Method *M) {
   auto ret = M->getReturnType();
   if (!ret.empty()) {
     writePair(keys::ReturnType, ret);
+  }
+  if (M->hasCReturnType()) {
+    writePair(keys::CReturnType, M->getCReturnType());
   }
 
   // Written only when true, so an AST for a program with no static methods
@@ -1012,6 +1038,14 @@ std::unique_ptr<Class> ASTDeserializer::parseClass(rapidjson::Value &tree) {
     assert(tree[keys::Extern].IsBool() && "Invalid extern flag");
     classNode->setExtern(tree[keys::Extern].GetBool());
   }
+  if (tree.HasMember(keys::CKind)) {
+    assert(tree[keys::CKind].IsInt() && "Invalid struct kind");
+    classNode->setCKind(tree[keys::CKind].GetInt());
+  }
+  if (tree.HasMember(keys::AssertedSize)) {
+    assert(tree[keys::AssertedSize].IsInt() && "Invalid asserted size");
+    classNode->setAssertedSize(tree[keys::AssertedSize].GetInt());
+  }
   if (tree.HasMember(keys::Implements)) {
     assert(tree[keys::Implements].IsArray() && "Implements must be an array");
     std::vector<std::string> implemented;
@@ -1072,6 +1106,18 @@ ASTDeserializer::parseAttribute(rapidjson::Value &tree) {
     assert(init && "Expected non-null initializer");
     attribute->setInit(std::move(init));
   }
+  if (tree.HasMember(keys::CType)) {
+    assert(tree[keys::CType].IsString() && "Invalid C type");
+    attribute->setCType(tree[keys::CType].GetString());
+  }
+  if (tree.HasMember(keys::ArrayLength)) {
+    assert(tree[keys::ArrayLength].IsInt() && "Invalid array length");
+    attribute->setArrayLength(tree[keys::ArrayLength].GetInt());
+  }
+  if (tree.HasMember(keys::AssertedOffset)) {
+    assert(tree[keys::AssertedOffset].IsInt() && "Invalid asserted offset");
+    attribute->setAssertedOffset(tree[keys::AssertedOffset].GetInt());
+  }
 
   return attribute;
 }
@@ -1115,6 +1161,11 @@ std::unique_ptr<Method> ASTDeserializer::parseMethod(rapidjson::Value &tree) {
   if (tree.HasMember(keys::Unsafe)) {
     assert(tree[keys::Unsafe].IsBool() && "Invalid unsafe flag");
     method->setUnsafe(tree[keys::Unsafe].GetBool());
+  }
+
+  if (tree.HasMember(keys::CReturnType)) {
+    assert(tree[keys::CReturnType].IsString() && "Invalid C return type");
+    method->setCReturnType(tree[keys::CReturnType].GetString());
   }
 
   //if (tree.HasMember(keys::AttributeNodeType)) {

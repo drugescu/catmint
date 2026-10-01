@@ -27,13 +27,15 @@ works here.
 
 ## Values and types
 
-`Int8`, `Int16`, `Int32`, `Int64` — `Int` is `Int32`. `Float` is a double.
+`Int8`, `Int16`, `Int32`, `Int64` — `Int` is `Int32`. `Float32`, `Float64` —
+`Float` is `Float64`, a double, and so is every float literal.
 `String`, `Object`, `List`, `Integer`, and the built-in classes below.
 
 ```
 Int n = 7
 Int64 big = 9000000000
 Float x = 2.5
+Float32 f = 2.5          # rounded to a C float when stored
 String s = "text"
 ```
 
@@ -42,7 +44,14 @@ truncates, as in C. Which means `Int64 x = a * b` with two `Int`s multiplies
 in 32 bits and widens afterwards, exactly as C's `long x = a * b` does. The
 compiler warns rather than changing the arithmetic; start from a 64-bit
 operand. A literal too large for an `Int` is an `Int64`.
-→ `02_arith.cm`, `26_sized_ints.cm`, `14_io_float.cm`, `54_width_warning.cm`
+
+The two floats follow the same rules: mixing them computes at the wider, an
+integer mixed with either becomes that float, and assigning across widths
+extends or rounds implicitly. So `Float32` arithmetic stays `Float32` until a
+`Float` operand joins it. `Float32` exists for C and for bulk data; `Float` is
+the default.
+→ `02_arith.cm`, `26_sized_ints.cm`, `14_io_float.cm`, `54_width_warning.cm`,
+`59_float_literals.cm`, `60_float32.cm`
 
 ## Statements
 
@@ -282,8 +291,8 @@ there are no generics. Out of bounds is a catchable error.
 link "m"
 
 extern class Libc
-  def Int strlen(String s)
-  def Ptr malloc(Int size)
+  def UInt64 strlen(String s)
+  def Ptr malloc(UInt64 size)
   def Void free(Ptr block)
 end
 
@@ -300,12 +309,66 @@ turned off.
 
 `Ptr` is an opaque machine pointer: a value, not an object, so nothing counts
 it and nothing frees it. It compares with `null` and converts to nothing.
-Only numbers, `Ptr`, `String` and the three arrays may cross; what a C
-function receives for the last two is the address of the contents.
+Numbers, `Ptr`, `String`, the three arrays and extern structs may cross;
+what a C function receives for the last three is an address. A `Float32`
+crosses as a C `float`, a `Float` as a `double`. A String containing a NUL is
+refused at run time, catchably, because C would read less than was passed;
+a `Float` given where C takes an integer is a compile error.
+
+`UInt8`, `UInt16`, `UInt32` and `UInt64` are C's unsigned types, for extern
+declarations only. Read, each becomes the smallest catmint integer that holds
+every value -- `Int` for the first two, `Int64` for `UInt32` -- and `UInt64`
+an `Int64` holding the same bits. Anywhere else they are an error saying what
+to write instead.
 
 `link "name"` adds `-lname`, and `catmintc -l name -L dir` does the same from
 the command line.
-→ `49_ffi.cm`
+→ `49_ffi.cm`, `64_extern_struct.cm`, `65_extern_refusals.cm`
+
+## C structs and unions
+
+```
+extern struct Rect @ 16         # @ asserts the size...
+  Int32 x @ 0                   # ...and each offset; both are checked
+  Int32 y @ 4
+  Int32 w @ 8
+  Int32 h @ 12
+end
+
+extern union Word @ 8
+  UInt32 low
+  UInt8 bytes[8]
+  Float real
+end
+
+extern struct Window            # opaque: no fields, no size
+end
+
+Rect r                          # owned: zeroed bytes in a counted object
+r.w = 640
+unsafe:
+  Rect v = Rect.at(somePtr)     # a view of bytes C owns
+end
+```
+
+The layout is C's, computed by the compiler: each field at the next offset
+aligned to its own size, a union's all at 0, the whole padded to its largest
+alignment -- the same rule on every target catmint supports. Fields are
+numbers, `Ptr`, other extern structs by value, and fixed arrays of those,
+indexed as `s.bytes[i]` and bounds-checked. `@ n` is optional; a declaration
+that disagrees with the computed layout is a compile error.
+
+An **owned** struct -- declared, or made with `new` -- is a counted object
+holding its bytes; C gets their address. A **view** is what an extern
+function returning a struct gives back, or `S.at(ptr)` makes: the same kind
+of object, over memory C owns, which catmint never frees. Making a view needs
+`unsafe`, because that is the promise that the pointer is valid; after that
+its fields read like any other. A null pointer gives `null`. A struct
+parameter takes `null` too, for C's "none". A nested struct used whole is
+copied, as C assigns structs; a `Ptr` parameter takes a struct's bytes, which
+is how an out-parameter is written. Passing structs by value, variadic
+functions and callbacks are not supported.
+→ `64_extern_struct.cm`, `65_extern_refusals.cm`
 
 ## finalize
 
@@ -327,7 +390,14 @@ nothing downstream writes `unsafe` at all. A subclass without one inherits it.
 ## The standard library
 
 Written in catmint, in `lib/`: `Vector`, `Dict` (a hash table keyed by
-String), `Map` (keyed by anything that says how), `Random`, `Time`, `Text`.
+String), `Map` (keyed by anything that says how), `Random`, `Time`, `Text`,
+and `sdl` -- windows, drawing, input and a clock, over SDL2.
+
+`using sdl` gives `Sdl`, `Window` and `Renderer`, with no `unsafe` to write
+and every handle released by `finalize`. Underneath is `sdl2.cmm`, SDL's whole
+API as extern structs, functions and constants, generated from SDL's own
+headers by `tools/bindgen.py` and never edited by hand. Nothing in either is
+C. Needs SDL2 installed; on Homebrew build with `-L /opt/homebrew/lib`.
 
 A `Map` key may be a String, an Int, or a class that `does Hashable` --
 `def Int hash` and `def Int equalTo(Object other)`. String and Int are
@@ -380,5 +450,9 @@ so no reference count has to be atomic.
   lines, which is the answer to "can something non-trivial be written in it".
 - `examples/wordcount.cm` — a real program: a filename from the command line,
   a file read line by line, a hash table, usage and an exit status.
+- `examples/rps-rts/` — a real-time rock-paper-scissors strategy game over
+  SDL: an iso board, units, a simulation checked bit for bit against an
+  independent port (`check.sh`), and input tests that drive it with real SDL
+  events (`play.sh`).
 - `bench/` — the same five problems in catmint, C and C++; `bench/run.sh`
   builds, checks they agree, and times them.

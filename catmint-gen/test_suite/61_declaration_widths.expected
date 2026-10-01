@@ -1,0 +1,5 @@
+int from int64 42
+int16 from int8 7
+int from big int64 705032704
+from ints 31599
+int16 from float32 2

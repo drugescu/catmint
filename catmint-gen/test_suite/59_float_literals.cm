@@ -1,0 +1,28 @@
+# A Float is a double, and so is every literal written for one.
+#
+# The AST node for a float constant stored a `float`, so 3.2 arrived as
+# 3.2000000476837158 and 0.1 + 0.2 came out as 0.29999999976. Nothing showed
+# it while values were printed at six digits; scaling by a large power of ten
+# and truncating to an Int64 prints the bits. Float64 is a second spelling of
+# Float, folded away by the parser as Int32 is of Int.
+
+class Main from IO
+  def main:
+    Float a = 0.1
+    Float b = 0.2
+    Float sum = a + b
+    Int64 s = sum * 1000000000000000000.0
+    out("sum ${s}\n")
+
+    Int64 t = 3.2 * 1000000000000.0
+    out("scaled ${t}\n")
+
+    Float64 d = 3.2
+    Int64 u = d * 1000000000000.0
+    out("float64 ${u}\n")
+
+    Float third = 1.0 / 3.0
+    Int64 v = third * 1000000000000000.0
+    out("third ${v}\n")
+  end
+end

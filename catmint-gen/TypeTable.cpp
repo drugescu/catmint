@@ -43,11 +43,18 @@ int TypeTable::integerWidth(const std::string &name) {
   return 0;
 }
 
+int TypeTable::floatWidth(const std::string &name) {
+  if (name == strings::Float32) return 32;
+  if (name == strings::Float) return 64;
+  return 0;
+}
+
 void TypeTable::addBuiltinTypes(Program *p) {
   typeTable[strings::Int] = new Type(strings::Int);
   typeTable[strings::Null] = new Type(strings::Null);
   typeTable[strings::Void] = new Type(strings::Void);
   typeTable[strings::Float] = new Type(strings::Float);
+  typeTable[strings::Float32] = new Type(strings::Float32);
   // An opaque machine pointer. Registered with no Class behind it, which is
   // what makes isReferenceType answer no: nothing counts it, nothing frees
   // it, and it never reaches the temporary pool. A value, like an Int.
@@ -74,7 +81,7 @@ void TypeTable::addBuiltinTypes(Program *p) {
 bool TypeTable::isBuiltinType(Type *t) const {
   const std::string &name = t->getName();
   return integerWidth(name) != 0 || name == strings::Null ||
-         name == strings::Void || name == strings::Float ||
+         name == strings::Void || floatWidth(name) != 0 ||
          isBuiltinClass(t->getClass());
 }
 
@@ -375,23 +382,29 @@ Type *TypeTable::getCommonType(Type *T, Type *U) const {
   if (widthT && widthU) {
     return widthT >= widthU ? T : U;
   }
+
+  // Two floats meet at the wider (a Float32 and a Float make a Float), and an
+  // integer meets a float at the float, whichever width it is: an Int and a
+  // Float32 make a Float32.
+  const int floatT = floatWidth(TN);
+  const int floatU = floatWidth(UN);
+  if (floatT && floatU) {
+    return floatT >= floatU ? T : U;
+  }
+  if (floatT && widthU) return T;
+  if (floatU && widthT) return U;
+
   if (widthT && widthT != 32) TN = strings::Int;
   if (widthU && widthU != 32) UN = strings::Int;
 
   // Implicit potential conversions
   if (TN == strings::Int) {
-    // Promotion to float if any are float
-    if (UN == strings::Float) return getFloatType();
     // 2 * "t" = "tt"
     if (UN == strings::String) return getStringType();
   }
 
-  if (TN == strings::Float) {
-    // Promotion to float if any are float
-    if (UN == strings::Int) return getFloatType();
-  }
-
-  if (TN == strings::String && (UN == strings::Int || UN == strings::Float)) {
+  if ((TN == strings::String && (UN == strings::Int || floatU)) ||
+      (floatT && UN == strings::String)) {
     return getStringType();
   }
 
@@ -428,8 +441,17 @@ std::string TypeTable::getCommonTypeStr(std::string T, std::string U) const {
   if (widthT && widthU) {
     return widthT >= widthU ? T : U;
   }
-  // Every integer type converts to a Float and prints as a String, and the
-  // rules below are written for Int, so widen the question to it.
+  // Two floats meet at the wider, and an integer meets a float at the float
+  // (an Int and a Float32 make a Float32): the same rule getCommonType has.
+  const int floatT = floatWidth(T);
+  const int floatU = floatWidth(U);
+  if (floatT && floatU) {
+    return floatT >= floatU ? T : U;
+  }
+  if (floatT && widthU) return T;
+  if (floatU && widthT) return U;
+  // Every integer type prints as a String, and the rules below are written
+  // for Int, so widen the question to it.
   if (widthT && widthT != 32) T = strings::Int;
   if (widthU && widthU != 32) U = strings::Int;
   if (T == U)
@@ -446,23 +468,17 @@ std::string TypeTable::getCommonTypeStr(std::string T, std::string U) const {
 
   // Implicit potential conversions
   if (T == strings::Int) {
-    // Promotion to float if any are float
-    if (U == strings::Float) return strings::Float;
     // 2 * "t" = "tt"
     if (U == strings::String) return strings::String;
   }
 
-  if (T == strings::Float) {
-    if (U == strings::Int) return strings::Float;
-    // Printing a Float goes through the same conversion as printing an Int;
-    // the generator inserts __cm_floatToString.
-    if (U == strings::String) return strings::String;
-  }
+  // Printing a float goes through the same conversion as printing an Int;
+  // the generator inserts __cm_floatToString.
+  if (floatT && U == strings::String) return strings::String;
 
   // The numeric-to-String rules were only written one way round, so
   // '1 + "a"' was allowed and '"a" + 1' was not.
-  if (T == strings::String &&
-      (U == strings::Int || U == strings::Float)) {
+  if (T == strings::String && (U == strings::Int || floatU)) {
     return strings::String;
   }
 
@@ -509,7 +525,7 @@ bool TypeTable::isInterface(const std::string &name) const {
 }
 
 bool TypeTable::isReferenceType(const std::string &name) const {
-  if (integerWidth(name) != 0 || name == strings::Float ||
+  if (integerWidth(name) != 0 || floatWidth(name) != 0 ||
       name == strings::Void) {
     return false;
   }

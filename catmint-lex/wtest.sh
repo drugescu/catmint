@@ -50,9 +50,12 @@ do
   echo "----------------------------------------------------------------------"
 done
 
+# The exit status is what test.sh and CI read. This printed its failures and
+# still exited 0, so a parser suite with a failing test reported green.
 if [ $errors -ne 0 ]
 then
   echo "[ ${RED}ERROR${NC} ] : $errors/$tests tests have failed!"
+  exit 1
 else
   echo "\n[ ${GREEN}OK${NC} ] All $tests tests passed.\n"
 fi
