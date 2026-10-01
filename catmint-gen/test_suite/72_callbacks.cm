@@ -1,0 +1,166 @@
+# A catmint function that C calls.
+#
+# `extern def Compare(Ptr left, Ptr right) Int` declares a C function-pointer
+# type, as a typedef does in a header. A static method is passed where a
+# parameter has that type, by naming it -- Order.ascending -- and the compiler
+# writes the function C will actually call, with C's calling convention, which
+# converts what C passes, runs the method, and converts what comes back.
+#
+# The call is synchronous: qsort calls the comparator from inside the qsort
+# call, on this thread. What a callback must not do is let an error escape
+# through C's frames, which a longjmp would do; so the function the compiler
+# writes catches it, remembers it, answers zero to every call after that
+# without running the method, and the extern call that started it throws it
+# once C has returned.
+#
+# qsort has no place for user data, so each element carries its own: a handle
+# (test 71) to a Counter, which the comparator turns back into the object. No
+# comparator makes an extern call, which would itself rethrow an error that is
+# pending -- that is what keeps the counts below honest.
+
+extern def Compare(Ptr left, Ptr right) Int
+
+extern struct Cell
+  Int64 value
+  Ptr counter
+end
+
+extern struct Items
+  Cell c0
+  Cell c1
+  Cell c2
+  Cell c3
+  Cell c4
+  Cell c5
+end
+
+extern class Libc
+  def Void qsort(Ptr base, UInt64 count, UInt64 size, Compare order)
+end
+
+class Counter
+  Int n
+end
+
+class Order
+  static def Int ascending(Ptr left, Ptr right):
+    Int result = 0
+    unsafe:
+      Cell a = Cell.at(left)
+      Cell b = Cell.at(right)
+      if a.value < b.value:
+        result = 0 - 1
+      elif a.value > b.value:
+        result = 1
+      end
+    end
+    return result
+  end
+
+  static def Int descending(Ptr left, Ptr right):
+    return 0 - Order.ascending(left, right)
+  end
+
+  # One more call counted, on the Counter this element's handle names.
+  static def Int tick(Ptr cell):
+    Int n = 0
+    unsafe:
+      Cell c = Cell.at(cell)
+      Counter counter = Handles.get(c.counter)
+      counter.n = counter.n + 1
+      n = counter.n
+    end
+    return n
+  end
+
+  static def Int counting(Ptr left, Ptr right):
+    Order.tick(left)
+    return Order.ascending(left, right)
+  end
+
+  static def Int poisoned(Ptr left, Ptr right):
+    if Order.tick(left) == 3:
+      throw "the comparator gave up on its third call"
+    end
+    return Order.ascending(left, right)
+  end
+end
+
+class Main from IO
+  def show(Items items):
+    return "${items.c0.value} ${items.c1.value} ${items.c2.value} ${items.c3.value} ${items.c4.value} ${items.c5.value} "
+  end
+
+  def fill(Items items, Ptr handle):
+    items.c0.value = 5
+    items.c1.value = 3
+    items.c2.value = 9
+    items.c3.value = 1
+    items.c4.value = 7
+    items.c5.value = 2
+    items.c0.counter = handle
+    items.c1.counter = handle
+    items.c2.counter = handle
+    items.c3.counter = handle
+    items.c4.counter = handle
+    items.c5.counter = handle
+    return 0
+  end
+
+  # An error thrown in the comparator, caught here; in a method of its own so
+  # that what it leaves alive can be counted when it returns.
+  def attempt(Items items):
+    try:
+      unsafe:
+        Libc.qsort(items, 6, 16, Order.poisoned)
+      end
+      out("not caught\n")
+    catch e:
+      out("caught: ${e}\n")
+    end
+    return 0
+  end
+
+  def main:
+    Counter counter = new Counter()
+    Ptr handle = Handles.make(counter)
+    Items items
+    fill(items, handle)
+    out("before:     ${show(items)}\n")
+    unsafe:
+      Libc.qsort(items, 6, 16, Order.ascending)
+    end
+    out("ascending:  ${show(items)}\n")
+    unsafe:
+      Libc.qsort(items, 6, 16, Order.descending)
+    end
+    out("descending: ${show(items)}\n")
+
+    # How many times qsort calls a comparator for these six, undisturbed.
+    fill(items, handle)
+    unsafe:
+      Libc.qsort(items, 6, 16, Order.counting)
+    end
+    Int whole = counter.n
+    out("sorted by the counting comparator: ${show(items)}\n")
+    out("qsort calls it more than three times: ${whole > 3}\n")
+
+    # An error on the third call: the method runs three times and no more,
+    # though qsort goes on calling, and the caller sees the error.
+    fill(items, handle)
+    counter.n = 0
+    Int baseline = allocated()
+    attempt(items)
+    Int left = allocated() - baseline
+    out("the method ran ${counter.n} times\n")
+    out("nothing left alive by the error: ${left == 0}\n")
+
+    # An error does not stay behind: the next call to C is clean.
+    fill(items, handle)
+    unsafe:
+      Libc.qsort(items, 6, 16, Order.ascending)
+    end
+    out("afterwards: ${show(items)}\n")
+    Handles.drop(handle)
+  end
+end

@@ -16,6 +16,16 @@ bool catmint::SemanticAnalysis::checkDispatchArgs(DispatchT *d, Method *m,
 
   auto paramIt = m->begin();
   for (auto arg : *d) {
+    // A callback parameter takes a static method named as `Order.ascending`,
+    // which is not an expression to be evaluated (`Order` is a class, not a
+    // variable), so it is checked against the callback's signature instead.
+    if (externCall && paramIt != m->end()) {
+      if (auto callback = callbackClass((*paramIt)->getType())) {
+        checkCallbackArgument(arg, callback, d);
+        ++paramIt;
+        continue;
+      }
+    }
     if (!visit(arg)) {
       return false;
     }

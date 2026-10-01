@@ -209,4 +209,173 @@ class Main from IO
 end
 CM
 
+refuse callback_wrong_signature "is (Ptr left) Int, but Compare is (Ptr left, Ptr right) Int" <<'CM'
+extern def Compare(Ptr left, Ptr right) Int
+extern class Libc
+  def Void qsort(Ptr base, UInt64 count, UInt64 size, Compare order)
+end
+class Order
+  static def Int one(Ptr left):
+    return 0
+  end
+end
+class Main from IO
+  def main:
+    unsafe:
+      Libc.qsort(null, 0, 8, Order.one)
+    end
+  end
+end
+CM
+
+refuse callback_wrong_result "is (Ptr left, Ptr right) Void, but Compare is (Ptr left, Ptr right) Int" <<'CM'
+extern def Compare(Ptr left, Ptr right) Int
+extern class Libc
+  def Void qsort(Ptr base, UInt64 count, UInt64 size, Compare order)
+end
+class Order
+  static def Void none(Ptr left, Ptr right):
+  end
+end
+class Main from IO
+  def main:
+    unsafe:
+      Libc.qsort(null, 0, 8, Order.none)
+    end
+  end
+end
+CM
+
+refuse callback_not_static "cannot be a callback: C has no object to call it on" <<'CM'
+extern def Compare(Ptr left, Ptr right) Int
+extern class Libc
+  def Void qsort(Ptr base, UInt64 count, UInt64 size, Compare order)
+end
+class Order
+  def Int ascending(Ptr left, Ptr right):
+    return 0
+  end
+end
+class Main from IO
+  def main:
+    unsafe:
+      Libc.qsort(null, 0, 8, Order.ascending)
+    end
+  end
+end
+CM
+
+refuse callback_builtin "cannot be a callback" <<'CM'
+extern def Compare(Ptr left, Ptr right) Int
+extern class Libc
+  def Void qsort(Ptr base, UInt64 count, UInt64 size, Compare order)
+end
+class Main from IO
+  def main:
+    unsafe:
+      Libc.qsort(null, 0, 8, Math.abs)
+    end
+  end
+end
+CM
+
+refuse callback_no_such_method "has no method 'nothing'" <<'CM'
+extern def Compare(Ptr left, Ptr right) Int
+extern class Libc
+  def Void qsort(Ptr base, UInt64 count, UInt64 size, Compare order)
+end
+class Order
+end
+class Main from IO
+  def main:
+    unsafe:
+      Libc.qsort(null, 0, 8, Order.nothing)
+    end
+  end
+end
+CM
+
+refuse callback_given_a_value "pass a static method by naming it" <<'CM'
+extern def Compare(Ptr left, Ptr right) Int
+extern class Libc
+  def Void qsort(Ptr base, UInt64 count, UInt64 size, Compare order)
+end
+class Main from IO
+  def main:
+    Int whatever = 5
+    unsafe:
+      Libc.qsort(null, 0, 8, whatever)
+    end
+  end
+end
+CM
+
+refuse callback_type_in_a_local "is a callback type: it can only be the type of a parameter of an extern function" <<'CM'
+extern def Compare(Ptr left, Ptr right) Int
+class Main from IO
+  def main:
+    Compare held = null
+  end
+end
+CM
+
+refuse callback_type_in_a_field "is a callback type: it can only be the type of a parameter of an extern function" <<'CM'
+extern def Compare(Ptr left, Ptr right) Int
+class Holder
+  Compare order
+end
+class Main from IO
+  def main:
+    out("x\n")
+  end
+end
+CM
+
+refuse callback_type_in_a_method "is a callback type: it can only be the type of a parameter of an extern function" <<'CM'
+extern def Compare(Ptr left, Ptr right) Int
+class Main from IO
+  def take(Compare order):
+    return 0
+  end
+  def main:
+    out("x\n")
+  end
+end
+CM
+
+refuse callback_takes_a_string "C can pass a callback a number, a Ptr or an extern struct" <<'CM'
+extern def Bad(String text) Int
+class Main from IO
+  def main:
+    out("x\n")
+  end
+end
+CM
+
+refuse callback_returns_a_string "a callback can return Void, a number or a Ptr" <<'CM'
+extern def Bad(Ptr p) String
+class Main from IO
+  def main:
+    out("x\n")
+  end
+end
+CM
+
+refuse handles_get_outside_unsafe "'Handles.get' turns a Ptr into an object" <<'CM'
+class Main from IO
+  def main:
+    Object o = Handles.get(null)
+  end
+end
+CM
+
+refuse callback_new "is a callback type: it has no instances" <<'CM'
+extern def Compare(Ptr left, Ptr right) Int
+class Main from IO
+  def main:
+    Object o = new Compare()
+  end
+end
+CM
+
 exit $failed

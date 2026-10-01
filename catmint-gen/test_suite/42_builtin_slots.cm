@@ -145,6 +145,17 @@ class Main from IO
     out("Process.runArgs ${Process.runArgs(quiet)}\n")
     out("Process.startArgs and wait ${Process.wait(Process.startArgs(quiet))}\n")
 
+    # Handles: all static, so no slots, but each is called.
+    Ptr handle = Handles.make("a handled string")
+    unsafe:
+      String back = Handles.get(handle)
+      out("Handles.get ${back}\n")
+    end
+    Handles.drop(handle)
+    unsafe:
+      out("Handles.get after drop ${Handles.get(handle) == null}\n")
+    end
+
     # Worker.
     Int h = spawn Helper.twice(21)
     out("Worker.wait ${Worker.wait(h)}\n")

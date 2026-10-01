@@ -179,6 +179,13 @@ struct TFloats {
 
 /* Worker has no state: it exists to name the two static methods that wait
  * for a thread and report how many cores there are. */
+/* Handles has no state of its own: the table is below, and the class exists
+ * to give the functions a home. */
+struct THandles {
+  struct __catmint_rtti *rtti;
+  int refs;
+};
+
 struct TWorker {
   struct __catmint_rtti *rtti;
   int refs;
@@ -367,6 +374,7 @@ struct TString NFile    = { RTTI(RString), 0, 4, "File" };
 struct TString NMath    = { RTTI(RString), 0, 4, "Math" };
 struct TString NProcess = { RTTI(RString), 0, 7, "Process" };
 struct TString NWorker  = { RTTI(RString), 0, 6, "Worker" };
+struct TString NHandles = { RTTI(RString), 0, 7, "Handles" };
 struct TString NBytes   = { RTTI(RString), 0, 5, "Bytes" };
 struct TString NInts    = { RTTI(RString), 0, 4, "Ints" };
 struct TString NFloats  = { RTTI(RString), 0, 6, "Floats" };
@@ -420,6 +428,11 @@ catmint_rtti15_file RFile = {
  * and its table is Object's. The class exists only to name the functions. */
 catmint_rtti6_object RMath = {
   &NMath, sizeof(struct TMath), RTTI(RObject), NULL, NULL, NULL,
+  { CATMINT_OBJECT_SLOTS }
+};
+
+catmint_rtti6_object RHandles = {
+  &NHandles, sizeof(struct THandles), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS }
 };
 
@@ -537,6 +550,10 @@ void Math_init(struct TMath *self) {
 void Process_init(struct TProcess *self) {
   self->pipe = NULL;
   self->pid = 0;
+}
+
+void Handles_init(struct THandles *self) {
+  (void)self;
 }
 
 void Worker_init(struct TWorker *self) {
@@ -2390,6 +2407,219 @@ int M7_Process_openArgs(struct TProcess *self, struct TList *args) {
   }
   self->pid = (int)child;
   return 1;
+}
+
+/* -------------------------------------------------------------------------
+ * Handles
+ *
+ * How C holds a catmint object. C cannot be given an object's address: the
+ * first words are type information and a reference count, which C would read
+ * as data and could write through, and a pointer C keeps is a reference nobody
+ * counts. So C is given a handle, a number carried in a Ptr, that names a slot
+ * in this table; the table holds a reference to the object until the handle is
+ * dropped.
+ *
+ * A handle is  magic | generation | index+1.  Three things follow:
+ *   - the magic (the top sixteen bits, which no real pointer has) means a Ptr
+ *     that never was a handle fails at once, whatever its other bits;
+ *   - a slot's generation moves on when it is dropped, so a stale handle can
+ *     never match a slot that has since been reused for something else;
+ *   - the index is range-checked, so no number can name a slot that is not
+ *     there. Nothing here dereferences a handle's own bits.
+ *
+ * The table is as non-atomic as the reference counts it holds, so it may be
+ * used from the program's main thread only, and says so, aborting, otherwise.
+ * ------------------------------------------------------------------------- */
+
+#define CATMINT_HANDLE_MAGIC ((uint64_t)0x4348 << 48)
+#define CATMINT_HANDLE_INDEX_BITS 24
+#define CATMINT_HANDLE_INDEX_MASK (((uint64_t)1 << CATMINT_HANDLE_INDEX_BITS) - 1)
+#define CATMINT_HANDLE_NO_SLOT 0xFFFFFFFFu
+
+struct __cm_handle_slot {
+  void *object;          /* NULL while the slot is free */
+  uint32_t generation;   /* 1 .. 2^24 - 1, never 0 */
+  uint32_t next_free;    /* the free list, while the slot is free */
+};
+
+static struct __cm_handle_slot *gHandleSlots = NULL;
+static uint32_t gHandleCount = 0;
+static uint32_t gHandleCapacity = 0;
+static uint32_t gHandleFree = CATMINT_HANDLE_NO_SLOT;
+
+/* The thread the program started on, recorded before main runs. */
+static pthread_t gMainThread;
+static int gMainThreadKnown = 0;
+
+__attribute__((constructor)) static void record_main_thread(void) {
+  gMainThread = pthread_self();
+  gMainThreadKnown = 1;
+}
+
+static int on_main_thread(void) {
+  return gMainThreadKnown && pthread_equal(pthread_self(), gMainThread);
+}
+
+static void require_main_thread(const char *what) {
+  if (!on_main_thread()) {
+    /* Not __cm_runtimeError: that would throw into the main thread's handler
+     * stack from another thread, which is the very race this refuses. */
+    fprintf(stderr,
+            "Runtime error : %s may only be used on the program's main thread.\n",
+            what);
+    abort();
+  }
+}
+
+/* The slot a handle names, or NULL when it names none that is in use. */
+static struct __cm_handle_slot *handle_slot(void *handle) {
+  uint64_t value = (uint64_t)(uintptr_t)handle;
+  uint64_t index;
+  uint32_t generation;
+
+  if ((value & ~(((uint64_t)1 << 48) - 1)) != CATMINT_HANDLE_MAGIC) {
+    return NULL;
+  }
+  index = value & CATMINT_HANDLE_INDEX_MASK;
+  generation = (uint32_t)((value >> CATMINT_HANDLE_INDEX_BITS) &
+                          CATMINT_HANDLE_INDEX_MASK);
+  if (index == 0 || index > gHandleCount) {
+    return NULL;
+  }
+  if (!gHandleSlots[index - 1].object ||
+      gHandleSlots[index - 1].generation != generation) {
+    return NULL;
+  }
+  return &gHandleSlots[index - 1];
+}
+
+/* Put an object in the table and give back the handle for it. The table holds
+ * a reference of its own, given back by drop. */
+void *M7_Handles_make(void *object) {
+  uint32_t index;
+  struct __cm_handle_slot *slot;
+
+  require_main_thread("Handles.make");
+  if (!object) {
+    __cm_runtimeError("Handles.make needs an object, not null");
+  }
+  if (gHandleFree != CATMINT_HANDLE_NO_SLOT) {
+    index = gHandleFree;
+    gHandleFree = gHandleSlots[index].next_free;
+  } else {
+    if (gHandleCount >= CATMINT_HANDLE_INDEX_MASK) {
+      __cm_runtimeError("Handles: too many handles are held at once");
+    }
+    if (gHandleCount == gHandleCapacity) {
+      uint32_t capacity = gHandleCapacity ? gHandleCapacity * 2 : 64;
+      struct __cm_handle_slot *grown = (struct __cm_handle_slot *)realloc(
+          gHandleSlots, sizeof(struct __cm_handle_slot) * capacity);
+
+      if (!grown) {
+        printf("Runtime error : out of memory making a handle.\n");
+        exit(1);
+      }
+      gHandleSlots = grown;
+      gHandleCapacity = capacity;
+    }
+    index = gHandleCount++;
+    gHandleSlots[index].generation = 1;
+  }
+  slot = &gHandleSlots[index];
+  slot->object = object;
+  slot->next_free = CATMINT_HANDLE_NO_SLOT;
+  __cm_retain(object);
+  return (void *)(uintptr_t)(CATMINT_HANDLE_MAGIC |
+                             ((uint64_t)slot->generation
+                              << CATMINT_HANDLE_INDEX_BITS) |
+                             ((uint64_t)index + 1));
+}
+
+/* The object a handle names, or null if it names none: dropped, from a slot
+ * since reused, a null, or not a handle at all. */
+void *M7_Handles_get(void *handle) {
+  struct __cm_handle_slot *slot;
+
+  require_main_thread("Handles.get");
+  slot = handle_slot(handle);
+  return slot ? slot->object : NULL;
+}
+
+/* Let go of the table's reference. The slot is retired first and the object
+ * released last, so that anything the release runs (a finalize) sees a table
+ * that is already consistent. Dropping a handle that names nothing is
+ * harmless, which includes dropping one twice. */
+void M7_Handles_drop(void *handle) {
+  struct __cm_handle_slot *slot;
+  void *object;
+
+  require_main_thread("Handles.drop");
+  slot = handle_slot(handle);
+  if (!slot) {
+    return;
+  }
+  object = slot->object;
+  slot->object = NULL;
+  slot->generation = (slot->generation + 1) & (uint32_t)CATMINT_HANDLE_INDEX_MASK;
+  if (slot->generation == 0) {
+    slot->generation = 1;
+  }
+  slot->next_free = gHandleFree;
+  gHandleFree = (uint32_t)(slot - gHandleSlots);
+  __cm_release(object);
+}
+
+/* -------------------------------------------------------------------------
+ * Callbacks
+ *
+ * The function the compiler writes for C to call (callbackTrampoline) uses
+ * these three. The counts, pools and handler stack are not atomic, so it
+ * refuses to run anywhere but the program's own thread. An error the method
+ * throws is not allowed to leave through C's frames -- longjmp over a qsort
+ * skips whatever qsort still had to do -- so it is caught, kept here, and
+ * thrown by the extern call that was running once C has returned.
+ * ------------------------------------------------------------------------- */
+
+static void *gPendingError = NULL;
+
+/* On entry. 1 means an error is already pending, so do nothing and answer
+ * zero; anything else runs the method. Off the main thread it aborts, before
+ * touching anything shared: a callback that C calls from a thread of its own
+ * is exactly the race the rest of the runtime is built not to have. */
+int __cm_callbackEnter(void) {
+  if (!on_main_thread()) {
+    fputs("Runtime error : a callback was called on a thread other than the "
+          "program's main thread.\n"
+          "  C called catmint from a thread of its own; the reference counts "
+          "are not atomic, so it was stopped.\n",
+          stderr);
+    abort();
+  }
+  return gPendingError != NULL;
+}
+
+/* In the handler path: the method threw. __cm_throw retained the error for the
+ * unwind, and that reference is the one kept. */
+void __cm_callbackFail(void) {
+  gPendingError = gThrown;
+}
+
+static CATMINT_NORETURN void callback_rethrow(void) {
+  void *error = gPendingError;
+
+  gPendingError = NULL;
+  /* The kept reference becomes the pool's, which is how a thrown object is
+   * always owned until its handler is done with it. */
+  __cm_poolAdd(error);
+  __cm_throw(error);
+}
+
+/* After every call to C. The first test is the whole cost of a call that had
+ * no callback, and it is small enough to be inlined into the caller. */
+void __cm_callbackRethrow(void) {
+  if (__builtin_expect(gPendingError != NULL, 0)) {
+    callback_rethrow();
+  }
 }
 
 /* -------------------------------------------------------------------------

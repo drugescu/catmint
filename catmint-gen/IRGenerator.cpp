@@ -350,6 +350,7 @@ bool IRGenerator::collectClasses() {
     // be a second list of names here, which is one more place to forget.
     CI.Builtin = C->isBuiltin();
     CI.IsCStruct = C->isCStruct();
+    CI.IsCallback = C->isCallbackType();
     CI.CUnion = C->isCUnion();
     CI.COpaque = C->isOpaque();
     const std::string Name = C->getName();
@@ -443,6 +444,11 @@ bool IRGenerator::layoutClass(ClassInfo *CI) {
       // { rtti, int refs, FILE *pipe, int pid }
       CI->Elements = {Ptr, I32, Ptr, I32};
       CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TProcess");
+    } else if (Name == strings::Handles) {
+      // { rtti, int refs } -- Handles has no state of its own either; the
+      // table lives in the runtime.
+      CI->Elements = {Ptr, I32};
+      CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.THandles");
     } else if (Name == strings::Worker) {
       // { rtti, int refs } -- Worker has no state of its own.
       CI->Elements = {Ptr, I32};
@@ -2804,6 +2810,153 @@ llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,
              : static_cast<llvm::Value *>(Call);
 }
 
+/// The function C calls for a callback. A static method is passed for a
+/// callback type by naming it, and C needs an address it can call with its own
+/// calling convention, taking and returning the C types the typedef says. This
+/// writes that function, in IR (there is no C in it), once per method:
+///
+///   - it refuses to run on any thread but the program's own, because the
+///     reference counts and pools it is about to use are not atomic;
+///   - if an earlier call already met an error it does nothing and answers
+///     zero, so C finishing its work cannot run catmint code in a state nobody
+///     reasoned about;
+///   - it catches what the method throws, rather than let a longjmp skip
+///     whatever C still had to do on the way out, and keeps the error for the
+///     extern call that is running to throw once C has returned;
+///   - and it gives the call a pool of its own, so what each call makes (a
+///     view of a struct C passed) is gone when the call returns however many
+///     times C calls.
+llvm::Function *IRGenerator::callbackTrampoline(ClassInfo *Callback,
+                                                Expression *Arg, int Line) {
+  auto *Field = dynamic_cast<FieldAccess *>(Arg);
+  auto *Receiver = Field ? dynamic_cast<Symbol *>(Field->getObject()) : nullptr;
+  ClassInfo *Owner = Receiver ? lookupClass(Receiver->getName()) : nullptr;
+  if (!Owner)
+    fail(Line, "a callback is passed by naming a static method");
+  auto Found = Owner->StaticImpl.find(Field->getField());
+  if (Found == Owner->StaticImpl.end())
+    fail(Line, "'" + Owner->AST->getName() + "' has no static method '" +
+                   Field->getField() + "'");
+  ClassInfo *Impl = Found->second.first;
+  Method *Target = Found->second.second;
+
+  const std::string Name = "__cm_cb_" + Callback->AST->getName() + "_" +
+                           Owner->AST->getName() + "_" + Target->getName();
+  if (auto *Existing = Module.getFunction(Name))
+    return Existing;
+
+  Method *Signature = nullptr;
+  for (auto *F : *Callback->AST)
+    Signature = dynamic_cast<Method *>(F);
+  if (!Signature)
+    fail(Line, "the callback type '" + Callback->AST->getName() +
+                   "' has no signature");
+
+  auto *PtrTy = llvm::PointerType::getUnqual(Context);
+  auto *I32 = llvm::Type::getInt32Ty(Context);
+  auto *I64 = llvm::Type::getInt64Ty(Context);
+  auto *VoidTy = llvm::Type::getVoidTy(Context);
+
+  // C's view of it: the widths the typedef names, unsigned ones included.
+  std::vector<llvm::Type *> CParams;
+  for (auto *P : *Signature)
+    CParams.push_back(lowerCType(P->getCType()));
+  const std::string CRetName = Signature->getCReturnType();
+  const bool ReturnsVoid = CRetName == strings::Void || CRetName == "auto";
+  llvm::Type *CRet = ReturnsVoid ? VoidTy : lowerCType(CRetName);
+  auto *F = llvm::Function::Create(llvm::FunctionType::get(CRet, CParams, false),
+                                   llvm::Function::InternalLinkage, Name, &Module);
+
+  // Built here, in the middle of whatever function is being generated, so the
+  // insertion point is put back when it is done.
+  auto Saved = Builder.saveIP();
+  auto *Entry = llvm::BasicBlock::Create(Context, "entry", F);
+  auto *Run = llvm::BasicBlock::Create(Context, "run", F);
+  auto *Body = llvm::BasicBlock::Create(Context, "body", F);
+  auto *Caught = llvm::BasicBlock::Create(Context, "caught", F);
+  auto *Skip = llvm::BasicBlock::Create(Context, "skip", F);
+
+  auto Zero = [&]() -> llvm::Value * {
+    return llvm::Constant::getNullValue(CRet);
+  };
+
+  Builder.SetInsertPoint(Entry);
+  auto *BufTy = llvm::ArrayType::get(Builder.getInt8Ty(), 512);
+  auto *Buf = Builder.CreateAlloca(BufTy, nullptr, "cb.buf");
+  Buf->setAlignment(llvm::Align(16));
+  auto Enter = Module.getOrInsertFunction(
+      "__cm_callbackEnter", llvm::FunctionType::get(I32, {}, false));
+  auto *Pending = Builder.CreateCall(Enter, {}, "cb.pending");
+  Builder.CreateCondBr(Builder.CreateICmpNE(Pending, Builder.getInt32(0)), Skip,
+                       Run);
+
+  Builder.SetInsertPoint(Run);
+  auto Push = Module.getOrInsertFunction(
+      "__cm_pushHandler", llvm::FunctionType::get(VoidTy, {PtrTy}, false));
+  auto Pop = Module.getOrInsertFunction(
+      "__cm_popHandler", llvm::FunctionType::get(VoidTy, {}, false));
+  auto PoolPush = Module.getOrInsertFunction(
+      "__cm_poolPush", llvm::FunctionType::get(VoidTy, {}, false));
+  auto PoolPop = Module.getOrInsertFunction(
+      "__cm_poolPop", llvm::FunctionType::get(VoidTy, {}, false));
+  auto SetJmp = Module.getOrInsertFunction(
+      "setjmp", llvm::FunctionType::get(I32, {PtrTy}, false));
+  if (auto *SJ = llvm::dyn_cast<llvm::Function>(SetJmp.getCallee()))
+    SJ->addFnAttr(llvm::Attribute::ReturnsTwice);
+  Builder.CreateCall(Push, {Buf});
+  auto *Code = Builder.CreateCall(SetJmp, {Buf}, "cb.code");
+  Code->addFnAttr(llvm::Attribute::ReturnsTwice);
+  Builder.CreateCondBr(Builder.CreateICmpNE(Code, Builder.getInt32(0)), Caught,
+                       Body);
+
+  // The method runs. The pool is opened after the handler has recorded its
+  // depth, so a throw out of the method closes it on the way.
+  Builder.SetInsertPoint(Body);
+  Builder.CreateCall(PoolPush, {});
+  std::vector<llvm::Value *> Args;
+  unsigned Index = 0;
+  for (auto *P : *Signature) {
+    llvm::Value *V = F->getArg(Index++);
+    const std::string CTy = P->getCType();
+    if (CTy == "UInt8" || CTy == "UInt16")
+      V = Builder.CreateZExt(V, I32, "cb.widen");
+    else if (CTy == "UInt32")
+      V = Builder.CreateZExt(V, I64, "cb.widen");
+    if (ClassInfo *S = lookupClass(P->getType()); S && S->IsCStruct)
+      V = makeView(S, V);
+    Args.push_back(V);
+  }
+  auto Callee = Module.getOrInsertFunction(
+      runtimeSymbol(Impl, Target->getName()), methodType(Impl, Target));
+  llvm::Value *Result = Builder.CreateCall(Callee, Args);
+  Builder.CreateCall(PoolPop, {});
+  Builder.CreateCall(Pop, {});
+  if (ReturnsVoid) {
+    Builder.CreateRetVoid();
+  } else {
+    if (Result->getType() != CRet && Result->getType()->isIntegerTy() &&
+        CRet->isIntegerTy())
+      Result = Builder.CreateTrunc(Result, CRet, "cb.narrow");
+    Builder.CreateRet(Result);
+  }
+
+  // Arriving here means the method threw. The handler was popped by the
+  // throw, which also closed the pool; the error is kept for the extern call.
+  Builder.SetInsertPoint(Caught);
+  Builder.CreateCall(Module.getOrInsertFunction(
+      "__cm_callbackFail", llvm::FunctionType::get(VoidTy, {}, false)));
+  Builder.CreateBr(Skip);
+
+  Builder.SetInsertPoint(Skip);
+  if (ReturnsVoid)
+    Builder.CreateRetVoid();
+  else
+    Builder.CreateRet(Zero());
+
+  Builder.restoreIP(Saved);
+  return F;
+}
+
 /// String.fromC(source, max). The source is a Ptr, a null, or a Bytes; the
 /// last is read through the runtime's own entry, which stops at the buffer's
 /// length however large `max` is, since a Bytes knows how big it is and a
@@ -2848,8 +3001,17 @@ llvm::Value *IRGenerator::emitExternCall(Method *M,
   for (auto *Arg : Args) {
     if (ParamIt == M->end())
       fail(Line, "too many arguments to '" + M->getName() + "'");
-    const std::string FromTy = staticTypeOf(Arg);
     const std::string ParamTy = (*ParamIt)->getType();
+    // A callback parameter takes the function written for C. The argument is
+    // a method's name, not a value, so it is never evaluated.
+    if (ClassInfo *CallbackType = lookupClass(ParamTy);
+        CallbackType && CallbackType->IsCallback) {
+      CallArgs.push_back(callbackTrampoline(CallbackType, Arg, Line));
+      ++ParamIt;
+      ++ArgIndex;
+      continue;
+    }
+    const std::string FromTy = staticTypeOf(Arg);
     const std::string CTy = (*ParamIt)->getCType();
     llvm::Value *V = emit(Arg);
     if (!V)
@@ -2909,6 +3071,11 @@ llvm::Value *IRGenerator::emitExternCall(Method *M,
   // under another name in catmint (`def A = b(...)`), it is b that is called.
   auto Callee = Module.getOrInsertFunction(M->getCSymbol(), FT);
   llvm::Value *Result = Builder.CreateCall(Callee, CallArgs);
+  // An error a callback met while C was running it was kept, not thrown
+  // through C's frames; this is where C has returned and it can be.
+  Builder.CreateCall(Module.getOrInsertFunction(
+      "__cm_callbackRethrow",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {}, false)));
   const std::string Ret = M->getReturnType();
   if (Ret == strings::Void || Ret == "auto")
     return nullptr;

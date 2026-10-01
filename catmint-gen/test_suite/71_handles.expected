@@ -1,0 +1,10 @@
+the table holds one reference: 1
+get gives the object back: 7
+drop gives the reference back: 1
+a dropped handle finds nothing: 1
+a reused slot, the stale handle: 1, the new one: 99
+a second drop is harmless: 1 1
+a Ptr that was never a handle, and a null: 1 1
+a thousand handles, all found: 1000
+nothing left alive: 1
+Handles.make needs an object, not null

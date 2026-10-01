@@ -307,6 +307,19 @@ void TypeTable::addBuiltinClasses(Program *p) {
   declareStatic(methods, "wait", strings::Int64, {{"handle", strings::Int}});
   declareStatic(methods, "count", strings::Int);
   addBuiltinClass(p, strings::Worker, strings::Object, methods);
+
+  // --- Handles, how C holds a catmint object --------------------------
+  //
+  // C cannot be given an object's address (the first words are type
+  // information and a reference count). It is given a handle instead: a
+  // number, in a Ptr, naming a slot in a table the runtime keeps. `make` puts
+  // an object in the table, which holds a reference to it; `get` turns a
+  // handle back into the object, or null for one that is stale or never was;
+  // `drop` lets go. Static, like Math: the class only names the functions.
+  declareStatic(methods, "make", strings::Ptr, {{"object", strings::Object}});
+  declareStatic(methods, "get", strings::Object, {{"handle", strings::Ptr}});
+  declareStatic(methods, "drop", strings::Void, {{"handle", strings::Ptr}});
+  addBuiltinClass(p, strings::Handles, strings::Object, methods);
 }
 
 bool TypeTable::isBuiltinClass(Class *c) const {

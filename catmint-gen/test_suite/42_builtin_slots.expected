@@ -75,6 +75,8 @@ Process.readLine after openArgs direct
 Process.finish after openArgs 0
 Process.runArgs 0
 Process.startArgs and wait 0
+Handles.get a handled string
+Handles.get after drop 1
 Worker.wait 42
 Worker.count 1
 Bytes.len 4
