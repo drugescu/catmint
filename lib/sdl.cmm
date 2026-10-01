@@ -231,9 +231,19 @@ class Sdl from Object
     return 0
   end
 
-  # Lines scrolled: positive away from the user.
+  # Lines scrolled: positive away from the user. SDL counts whole ticks in y;
+  # sdl2-compat leaves y at 0 for an event that was pushed rather than made by a
+  # device, and keeps the amount in preciseY, so a whole tick or more there
+  # counts when y says nothing. A fraction of a tick is not a line.
   def Int wheel:
-    return event.wheel.y
+    Int ticks = event.wheel.y
+    if ticks == 0:
+      Float precise = event.wheel.preciseY
+      if precise >= 1.0 or precise <= 0.0 - 1.0:
+        ticks = precise
+      end
+    end
+    return ticks
   end
 
   def Int isResize:
@@ -276,26 +286,18 @@ class Sdl from Object
     end
   end
 
-  # Queue what a person would have typed, or done with the wheel or with a
-  # key and a modifier, so a script can drive the same code a person does.
-  def Int pushText(String typed):
-    SDL_Event e = new SDL_Event()
-    e.type = SDL2C.SDL_TEXTINPUT()
-    Int i = 0
-    while i < typed.len() and i < 31:
-      e.text.text[i] = typed.at(i)
-      i = i + 1
-    end
-    e.text.text[i] = 0
-    unsafe:
-      return SDL2.SDL_PushEvent(e)
-    end
-  end
-
+  # Queue what a person would have done with the wheel or with a key and a
+  # modifier, so a script can drive the same code a person does. There is no
+  # pushText: sdl2-compat, which is SDL2 on Homebrew, cannot convert a pushed
+  # SDL_TEXTINPUT event and crashes in SDL_PushEvent. A script hands typed
+  # text to the program's own text handler instead.
   def Int pushWheel(Int lines):
     SDL_Event e = new SDL_Event()
     e.type = SDL2C.SDL_MOUSEWHEEL()
     e.wheel.y = lines
+    # sdl2-compat builds the event it queues from the precise value, not the
+    # whole one; a real wheel event carries both.
+    e.wheel.preciseY = lines * 1.0
     unsafe:
       return SDL2.SDL_PushEvent(e)
     end
