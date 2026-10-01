@@ -970,7 +970,7 @@ that have no window in them and are tested without one:
 | `buildlog` | the place in a compiler message | `83_buildlog` |
 
 `font` and `Texture` (in `sdl`) draw text and sprites; `tools/sdl_test` checks
-them pixel for pixel. The pad itself is tested by `examples/pad/play.sh` (52
+them pixel for pixel. The pad itself is tested by `examples/pad/play.sh` (54
 scripted runs: input in, printed state and pixel counts out, expectations
 written by hand) and `examples/pad/idle.py` (the CPU an idle pad uses, measured
 with `wait4`; a busy loop costs 1.0 s in 5, the real one 0.09). `test.sh

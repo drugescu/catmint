@@ -15,7 +15,9 @@
 #   Ctrl =  bigger text     Ctrl -  smaller text     Ctrl Q  quit
 #
 # One file at a time. A tab character is drawn as ?, and a string that runs
-# over a newline is coloured on its first line only.
+# over a newline is coloured on its first line only. Open lists the files
+# below the directory pad was started in (six levels, five thousand files,
+# nothing hidden), so start it in a project, not in a home directory.
 #
 # Built on the library, not on this file: the text is lib/textbuffer.cmm, what
 # is done to it lib/editor.cmm, the palette lib/palette.cmm over lib/fuzzy.cmm,
