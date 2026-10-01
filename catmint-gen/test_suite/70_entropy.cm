@@ -1,0 +1,70 @@
+# Entropy from the operating system. The checks are properties that hold with
+# overwhelming probability, not values: two draws of 32 bytes differing fails
+# once in 2^256, every one of 256 byte values appearing in 16 KB fails about
+# once in 10^28, and the number of set bits in 16 KB landing within 1100 of
+# half is six standard deviations wide.
+
+using entropy
+
+class Main from IO
+  def main:
+    Bytes a = Entropy.bytes(32)
+    Bytes b = Entropy.bytes(32)
+    out("${a.len()} ${b.len()}\n")
+
+    Int same = 1
+    Int zero = 1
+    Int i = 0
+    while i < 32:
+      if a.get(i) != b.get(i):
+        same = 0
+      end
+      if a.get(i) != 0:
+        zero = 0
+      end
+      i = i + 1
+    end
+    out("different: ${1 - same}\n")
+    out("not all zero: ${1 - zero}\n")
+
+    out("${Entropy.bytes(300).len()}\n")
+    out("${Entropy.bytes(0).len()}\n")
+
+    # 16 KB, several calls to the operating system.
+    Bytes big = Entropy.bytes(16384)
+    Ints seen = new Ints(256)
+    Int bits = 0
+    i = 0
+    while i < 16384:
+      Int v = big.get(i)
+      seen.set(v, 1)
+      Int bit = 0
+      while bit < 8:
+        bits = bits + ((v >> bit) & 1)
+        bit = bit + 1
+      end
+      i = i + 1
+    end
+    Int distinct = 0
+    i = 0
+    while i < 256:
+      distinct = distinct + seen.get(i)
+      i = i + 1
+    end
+    out("every value seen: ${distinct == 256}\n")
+    Int off = bits - 65536
+    if off < 0:
+      off = 0 - off
+    end
+    out("bits balanced: ${off < 1100}\n")
+
+    out("int64s differ: ${Entropy.int64() != Entropy.int64()}\n")
+
+    try:
+      Entropy.bytes(0 - 1)
+      out("not caught\n")
+    catch e:
+      out("${e}\n")
+    end
+  end
+end
