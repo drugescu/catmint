@@ -993,35 +993,113 @@ Phase 7.
 **The toolkit is immediate-mode**, as Dear ImGui and egui are, in
 `lib/gui.cmm` over `lib/sdl.cmm`: widgets are calls that draw and report in
 the same breath, so the whole application is one loop with no handlers and no
-object graph to keep alive.
+object graph to keep alive. egui's own README says the point plainly -- "you
+never need to have any on-click handlers and callbacks that disrupts your code
+flow" -- and lists what it gives up for it: it is "not a framework", does not
+aim at a "native looking interface", and has weaker layout and higher CPU use
+than a retained toolkit. All three are accepted here, and the third is answered
+below.
 
 ```
 ui.begin(sdl)
-if ui.button("Run"):
-  run()
+if ui.key("ctrl+p"):
+  palette.open()
 end
 ui.text_edit(buffer)
+ui.status(buffer.name, buffer.position())
 ui.end()
 ```
 
-- **Widgets**: label, button, checkbox, single-line text field, a multi-line
-  text editor, a list, a scroll area, a split pane, a menu bar and popup, a
-  modal dialog, a tooltip.
-- **Layout**: rows, columns and fixed or flexible sizes; one pass.
-- **Input**: focus and tab order; mouse capture while dragging; text input
-  events (`SDL_TEXTINPUT`, so a typed `é` arrives as text, not as a key);
-  key repeat; the clipboard (`SDL_GetClipboardText`, whose result is
-  malloc'd and must be freed — read through `String.fromC`, then free); the
-  window's pixel density, so a high-DPI display is not tiny.
+#### Look and feel: minimal, and kept small by the rules below
+
+The aim was a program that is nothing but its text, and the reading that
+shaped it came from the editors people describe as calm and fast. What it
+gave, and what each rule costs the toolkit (which is the point: every rule
+removes a widget):
+
+1. **Text is the interface.** iA Writer "avoids all distracting glitz in the
+   user interface and puts all the beauty in the shape of the text"; Zed
+   describes itself as "minimalist, distraction-free, yet modern with native
+   UI", and Sublime as a "minimalist interface, focus mode, clean design" with
+   "legendary speed and ultra-low memory use" -- the same stance, from three
+   places. So: the window is the text and one status line. No toolbar,
+   no icons, no menu bar, no tab strip, no scrollbar until the pointer is over
+   it (then a 2 px thumb). *Removes:* toolbar, menu bar, popup menu, tooltip,
+   icon set, and every dialog.
+2. **A command palette instead of menus** (VS Code, Sublime, Zed, Raycast,
+   Linear): one shortcut opens a box, you type, it narrows. Fuzzy matching;
+   the best match first whatever its kind ("top result", as Retool's write-up
+   of theirs recommends); the shortcut shown beside each command so the palette
+   teaches the keyboard; recent items first when the box is empty. It does four
+   jobs, which is the saving: **commands** (`Run`, `Save`, `Find`, `Go to
+   line`), **open file** (type a path fragment; this is the file picker, so
+   there is no file dialog to build), **switch file**, and **goto symbol**.
+   *Removes:* file dialog, menu bar, tab strip (open files are a palette mode),
+   modal dialog (confirmations are a line in the status bar).
+3. **One status line, quiet** (Helix lets you place file name, position,
+   selections and diagnostics left, centre or right; that is the whole of its
+   chrome). Left: file name and a dot when modified. Right: `line:column`, and
+   the build state while one runs. Dim until something needs attention.
+4. **Colour is rationed.** Nord is "deliberately low-contrast" and Catppuccin
+   asks for balance, "not too dull, not too bright"; both are a dark ground,
+   muted hues and a single accent. The editor reuses the game's palette (slate
+   ground, warm off-white text), one amber accent for the caret, selection and
+   focus, a muted red for errors, and **at most four muted hues for syntax**
+   (keywords, strings, comments, numbers). *Checkable, so checked:* a test
+   computes the WCAG contrast ratio of every theme colour against its ground and
+   fails below 7:1 for body text and 4.5:1 for dim text, in both the dark and
+   the light theme. No bold or italic; weight is not available in a bitmap font
+   and was never needed.
+5. **Type does the work.** One monospace bitmap font, one size, scaled by whole
+   numbers for high-DPI; line height 1.4; a two-character gutter on each side
+   and line numbers in the dim colour, the current line's in the text colour.
+   Hairlines (1 px) and no shadows, gradients or rounded corners; a hovered
+   thing brightens rather than gaining a box; focus is an accent underline.
+6. **Nothing to configure.** iA Writer "has no graphical settings or
+   formatting features". The editor has `Ctrl +` and `Ctrl -` for size, one
+   command to flip dark and light, and no preferences. *Removes:* a settings
+   screen, a config file, and the bugs in both.
+7. **Quiet when idle**, the answer to immediate mode's CPU cost: the loop
+   blocks in `SDL_WaitEventTimeout` and redraws only on an event or the
+   500 ms caret blink. Measured, not hoped: a test samples the process's CPU
+   time over five idle seconds and bounds it.
+8. **Focus mode, if it is cheap** (iA fades everything but the current few
+   lines): draw the other lines in the dim colour. A toggle on the palette; it
+   costs one condition in the draw loop, and is dropped if it costs more.
+
+**What is left of the toolkit** after those rules: label, a text-only button
+(the build panel's, and the palette's rows), a single-line text field (the
+palette, find, go-to-line), the multi-line text editor, a scrolling list (the
+palette's results and the build output), and a scroll area. Layout is a single
+column with a fixed status line and one panel that appears at the bottom on
+`F5` and goes on `Esc`. Rows, columns and fixed or flexible sizes in one pass
+are still all it needs.
+
+- **Input**: focus; mouse capture while dragging; text input events
+  (`SDL_TEXTINPUT`, so a typed `é` arrives as text, not as a key); key repeat;
+  the clipboard (`SDL_GetClipboardText`, whose result is malloc'd and must be
+  freed -- read through `String.fromC`, then free); the window's pixel density.
 - **The text buffer** is a gap buffer over `Bytes`, with line starts indexed
   separately, undo and redo as a log of edits, and a hard cap on file size
   (64 MB, refused beyond it, with a message).
 
-**The editor**: tabs, line numbers, selection by mouse and keyboard, find and
-replace, syntax highlighting from the lexer's own keyword list (read from
-`catmint.l` by a tool at build time, so the two cannot drift), and **F5**: save,
-run `catmintc` through `Process.runArgs`, show its output in a panel, and let
-a click on `Line 62` in an error jump to that line.
+**The editor**, `examples/pad`: line numbers, selection by mouse and keyboard,
+find and replace (in the palette's single-line field), syntax highlighting from
+the lexer's own keyword list (read from `catmint.l` by a tool at build time, so
+the two cannot drift), and **F5**: save, run `catmintc` through
+`Process.runArgs`, show its output in the bottom panel, and let a click on
+`Line 62` in an error jump to that line.
+
+Sources for the above: [iA Writer's principles](https://ia.net/topics/writer-for-ipad)
+and [a close reading of its interface](https://dbushell.com/2011/05/28/simplicity-in-ui-design-ia-writer-for-mac/);
+[Zed against Sublime](https://zed.dev/compare/sublime);
+[Helix's configurable status line](https://docs.helix-editor.com/editor.html);
+[egui's goals and non-goals](https://github.com/emilk/egui);
+[Dear ImGui's immediate-mode model](https://www.mintlify.com/ocornut/imgui/core-concepts/immediate-mode);
+[Retool on designing a command palette](https://retool.com/blog/designing-the-command-palette)
+and [Command.ai on its history](https://command.ai/blog/command-palette-past-present-and-future);
+[Catppuccin's stated principles](https://github.com/catppuccin/catppuccin/blob/main/README.md)
+and [Nord's low-contrast palette](https://best-of-web.builder.io/library/nordtheme/nord).
 
 **Security, the editor and the toolkit**
 
@@ -1044,8 +1122,12 @@ a click on `Line 62` in an error jump to that line.
   regions that matter, run under the dummy video driver on all three OSes.
   Pixel-exact comparison between operating systems is not promised, since text
   hinting and the renderer may differ; region and colour counts are.
-- **The run button**: a test program with a deliberate error; F5; the panel
+- **The run command**: a test program with a deliberate error; F5; the panel
   contains the compiler's message and the click lands on the line.
+- **The look, where it can be measured**: every theme colour clears its
+  contrast ratio (computed, not eyeballed); an idle editor uses next to no CPU;
+  the palette's first result for each of a set of typed fragments is the one
+  expected, and typing a file fragment opens that file.
 - **Large files**: a 5 MB file scrolls, searches and saves within a time bound
   generous enough not to flake; memory returns to the baseline after closing it
   (`IO.allocated()`).
