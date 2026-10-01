@@ -664,6 +664,10 @@ Each of these was run, not assumed, and each changes something below.
    queues, converted to signed 16-bit stereo at 44.1 kHz whatever was asked
    for, so sound can be tested too.
 
+Status: item 1 is fixed (below). Items 2 to 9 are fixed on the `ffi-edges`
+branch, in section B, except the game's tests running on the *Windows* runner,
+which waits for the Windows build.
+
 ### The runtime, per OS and per architecture
 
 **Fixed on `master`**, and recorded here because the design claimed otherwise.
@@ -877,37 +881,80 @@ language project. They are not on the path to the editor.
 - `bindgen` on a header with a callback typedef: the type written, the
   function bound with it, `signal` listed as refused.
 
-### B. Completing the FFI's edges
+### B. Completing the FFI's edges — **done**, on the `ffi-edges` branch
 
-Four small changes, each from "Found while checking" above, none a redesign.
+The changes below were made as designed, with three departures worth stating,
+and each has a test that was seen to fail without it.
 
-- **`String.fromC(Ptr p, Int max)`**, `unsafe`: copies up to the first NUL or
-  `max` bytes, whichever comes first, into a new counted String. A copy, never
-  an alias, so C still cannot write into a String; the cap turns an
-  unterminated buffer into a bounded read where `strlen` would run on. A null
-  `Ptr` answers null. `bindgen` keeps returning `Ptr` for `char *`, because it
-  cannot know who frees it (`SDL_GetPrefPath` returns malloc'd memory,
-  `SDL_GetError` a static buffer); `lib/sdl.cmm` calls `fromC` on the ones it
-  knows, and `SDL_GetError`'s text finally goes into its error messages.
-- **A literal `null` for a `String` parameter is C's `NULL`.** Only the
-  literal: a `String` variable that happens to be null is still the error it
-  was, because that is the accident worth catching.
-- **Variadic functions, by instantiation.** An extern declaration may name
-  the fixed prefix and give the types of the extra arguments, under its own name:
-  `def Int fcntl_flags = fcntl(Int fd, Int cmd, ... Int flags)`. The call is
-  emitted through a variadic function type, which is what makes Apple's arm64
-  convention come out right. Refused: `String` in the variable part, and any
-  function clang marks with a `format` attribute (the `printf` family), which is
-  where variadic calls become format-string bugs.
-- **`bindgen`** learns the target's scalar sizes by asking clang for them
-  (`long`, `wchar_t`, `size_t`) instead of assuming LP64; reports how many names
-  each pattern matched; and takes a list of `char *`-returning functions to
-  bind as `String` with the copy done for you.
+- **`String.fromC(Ptr p, Int max)`**, `unsafe`. Copies up to the first NUL or
+  `max` bytes into a new counted String; a copy, never an alias, so C still
+  cannot write into a String. A null `Ptr` answers null; a negative `max` is a
+  catchable error. *Departure:* a `Bytes` is accepted as the source too, read
+  through its own entry that clamps `max` to the buffer's length, because the
+  natural way to get C text into catmint is a buffer filled by a C call
+  (`snprintf`, `recv`), and a bare `max` there is an over-read waiting to
+  happen. `Ints`, `Floats` and structs are refused as the source. (Test 66.)
+- **A function declared to return `String` has the copy made for it**, capped
+  at a megabyte. *Departure, a fix:* this was not in the plan because the bug
+  was not known. An extern function declared to return `String` used to hand
+  C's `char *` back typed as a catmint String, which it is not (no run-time
+  type information, no count, no length in front). That was type confusion
+  inside `unsafe`, and arrays are refused as returns for the same reason.
+  `bindgen` still leaves a `char *` return a `Ptr` unless the function is
+  named by `--string-returns`, since who frees it is not in the header.
+- **A literal `null` for a `String` or buffer parameter is C's `NULL`.** Only
+  the literal, decided by the argument's static type: a `String` variable that
+  holds null is still the error it was. (`dlopen(null, 2)` in test 66; the
+  null variable's refusal is in the same test.)
+- **Variadic functions, by instantiation, and C functions under another name.**
+  `def Int fcntl_dup = fcntl(Int fd, Int cmd, ... Int minimum)`. The call is
+  made through a variadic function type with C's default promotions applied.
+  *Departure:* the alias (`name = symbol(...)`) is general, not only for
+  variadics, because the same C function wants declaring twice anyway
+  (`strerror` as a `Ptr` and as a `String`). The variable part takes `Int`,
+  `Int64`, `Float` or `Ptr`; `String`, arrays and `Float32` are refused, each
+  with the reason. *The ABI claim was checked, not assumed:* `snprintf`
+  declared as an ordinary function prints `0.000|83734528` for `3.142|42` on
+  this Apple arm64 machine; declared variadic it is right. (Test 67; the
+  grammar's conflict count did not move, 12 and 1.)
+- **`bindgen`** reads the target's scalar sizes from clang
+  (`__SIZEOF_LONG__`, `__CHAR_UNSIGNED__`) instead of assuming LP64, and
+  takes `--target` and `--clang-arg=` so it can bind for a machine it is not
+  running on: the same test struct is 40 bytes with `long` as `Int64` here and
+  32 bytes with `long` as `Int` for `x86_64-pc-windows-msvc`, both from clang.
+  `--constants-match` repeats and the header counts what each pattern matched,
+  and stderr says so when one matched nothing (the missing `AUDIO_*` constants).
+  `--string-returns` binds the named `char *` returns as `String`. A variadic
+  function's refusal now says what to do, and names the `printf` family when
+  clang marks it with a format attribute. `lib/sdl2.cmm` was regenerated:
+  18 `AUDIO_*` constants gained, nine static-text returns now `String`.
+- **`Process.runArgs(List)`, `startArgs(List)` and `p.openArgs(List)`**: no
+  shell. The program and each argument are separate Strings, validated first
+  (null, empty, more than 4096, a non-String, a NUL), then `execvp`ed.
+  `openArgs` reads standard output and error together and gives the child
+  `/dev/null` for input. A test passes an argument holding every character a
+  shell acts on, and the marker file it would have created is never created.
+  (Tests 69 and 42.)
+- **`Entropy.bytes(n)` and `Entropy.int64()`** in `lib/entropy.cmm`, over
+  `getentropy`, 256 bytes at a time. Statistical properties are the test
+  (every byte value appears in 16 KB, one failure in 10^28; bits balanced
+  within six standard deviations); it fails when the call is removed. The
+  Windows half (`BCryptGenRandom`) waits for the Windows build. (Test 70.)
+- **`String.chr(0)`** is a one-character String holding a NUL; it was empty
+  because `chr` built a C string. (Test 68; the only runtime change that is not
+  the C boundary.)
+- **SDL's own error text** reaches the safe layer's exceptions
+  (`could not initialise SDL: no_such_driver not available`), now that
+  `SDL_GetError` is a `String`. (`tools/sdl_test`.)
+- **The game and SDL run headless in `test.sh`** on the dummy video, renderer
+  and audio drivers: the library test always, the game's simulation check and
+  17 input tests with `--thorough`; `build.sh` no longer assumes Homebrew's
+  location, and the Linux image has `libsdl2-dev`.
 
-And one library change, not an FFI one: **`Process` gets an argument-vector
-form**, `Process.runArgs(List)` and `startArgs`, which `execvp`s without a
-shell. The `sh -c` forms stay for scripts that want a shell and are documented
-as such; the editor below uses only the new ones.
+Still open from this list: the optional-string rule is only for the literal
+`null` and for `String`/buffer parameters, so a `Ptr` parameter was already
+fine and a struct parameter already took `null`; nothing more is planned. The
+callbacks of section A are the next piece of FFI work.
 
 ### C. Windows
 

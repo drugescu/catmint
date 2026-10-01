@@ -115,6 +115,16 @@ value, a bitfield) is listed at the top of the output with the reason.
 `tools/bindgen_test/run.sh` checks it against a C library built from a test
 header, and `test.sh` runs that.
 
+Options worth knowing: `--constants-match` may be given several times (the
+header reports how many names each pattern matched, and warns when one matched
+nothing); `--string-returns REGEX` binds those `char *`-returning functions as
+`String`, with the text copied out -- only for functions whose result is static
+or thread-local, never one whose result you must free; `--target TRIPLE` and
+`--clang-arg=ARG` bind for another machine (the scalar sizes, `long` above all,
+come from that target, not from this one). A variadic function is not bound;
+the refusal says how to declare the call you need by hand
+(`def Alias = name(fixed..., ... Type)`, see `LANGUAGE.md`).
+
 ## 2. Build the compiler
 
 Three components, built in dependency order. The second and third build the

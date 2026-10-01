@@ -200,7 +200,9 @@ general value to a more specific variable inserts a checked conversion.
 ## Strings
 
 `len`, `at`, `substr`, `concat`, `equals`, `toInt`, `toFloat`, `indexOf`,
-`trim`, `upper`, `lower`, `split`, `replace`, and the static `String.chr`.
+`trim`, `upper`, `lower`, `split`, `replace`, and the statics `String.chr` (so
+`String.chr(0)` is a one-character String holding a NUL) and `String.fromC`
+(under "Calling C").
 → `28_strings.cm`, `23_escapes.cm`
 
 ## String interpolation
@@ -323,7 +325,41 @@ to write instead.
 
 `link "name"` adds `-lname`, and `catmintc -l name -L dir` does the same from
 the command line.
-→ `49_ffi.cm`, `64_extern_struct.cm`, `65_extern_refusals.cm`
+
+**Text back from C.** A function that returns `String` has the text copied out
+of C's `char *` -- at most a megabyte, `NULL` becoming `null` -- so
+`def String strerror(Int code)` is what it looks like. (Before this, declaring
+that handed C's pointer back as if it were a catmint String, which it is not;
+arrays are refused as returns for the same reason.) Or keep a `Ptr` and read it
+yourself, in `unsafe`: `String.fromC(ptr, max)` copies up to the first NUL or
+`max` bytes, whichever comes first, from a `Ptr` or from a `Bytes` (which is
+never read past its own length). A copy, never an alias, so C cannot write into
+a String. Leave a returned pointer a `Ptr` when someone has to free it.
+
+**A NULL that is meant.** The word `null` written where C takes a `String` or a
+buffer is C's `NULL` -- `dlopen(null, 2)`. A String *variable* that happens to
+be null is still an error at run time, because that one is the accident.
+
+**One C function under another name, and variadic ones.**
+`def String strerror_text = strerror(Int code)` calls the C function
+`strerror` as `strerror_text`, so one function can be declared twice with
+different types. For a variadic C function a declaration says where the fixed
+parameters end and what *this* declaration passes after them:
+
+```
+def Int fcntl_dup = fcntl(Int fd, Int cmd, ... Int minimum)
+def Int snprintf_number = snprintf(Ptr buf, UInt64 size, String format, ... Float x, Int n)
+```
+
+The call is made as a variadic call, which matters: declared as an ordinary
+function, `snprintf` printed `0.000|83734528` for `3.142|42` on Apple's arm64,
+which passes variable arguments differently from fixed ones. C's default
+promotions are applied (anything narrower than an `int` is widened). The
+variable part takes `Int`, `Int64`, `Float` or `Ptr` only: a `Float32` is
+promoted to a double by C, so it is declared `Float`, and a pointer whose
+meaning only the callee knows goes through an explicit `Ptr`.
+→ `49_ffi.cm`, `64_extern_struct.cm`, `65_extern_refusals.cm`,
+`66_c_strings.cm`, `67_variadic.cm`
 
 ## C structs and unions
 
@@ -366,8 +402,8 @@ of object, over memory C owns, which catmint never frees. Making a view needs
 its fields read like any other. A null pointer gives `null`. A struct
 parameter takes `null` too, for C's "none". A nested struct used whole is
 copied, as C assigns structs; a `Ptr` parameter takes a struct's bytes, which
-is how an out-parameter is written. Passing structs by value, variadic
-functions and callbacks are not supported.
+is how an out-parameter is written. Passing structs by value and callbacks are
+not supported; a variadic function is called by instantiation, above.
 → `64_extern_struct.cm`, `65_extern_refusals.cm`
 
 ## finalize
@@ -391,6 +427,9 @@ nothing downstream writes `unsafe` at all. A subclass without one inherits it.
 
 Written in catmint, in `lib/`: `Vector`, `Dict` (a hash table keyed by
 String), `Map` (keyed by anything that says how), `Random`, `Time`, `Text`,
+`Entropy` (bytes from the operating system's generator, for anything that must
+not be guessed; `IO.entropy()` is thirty-two bits and `Random` says it is not
+for security),
 and `sdl` -- windows, drawing, input and a clock, over SDL2.
 
 `using sdl` gives `Sdl`, `Window` and `Renderer`, with no `unsafe` to write
@@ -403,7 +442,7 @@ A `Map` key may be a String, an Int, or a class that `does Hashable` --
 `def Int hash` and `def Int equalTo(Object other)`. String and Int are
 answered for inside the Map, since a built-in class cannot be made to promise
 a user interface. A key it cannot hash is a caught error, not a guess.
-→ `16_stdlib.cm`, `19_dict_hash.cm`, `53_map.cm`, `20_random.cm`, `21_time.cm`
+→ `16_stdlib.cm`, `19_dict_hash.cm`, `53_map.cm`, `20_random.cm`, `21_time.cm`, `70_entropy.cm`
 
 ## Built-in classes
 
@@ -428,8 +467,16 @@ Two kinds, both narrow on purpose.
 
 **Another program.** `Process.run("make")` waits for one;
 `Process.start` and `Process.wait` run several at once; an instance opens a
-pipe. Nothing is shared, so nothing in the language changes.
-→ `39_process.cm`
+pipe. Nothing is shared, so nothing in the language changes. Those three hand
+the string to `/bin/sh -c`, which is right for a script and wrong for anything
+that puts a file name in it. `Process.runArgs(list)`, `Process.startArgs(list)`
+and `p.openArgs(list)` take the program and each argument as a List of Strings
+and `execvp` it directly, so nothing in an argument is ever parsed. `openArgs`
+reads the program's output, standard error included, and gives it no input
+(`/dev/null`), so it cannot wait on a terminal. An empty list, a non-String
+item, or a String holding a NUL is a catchable error before anything starts; a
+program that does not exist exits 127, as under a shell.
+→ `39_process.cm`, `69_process_args.cm`
 
 **A thread, for arithmetic only.** `Int h = spawn Sum.chunk(3)` runs a static
 method on a thread; `Worker.wait(h)` collects what it returned. The method
