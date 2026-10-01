@@ -183,8 +183,16 @@ has just built).
 
 `build-runtime.sh` is a developer tool that nothing in `catmintc` calls. It
 strips the triple, data layout, CPU, features and probe-stack, normalises the
-module name, and assembles bitcode; it prefers LLVM 16 (`brew install
-llvm@16`). `tools/linux/run.sh catmint-gen/build-runtime.sh` builds the Linux
+module name, removes `!llvm.ident`, and assembles bitcode; it prefers LLVM 16
+(`brew install llvm@16`). **The file must not depend on who packaged the
+compiler.** `--check` byte-compares, and the ident ("Ubuntu clang version
+16.0.6 (23ubuntu4)") made it fail on a CI runner whose clang-16 was the same
+compiler under another build number; so the ident goes, and the choices a
+packager makes by default are stated: a PIE and no stack protector on Linux,
+`-fstack-protector` on macOS. That the two differ is inherited, not decided --
+the macOS runtime has the protector on 160 functions and the Linux one on
+none. A failing `--check` prints the disassembly diff, and as a GitHub
+annotation when run there. `tools/linux/run.sh catmint-gen/build-runtime.sh` builds the Linux
 one in a container. **If you change `runtime.c`, rebuild both files and commit
 them**; `build-runtime.sh --check` fails when the committed file is not what
 `runtime.c` builds to. `ctest.sh` builds a fresh runtime into its work

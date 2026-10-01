@@ -51,6 +51,7 @@ if [ -z "$RUNTIME_LLVM_BIN" ]; then
 fi
 CLANG="$RUNTIME_LLVM_BIN/clang"
 LLVM_AS="$RUNTIME_LLVM_BIN/llvm-as"
+LLVM_DIS="$RUNTIME_LLVM_BIN/llvm-dis"
 
 if [ ! -x "$CLANG" ] || [ ! -x "$LLVM_AS" ]; then
   if [ "$MODE" = out ] && [ -f "$COMMITTED" ]; then
@@ -72,12 +73,29 @@ fi
 # functions with a 4K buffer, and LLVM 22's AArch64 back end calls
 # report_fatal_error on any value but "inline-asm". The module id and source
 # name are normalised so the file does not carry anyone's build path.
+#
+# What the file says must not depend on who packaged the compiler. Two things
+# did: `!llvm.ident`, which names the build ("Ubuntu clang version 16.0.6
+# (23ubuntu4)"), so --check failed on a CI runner whose clang-16 was the same
+# compiler under another build number; and the defaults a packager chooses.
+# The ident is removed and the defaults are said out loud: position-independent
+# code as a PIE on Linux, no stack protector there, and the protector on macOS,
+# where it is the platform's own default. (Linux without one while macOS has
+# it was an accident of those defaults, not a decision.)
+case "$OS" in
+  darwin) FLAGS="-fstack-protector" ;;
+  *)      FLAGS="-fPIE -fno-stack-protector" ;;
+esac
+
 build() {
   tmp="$1.tmp.$$"
   # -O2, not -O0: at -O0 clang marks every function `optnone noinline`, and
   # nothing in the runtime could then be inlined into a program.
-  "$CLANG" -O2 -emit-llvm -S "$SOURCE" -o "$tmp.ll"
+  # shellcheck disable=SC2086
+  "$CLANG" -O2 $FLAGS -emit-llvm -S "$SOURCE" -o "$tmp.ll"
   sed -e '/^target datalayout = /d' \
+      -e '/^!llvm\.ident = /d' \
+      -e '/^![0-9]* = !{!"[^"]*clang version/d' \
       -e '/^target triple = /d' \
       -e 's/ "target-cpu"="[^"]*"//g' \
       -e 's/ "target-features"="[^"]*"//g' \
@@ -100,7 +118,7 @@ case "$MODE" in
     ;;
   check)
     fresh=$(mktemp)
-    trap 'rm -f "$fresh"' EXIT
+    trap 'rm -f "$fresh" "$fresh.old.ll" "$fresh.new.ll"' EXIT
     build "$fresh"
     if cmp -s "$fresh" "$COMMITTED"; then
       echo "build-runtime: $COMMITTED is what runtime.c builds to"
@@ -108,6 +126,19 @@ case "$MODE" in
       echo "build-runtime: $COMMITTED differs from what runtime.c builds to" >&2
       echo "  built with: $("$CLANG" --version | head -1)" >&2
       echo "  Rebuild it with ./build-runtime.sh, with the same LLVM, and commit it." >&2
+      # What differs, in the readable form: a bare "differs" sends you
+      # rebuilding blind, and in CI the log may be the only thing there is.
+      if [ -x "$LLVM_DIS" ]; then
+        "$LLVM_DIS" "$COMMITTED" -o "$fresh.old.ll"
+        "$LLVM_DIS" "$fresh" -o "$fresh.new.ll"
+        shown=$(diff -u -I '^; ModuleID' "$fresh.old.ll" "$fresh.new.ll" | head -40 || true)
+        printf '%s\n' "$shown" >&2
+        if [ -n "$GITHUB_ACTIONS" ]; then
+          # An annotation, which GitHub serves without signing in.
+          printf '::error title=runtime differs::%s\n' \
+            "$(printf '%s' "$shown" | head -12 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}1')"
+        fi
+      fi
       exit 1
     fi
     ;;
