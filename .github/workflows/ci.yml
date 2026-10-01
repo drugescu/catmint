@@ -32,6 +32,9 @@ jobs:
           # its link interface, and CMake fails inside LLVMExports.cmake
           # without them, saying nothing about a package.
           sudo apt-get install -y flex bison zlib1g-dev libzstd-dev
+          # arm64's C headers: build-runtime.sh builds runtime-linux.bc for
+          # arm64 on every machine, so that --check can reproduce it here.
+          sudo apt-get install -y libc6-dev-arm64-cross linux-libc-dev-arm64-cross
           wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh "$LLVM_VERSION"
