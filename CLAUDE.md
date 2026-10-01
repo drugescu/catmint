@@ -372,8 +372,9 @@ pointing at freed memory -- which is exactly how it failed when it was still
 there. `release` lets go of one reference and frees on the last; `retain`
 takes one; `refs` reports the count, which is 2 for a freshly made object
 held in a variable (the allocation's, still owed to the pool, and the
-variable's). `IO.allocated()` is the live object count, which is how test 31
-proves a thousand-iteration loop returns to where it started.
+variable's). `IO.allocated()` is the live object count -- leaving out what only a pool is
+holding, see below -- which is how test 31 proves a thousand-iteration loop
+returns to where it started.
 
 **Freeing follows a class's reference fields.** The run-time type information
 carries a list of their byte offsets ending in -1, which the generator writes
@@ -792,13 +793,54 @@ handle cannot reach whatever reuses it. Two Ptrs cannot be compared with each
 other (only with `null`), so tests observe handles through `get`, reference
 counts and `allocated()`.
 
-Found while testing this, and **not fixed**: (1) `items.cells[2].value = 42`
-on an array of structs compiles and writes to a copy -- `cells[2]` is a nested
-struct used whole, which is copied -- so the store is silently lost; named
-fields (`c0`, `c1`) use offset chains and work. (2) `a = o` where `o` is an
-`Object` and `a` was declared `A` re-types `a` to `Object`, so `a.n` is then
-an error; a *declaration* (`A a = o`) downcasts. (3) `allocated()` read in the
-same method that made the objects counts them until the method's pool closes.
+Three defects found while testing callbacks, **all fixed** (tests 73, 74, 75):
+
+**A place inside C memory is an address, not a value.** `items.cells[2].value
+= 42` compiled and wrote to a *copy* of the element: `cells[2]` was evaluated
+whole, which copies a nested struct, and the store went to the copy. Silent,
+which is the worst kind. The generator had three special cases (a field, a
+field of a field, an array element) and no idea of "the bytes this expression
+denotes". `cStructAddress(E)` is that idea: for a nested struct held by value
+it is `cFieldAddress`, for an element of an array of structs it is
+`cElementAddress` (the bounds-checked address, shared with get/set), and only
+otherwise an object evaluated and its bytes found through `dataPointer`. A
+field's address is then `cStructAddress(object) + offset` whatever the object
+is, so writes reach the original, an array inside an element works
+(`items.cells[0].tags[1]`), and a whole element is still a copy in and a copy
+out. In the checker `cArrayContext` was set and then *cleared* by each array
+access, so one inside another wiped the outer's and the outer was refused as an
+array used whole; it is saved and restored.
+
+**The symbol table never closed a scope.** `SymbolTable::Scope`'s destructor
+was empty (the pop was commented out, "we should not destroy the symbol table
+without outputting it"), so every name ever declared stayed visible to every
+later block, method and class, and `contains` meant "was ever declared".
+Scopes now have an `open` flag: the guard closes the innermost open one,
+insert/lookup/contains see only open ones, and the table is still printed whole
+at the end. Nothing in the suite had depended on the leak; a class scope
+inserts inherited attributes explicitly. **With that, `x = expr` is an
+assignment when every name is visible**: the checker no longer binds a new `x`
+of the right-hand side's type (which made `a = o`, an Object into a variable
+declared A, leave the checker believing `a` was an Object), it gives the
+definition the variable's own type, and the generator's `coerce` does the
+checking and the run-time downcast as it always did.
+
+**`IO.allocated()` counts what something holds.** An object made in a method
+sits on that method's pool until it returns, so `things = null` did not lower
+the count there, and neither did the strings `out()` had just built;
+measuring a leak meant a helper method and reading the count before printing.
+`pool_held_objects` is a trial deletion (as a cycle collector does) that frees
+nothing: it counts each pooled object down by its pool entries, and where that
+reaches zero follows its references -- the RTTI's field offsets and a List's
+items, exactly as `object_free` does -- counting each down by one. Everything
+that reaches zero is what closing the pools would free; `allocated()` is
+`gLiveObjects` minus that. A cycle never reaches zero, which is the point:
+counting cannot free one and the number keeps saying so. It reads the pool and
+the counts and writes nothing of the program's, and costs what the pools and
+the freeable part hold, so it is for diagnostics.
+
+Still true: `allocated()` read in an expression is of the objects then alive,
+and a `finalize` that releases things is not simulated.
 
 `link "SDL2"` names a library. The preprocessor removes the line, so there is
 no grammar rule and no AST node; `catmintc` greps the sources for it, as it

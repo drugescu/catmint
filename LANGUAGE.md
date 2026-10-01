@@ -247,9 +247,13 @@ Nothing to call. The compiler counts references: storing an object keeps it,
 leaving the scope releases it, and anything an expression makes that nobody
 names is released at the end of the method — or of the loop iteration, if it
 was made in one. `retain()` and `release()` exist for what a scope cannot
-express, such as an object held in a field. `IO.allocated()` is the live
-object count, so "does this leak?" has an answer.
-→ `31_memory.cm`
+express, such as an object held in a field. `IO.allocated()` is the count of
+live objects that something holds -- a variable, a field, a container -- and not
+those a pending temporary alone is keeping until its method returns, so "does
+this leak?" has an answer in the very method that did the work: `things = null`
+brings it back down. A reference cycle is held by its own members and stays
+counted, because counting cannot free one.
+→ `31_memory.cm`, `75_allocated.cm`
 
 ## Modules
 
@@ -467,7 +471,13 @@ copied, as C assigns structs; a `Ptr` parameter takes a struct's bytes, which
 is how an out-parameter is written. Passing structs by value is not supported;
 a variadic function is called by instantiation, above, and a callback is passed
 as described under "Callbacks".
-→ `64_extern_struct.cm`, `65_extern_refusals.cm`
+→ `64_extern_struct.cm`, `65_extern_refusals.cm`, `73_struct_arrays.cm`
+
+An element of an array of structs, and a struct held by value in another, are
+places: `items.cells[2].value = 42` writes into the element, and
+`items.cells[0].tags[1]` reaches an array inside one. Used whole (`Cell c =
+items.cells[1]`, `items.cells[2] = c`) an element is copied, as C assigns
+structs.
 
 ## finalize
 

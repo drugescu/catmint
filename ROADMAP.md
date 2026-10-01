@@ -743,10 +743,13 @@ building it:
   an object, though it validates what it is given), and every `Handles` call
   checks the thread, so the table cannot be reached from a foreign thread even
   by code that is not a callback.
-- **Three things the work turned up are recorded in `CLAUDE.md`, not fixed:**
-  writes through an element of an array of structs go to a copy and are lost
-  silently; assigning an `Object` to a subclass-typed variable retypes it;
-  `allocated()` read in the method that made the objects counts them.
+- **Three things the work turned up were fixed afterwards** (tests 73 to 75,
+  details in `CLAUDE.md`): a write through an element of an array of structs
+  went to a copy and was lost silently; assigning an `Object` to a
+  subclass-typed variable retyped it, because the symbol table never closed a
+  scope and so could not tell an assignment from a declaration; and
+  `allocated()` counted objects only a pool was holding. Fixing the second
+  meant fixing the scoping underneath it.
 
 What proved it, each with a mutation that made it fail: the skip after an error
 (the method ran 6 times instead of 3 without it), the thread refusal, unsigned
