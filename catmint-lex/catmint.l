@@ -127,6 +127,7 @@ static int gColumnNumber = 1;
 "!"           { countColumns(); return OP_NOT; }
 ":"						{ countColumns(); return OP_COLON; }
 "::"				  { countColumns(); return OP_STATIC_ACCESS; }
+"..."				  { countColumns(); return OP_ELLIPSIS; }
 
 "#"[^\r\n]*	{}
 

@@ -128,6 +128,22 @@ class Main from IO
     Int child = Process.start("exit 5")
     out("Process.start and wait ${Process.wait(child)}\n")
     out("Process.pid ${Process.pid() > 0}\n")
+    # The no-shell forms: openArgs is the slot after finish, the other two are
+    # static.
+    List argv = new List()
+    argv.append("/bin/echo")
+    argv.append("direct")
+    Process a
+    out("Process.openArgs ${a.openArgs(argv)}\n")
+    out("Process.readLine after openArgs ${a.readLine()}\n")
+    out("Process.finish after openArgs ${a.finish()}\n")
+    # These two inherit our standard output, so they run something silent.
+    List quiet = new List()
+    quiet.append("/bin/sh")
+    quiet.append("-c")
+    quiet.append("exit 0")
+    out("Process.runArgs ${Process.runArgs(quiet)}\n")
+    out("Process.startArgs and wait ${Process.wait(Process.startArgs(quiet))}\n")
 
     # Worker.
     Int h = spawn Helper.twice(21)

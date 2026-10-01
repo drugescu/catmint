@@ -1,0 +1,107 @@
+# Text across the boundary, both ways, and a NULL that is meant.
+#
+# A catmint String going to C is its contents (and refused if it holds a NUL,
+# test 64). Text coming back is a Ptr, which converts to nothing -- until
+# String.fromC copies it out: up to the first NUL or `max` bytes, whichever
+# comes first, into a String of its own. A copy, never an alias, so C still
+# cannot write into a String. It turns a Ptr into something, so it needs
+# `unsafe`.
+#
+# An extern function may say it returns String, and then that copy is made
+# for it (capped at a megabyte). It used to hand C's `char *` straight back as
+# though it were a catmint String, which is not one.
+#
+# `def A = b(...)` gives the C function `b` the catmint name A, so one C
+# function can be declared twice with different types.
+
+extern class Libc
+  def Ptr strerror(Int code)
+  def String strerror_text = strerror(Int code)
+  def String getenv(String name)
+  def Int setenv(String name, String value, Int overwrite)
+  def Ptr dlopen(String path, Int flags)
+  def Int dlclose(Ptr handle)
+end
+
+class Main from IO
+  def main:
+    Ptr raw = null
+    String whole = null
+    String part = null
+    String empty = null
+    String gone = null
+    unsafe:
+      raw = Libc.strerror(2)
+      whole = String.fromC(raw, 4096)
+      part = String.fromC(raw, 7)
+      empty = String.fromC(raw, 0)
+      gone = String.fromC(null, 10)
+    end
+    out("${whole}|${part}|${part.len()}|${empty.len()}\n")
+    out("null in, null out: ${gone == null}\n")
+
+    String again = null
+    String missing = null
+    String planted = null
+    Int ok = 0
+    unsafe:
+      again = Libc.strerror_text(2)
+      missing = Libc.getenv("CATMINT_TEST_SURELY_UNSET")
+      ok = Libc.setenv("CATMINT_TEST_SET", "hello from C", 1)
+      planted = Libc.getenv("CATMINT_TEST_SET")
+    end
+    out("${again == whole} ${missing == null} ${ok} ${planted}\n")
+
+    # A literal null is C's NULL: dlopen(NULL) is "the program itself".
+    Ptr program = null
+    unsafe:
+      program = Libc.dlopen(null, 2)
+    end
+    out("dlopen(NULL) gave a handle: ${program != null}\n")
+    unsafe:
+      Libc.dlclose(program)
+    end
+
+    # A String variable that happens to be null is still the accident it was.
+    String nothing = null
+    try:
+      unsafe:
+        Libc.dlopen(nothing, 2)
+      end
+      out("not caught\n")
+    catch e:
+      out("a null String variable is still refused\n")
+    end
+
+    try:
+      unsafe:
+        String bad = String.fromC(raw, 0 - 1)
+      end
+      out("not caught\n")
+    catch e:
+      out("${e}\n")
+    end
+
+    # Out of a Bytes buffer: up to the NUL, and never past the buffer however
+    # large `max` is asked to be.
+    Bytes buf = new Bytes(4)
+    buf.set(0, 72)
+    buf.set(1, 105)
+    buf.set(2, 0)
+    buf.set(3, 33)
+    String upto = null
+    unsafe:
+      upto = String.fromC(buf, 1000000)
+    end
+    out("${upto}|${upto.len()}\n")
+    Bytes full = new Bytes(3)
+    full.set(0, 97)
+    full.set(1, 98)
+    full.set(2, 99)
+    String bounded = null
+    unsafe:
+      bounded = String.fromC(full, 1000000)
+    end
+    out("${bounded}|${bounded.len()}\n")
+  end
+end

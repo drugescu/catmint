@@ -1,0 +1,24 @@
+# String.chr(0) is a String of one character, a NUL.
+#
+# A catmint String carries its length rather than ending at a NUL, so it can
+# hold one (Bytes.toString() makes them, and so does reading a binary file).
+# chr built its result as a C string and so came back empty for 0.
+
+class Main from IO
+  def main:
+    String nul = String.chr(0)
+    out("${nul.len()}\n")
+
+    String s = "a" + nul + "b"
+    String same = "a" + nul + "b"
+    String other = "a" + String.chr(1) + "b"
+    out("${s.len()}\n")
+    out("${s == same} ${s == other}\n")
+    out("${s.at(0)} ${s.at(1)} ${s.at(2)}\n")
+
+    Bytes b = s.toBytes()
+    out("${b.get(0)} ${b.get(1)} ${b.get(2)}\n")
+
+    out("${String.chr(65)}${String.chr(255).len()}\n")
+  end
+end

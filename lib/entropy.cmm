@@ -1,0 +1,64 @@
+# Entropy: bytes from the operating system's generator.
+#
+#   using entropy
+#   Bytes token = Entropy.bytes(16)
+#   Int64 seed = Entropy.int64()
+#
+# This is what to use for anything that must not be guessed -- a session
+# token, a seed. IO.entropy() is an Int, thirty-two bits, enough to vary a
+# game from run to run and nowhere near enough to be a secret; Random is a
+# fast generator for games and says plainly it is not for security.
+#
+# POSIX: getentropy, which macOS has had since 10.12 and glibc since 2.25. It
+# gives at most 256 bytes a call, so Entropy.bytes asks again for more. On
+# Windows the same two methods will sit on BCryptGenRandom, in lib/os/windows
+# once there is a Windows build to put it in.
+
+extern class EntropyC
+  def Int getentropy(Ptr buffer, UInt64 length)
+end
+
+class Entropy
+  # count random bytes. A failure of the operating system's generator is an
+  # error, not weaker bytes.
+  static def Bytes bytes(Int count):
+    if count < 0:
+      throw "Entropy.bytes needs a count of zero or more"
+    end
+    Bytes result = new Bytes(count)
+    Bytes chunk = new Bytes(256)
+    Int done = 0
+    while done < count:
+      Int want = count - done
+      if want > 256:
+        want = 256
+      end
+      Int status = 0
+      unsafe:
+        status = EntropyC.getentropy(chunk, want)
+      end
+      if status != 0:
+        throw "the operating system's entropy source failed"
+      end
+      Int i = 0
+      while i < want:
+        result.set(done + i, chunk.get(i))
+        i = i + 1
+      end
+      done = done + want
+    end
+    return result
+  end
+
+  # A random 64-bit number, all bits.
+  static def Int64 int64:
+    Bytes b = bytes(8)
+    Int64 value = 0
+    Int i = 0
+    while i < 8:
+      value = (value << 8) | b.get(i)
+      i = i + 1
+    end
+    return value
+  end
+end

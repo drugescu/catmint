@@ -138,10 +138,17 @@ class Header:
             self.include_line = "#include <%s>\n" % args.header
         with open(self.tu, "w") as f:
             f.write(self.include_line)
+        self.target_flags = (["--target=" + args.target] if args.target else []) + \
+                            list(args.clang_arg)
         self.flags = ["-x", "c", "-w"] + ["-I" + d for d in args.include] + \
-                     ["-D" + d for d in args.define]
+                     ["-D" + d for d in args.define] + self.target_flags
+        self.scalars = self.target_scalars()
         self.match = re.compile(args.match)
-        self.constants_match = re.compile(args.constants_match or args.match)
+        patterns = args.constants_match or [args.match]
+        self.constants_patterns = [(p, re.compile(p)) for p in patterns]
+        self.pattern_counts = {p: 0 for p in patterns}
+        self.not_integer = 0
+        self.string_returns = re.compile(args.string_returns) if args.string_returns else None
         self.origin = re.compile(args.origin) if args.origin else None
         self.keywords = catmint_keywords()
 
@@ -151,6 +158,29 @@ class Header:
         self.enums = []          # (name, file) of enumerators
         self.functions = []      # FunctionDecl nodes, with their file
         self.skipped = []        # (name, reason)
+
+    def target_scalars(self):
+        """C's scalar types as this target makes them. The table is fixed
+        except for what the target decides, and it decides two things: how wide
+        `long` is (8 bytes on 64-bit Linux and macOS, 4 on Windows, where only
+        `long long` is 64 bits) and whether plain `char` is signed (it is not
+        on aarch64 Linux). Layouts do not need this, since clang computes
+        those for the target; this is only the names catmint gives the types."""
+        out = run([self.clang, "-dM", "-E", "-x", "c", os.devnull] +
+                  self.target_flags).stdout
+        macros = dict(re.findall(r"#define (\w+) (\S+)", out))
+        table = dict(SCALARS)
+        if int(macros.get("__SIZEOF_LONG__", "8")) == 8:
+            signed, unsigned = "Int64", "UInt64"
+        else:
+            signed, unsigned = "Int", "UInt32"
+        for name in ("long", "long int", "signed long"):
+            table[name] = signed
+        for name in ("unsigned long", "unsigned long int"):
+            table[name] = unsigned
+        if "__CHAR_UNSIGNED__" in macros:
+            table["char"] = "UInt8"
+        return table
 
     # ---- reading ---------------------------------------------------------
     def from_here(self, where):
@@ -264,16 +294,28 @@ class Header:
                 current["fields"].append((int(offset), text.split()[-1]))
         self.layouts = layouts
 
+    def wanted_constant(self, name):
+        """Whether any pattern takes this name, counting which one did, so a
+        pattern that matches nothing -- a prefix that was wrong, a header that
+        did not define what was expected -- can be said out loud."""
+        hit = False
+        for text, pattern in self.constants_patterns:
+            if pattern.search(name):
+                self.pattern_counts[text] += 1
+                hit = True
+        return hit
+
     def read_constant_names(self):
         out = run([self.clang, "-E", "-dM"] + self.flags + [self.tu]).stdout
         macros = []
         for line in out.splitlines():
             m = re.match(r"#define ([A-Za-z_][A-Za-z0-9_]*) (.+)$", line)
-            if m and self.constants_match.search(m.group(1)):
+            if m and self.wanted_constant(m.group(1)):
                 if '"' in m.group(2) or "'" in m.group(2):
+                    self.not_integer += 1   # a string or a character
                     continue
                 macros.append(m.group(1))
-        names = [n for n in self.enums if self.constants_match.search(n)]
+        names = [n for n in self.enums if self.wanted_constant(n)]
         seen = set(names)
         return names + [m for m in macros if m not in seen]
 
@@ -357,8 +399,8 @@ class Header:
             return ("array", m.group(1), int(m.group(2)))
         if t.endswith("*"):
             return ("pointer", t[:-1].strip())
-        if t in SCALARS:
-            return ("scalar", SCALARS[t])
+        if t in self.scalars:
+            return ("scalar", self.scalars[t])
         if t == "long double":
             raise Unbindable("uses long double")
         m = re.match(r"^(struct|union) (.+)$", t)
@@ -515,11 +557,24 @@ class Header:
             seen.add(name)
             try:
                 if fn.get("variadic"):
-                    raise Unbindable("is variadic")
+                    if any(c.get("kind") == "FormatAttr" for c in fn.get("inner", [])):
+                        raise Unbindable("is variadic and takes a format string "
+                                         "(the printf family), which is refused")
+                    raise Unbindable("is variadic; declare the call you need by "
+                                     "hand, as `def Alias = %s(fixed..., ... Type)`" % name)
                 if fn.get("storageClass") == "static" or fn.get("inline"):
                     raise Unbindable("is inline, so there is no symbol to call")
                 qual = fn["type"].get("desugaredQualType", fn["type"]["qualType"])
-                ret = self.param_type(qual[:qual.index("(")].strip(), returning=True)
+                returned = qual[:qual.index("(")].strip()
+                ret = self.param_type(returned, returning=True)
+                # A `char *` comes back as a Ptr, because who frees it is not
+                # in the header. For the functions the author names as
+                # returning static or thread-local text (SDL_GetError), the
+                # copy is made for them.
+                if ret == "Ptr" and self.string_returns and \
+                        self.string_returns.search(name) and \
+                        self.clean(returned) == "char *":
+                    ret = "String"
                 params = []
                 for i, p in enumerate(c for c in fn.get("inner", [])
                                       if c.get("kind") == "ParmVarDecl"):
@@ -547,6 +602,15 @@ class Header:
         out.append("#")
         out.append("# %d records, %d functions, %d constants." %
                    (len(self.bound), len(functions), len(values)))
+        for text, count in (self.pattern_counts.items() if self.args.constants else ()):
+            out.append("# constants pattern %s matched %d names%s" %
+                       (text, count, "" if count else " -- NOTHING; check the pattern"))
+            if not count:
+                sys.stderr.write("bindgen: constants pattern %s matched nothing\n" % text)
+        if self.args.constants and (dropped or self.not_integer):
+            out.append("# %d names matched but are not integer constants "
+                       "(strings, function-like macros, expressions)" %
+                       (len(dropped) + self.not_integer))
         if self.skipped:
             out.append("# Not bound, with the reason:")
             for name, why in sorted(self.skipped):
@@ -579,8 +643,16 @@ def main():
     parser.add_argument("header", help="a header, <on the include path> or a file")
     parser.add_argument("--match", required=True,
                         help="regex a record's or function's name must match")
-    parser.add_argument("--constants-match", default=None,
-                        help="regex for macro and enumerator names (default: --match)")
+    parser.add_argument("--constants-match", action="append", default=[],
+                        help="regex for macro and enumerator names; repeat for "
+                             "several (default: --match)")
+    parser.add_argument("--string-returns", default=None,
+                        help="regex of functions returning a `char *` that "
+                             "should be bound as String, the text copied out")
+    parser.add_argument("--target", default=None,
+                        help="clang target triple, to bind for another OS")
+    parser.add_argument("--clang-arg", action="append", default=[],
+                        help="an extra argument for clang (repeatable)")
     parser.add_argument("--from", dest="origin", default=None,
                         help="regex the declaring file's path must match")
     parser.add_argument("--class", dest="cls", required=True,

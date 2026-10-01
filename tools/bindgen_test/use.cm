@@ -61,5 +61,31 @@ class Main from IO
 
     out("constants ${SampleC.SAMPLE_FLAG()} ${SampleC.SAMPLE_BIG()} ${SampleC.SAMPLE_NEG()} ${SampleC.SAMPLE_CENTERED()}\n")
     out("colors ${SampleC.SAMPLE_RED()} ${SampleC.SAMPLE_GREEN()} ${SampleC.SAMPLE_BLUE()}\n")
+
+    # `long` was bound as the target says: Int64 on this one.
+    SampleWide w
+    w.a = 0 - 3
+    w.b = 10
+    w.c = 0 - 5000000000
+    w.d = 7
+    Int64 wide = 0
+    String one = null
+    String none = null
+    Ptr copy = null
+    String copied = null
+    unsafe:
+      wide = Sample.sample_wide_sum(w)
+      # Bound as String because it was listed: the text is copied out for us.
+      one = Sample.sample_name(1)
+      none = Sample.sample_name(99)
+      # Not listed, so a Ptr: who frees it is not in the header, and here it is
+      # read with String.fromC and given back.
+      copy = Sample.sample_dup("copy")
+      copied = String.fromC(copy, 100)
+      Sample.sample_release(copy)
+    end
+    out("wide ${wide}\n")
+    out("name ${one} none-is-null ${none == null} dup ${copied}\n")
+    out("other ${SampleC.OTHER_VALUE()}\n")
   end
 end

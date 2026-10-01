@@ -40,8 +40,13 @@ jobs:
           # the runtime, and the sanitizer run -- and clang-16 because the
           # shipped runtime is built by the oldest LLVM catmint supports, so
           # build-runtime.sh --check can reproduce it.
+          #
+          # libsdl2-dev is for the SDL library and the game, whose tests run
+          # here on SDL's dummy video and audio drivers (no screen, no sound
+          # card) as part of test.sh. Without it that section would only say
+          # "skipped", which is not a pass.
           sudo apt-get install -y "llvm-$LLVM_VERSION-dev" "clang-$LLVM_VERSION" \
-                                  "lld-$LLVM_VERSION" clang-16 llvm-16
+                                  "lld-$LLVM_VERSION" clang-16 llvm-16 libsdl2-dev
           echo "/usr/lib/llvm-$LLVM_VERSION/bin" >> "$GITHUB_PATH"
 
       - name: Versions
@@ -104,7 +109,7 @@ jobs:
 
       - name: Install LLVM and bison
         run: |
-          brew install llvm@22 llvm@16 lld bison flex
+          brew install llvm@22 llvm@16 lld bison flex sdl2
           echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
 

@@ -1,0 +1,10 @@
+1 1 0 marker made: 0
+7
+127
+1 3
+to-stdout to-stderr
+cat saw eof: 1
+a child sees the same descriptors with two files open here: 1
+Process: the argument list is empty
+Process: every argument must be a String
+Process: an argument contains a NUL

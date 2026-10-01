@@ -1,0 +1,77 @@
+# Calling a variadic C function, by instantiation.
+#
+# `fcntl`, `snprintf` and `open` take a variable number of arguments, and
+# their types are decided by the callee (a format string, a command code), not
+# by any prototype. Declared as if the extra argument were an ordinary
+# parameter, the call is wrong on some machines: Apple's arm64 passes variable
+# arguments on the stack, not in registers.
+#
+# So a declaration says which function it is (`= fcntl`), where the fixed
+# parameters end (`...`), and the types this one passes after them. The call is
+# built as a variadic call, and C's default promotions are applied: anything
+# narrower than an int is widened to one.
+#
+# One C function can be declared as often as it is called differently.
+
+extern class Libc
+  def Int fcntl_dup = fcntl(Int fd, Int cmd, ... Int minimum)
+  def Int close(Int fd)
+  def Int snprintf_number = snprintf(Ptr buffer, UInt64 size, String format, ... Float x, Int n)
+  def Int snprintf_text = snprintf(Ptr buffer, UInt64 size, String format, ... Ptr text)
+  def Int snprintf_big = snprintf(Ptr buffer, UInt64 size, String format, ... Int64 n)
+  def Int snprintf_small = snprintf(Ptr buffer, UInt64 size, String format, ... Int8 n)
+  def Int snprintf_byte = snprintf(Ptr buffer, UInt64 size, String format, ... UInt8 n)
+end
+
+class Main from IO
+  def main:
+    # F_DUPFD is 0 on macOS and on Linux: the lowest descriptor of at least
+    # `minimum` that duplicates fd.
+    Int duplicate = 0
+    unsafe:
+      duplicate = Libc.fcntl_dup(1, 0, 10)
+    end
+    out("duplicated stdout to a descriptor >= 10: ${duplicate >= 10}\n")
+    unsafe:
+      Libc.close(duplicate)
+    end
+
+    Bytes buffer = new Bytes(64)
+    Int written = 0
+    String text = null
+
+    unsafe:
+      written = Libc.snprintf_number(buffer, 64, "%.3f|%d", 3.14159, 42)
+      text = String.fromC(buffer, 64)
+    end
+    out("${text} (${written} chars)\n")
+
+    Bytes word = new Bytes(4)
+    word.set(0, 99)
+    word.set(1, 97)
+    word.set(2, 116)
+    unsafe:
+      Libc.snprintf_text(buffer, 64, "[%s]", word)
+      text = String.fromC(buffer, 64)
+    end
+    out("${text}\n")
+
+    unsafe:
+      Libc.snprintf_big(buffer, 64, "%lld", 5000000000)
+      text = String.fromC(buffer, 64)
+    end
+    out("${text}\n")
+
+    # A narrow signed value must be sign-extended, a narrow unsigned one
+    # zero-extended, or "%d" prints the wrong number.
+    String negative = null
+    String high = null
+    unsafe:
+      Libc.snprintf_small(buffer, 64, "%d", 0 - 5)
+      negative = String.fromC(buffer, 64)
+      Libc.snprintf_byte(buffer, 64, "%d", 200)
+      high = String.fromC(buffer, 64)
+    end
+    out("${negative} ${high}\n")
+  end
+end

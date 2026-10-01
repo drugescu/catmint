@@ -692,6 +692,75 @@ record's alignment, so records holding it still lay out right.
 from it; `test.sh` runs it and says "skipped: needs clang" rather than
 nothing when it cannot.
 
+The generator reads the **target's** scalar sizes from clang's predefined
+macros (`__SIZEOF_LONG__`, `__CHAR_UNSIGNED__`), so `long` is `Int64` on Linux
+and macOS and `Int` on Windows, and `--target` / `--clang-arg=` bind for a
+machine that is not this one (the test binds its header for
+`x86_64-pc-windows-msvc` and checks `b` lands at offset 4, not 8; use the `=`
+form for a clang argument that starts with a dash). `--constants-match`
+repeats, and the header reports how many names each pattern matched and says
+so on stderr when one matched nothing -- `AUDIO_S16LSB` was missing from the
+SDL bindings for exactly that reason, an unprefixed name under a `^SDL_`
+pattern. `--string-returns REGEX` binds the named `char *` returns as `String`;
+leave out anything that returns memory someone must free (`SDL_GetPrefPath`,
+`SDL_GetClipboardText`). A variadic function is listed as refused, with
+"takes a format string" added when clang's JSON carries a `FormatAttr`.
+
+**The SDL library and the game run headless** in `test.sh`:
+`SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software SDL_AUDIODRIVER=dummy` need
+no window system, and the game's 17 input tests and `check.sh` pass under them.
+`tools/sdl_test/run.sh` runs always (and says "skipped: SDL2 is not installed"),
+the game's two suites with `--thorough`. SDL's `disk` audio driver
+(`SDL_AUDIODRIVER=disk SDL_DISKAUDIOFILE=f.raw`) records what a program
+queues, converted to signed 16-bit stereo at 44.1 kHz whatever was asked for.
+
+**The C boundary's edges** (all in `emitExternCall` and `checkExternSignature`
+unless said). *Text back*: an extern function declared to return `String`
+gets `M6_String_fromC(ptr, 1 << 20)` called on its result -- before this the
+raw `char *` came back typed as a String, which was type confusion inside
+`unsafe`; `Bytes`/`Ints`/`Floats` returns are refused for the same reason.
+`String.fromC` is `emitFromC`, routed from `emitStaticCall`; a `Bytes` source
+goes to `M6_String_fromBytes`, which clamps `max` to the buffer's own length,
+and a `Ptr` or `null` to `M6_String_fromC`; the semantic pass makes it need
+`unsafe` (the same gate as an extern call) and refuses `Ints`, `Floats` and
+structs as the source. *The literal `null`* where a parameter is a
+`String` or an array is C's NULL, decided by the argument's static type being
+`Null` -- not by its value, so a null-holding String variable still meets
+`marshalToC`'s null check. *Aliases and variadics*: `Method` carries
+`getCSymbol()` (the C name, defaulting to the method's own) and
+`getFixedParams()` (minus one unless variadic); the grammar's `extern_method`
+rules build them, `OP_ELLIPSIS` is the `...` token. `externFunctionType` gives
+LLVM the fixed parameters and `isVarArg`; the call's extra arguments are the
+declaration's remaining parameters, promoted to at least an `int`
+(`c.promote`). **A variadic call must be made through a variadic function
+type**: on Apple arm64 variable arguments go on the stack, and declaring
+`snprintf` as an ordinary function printed `0.000|83734528` for `3.142|42`
+(test 67 is the proof). `String` and arrays are refused in the variable part,
+`Float32` too (C promotes it; declare `Float`).
+
+*`Process` without a shell*: `runArgs`/`startArgs`/`openArgs` take a List and
+`execvp`; `argv_from_list` validates it (null, empty, over 4096, non-String,
+NUL) before anything starts. `openArgs` forks by hand, so its pipe is closed
+with `fclose` and a `waitpid` on `TProcess::pid`, not `pclose` -- that is what
+`process_close` decides, and why `object_free` and `finish` both call it.
+`openArgs` is appended after `finish` in both `TypeTable.cpp` and `RProcess`,
+and `RProcess` is now a 12-slot vtable (`catmint_rtti12_process`). **The child
+closes the parent's other descriptors** (CWE-403: a socket or a document would
+stay open in a program that could read it). `open_descriptors` snapshots them
+*in the parent* and the child only calls `close`, because between `fork` and
+`exec` only async-signal-safe functions are allowed -- SDL starts threads, and
+one may have held the malloc lock at the fork and never release it in the
+child. It asks each descriptor in turn (`fcntl(fd, F_GETFD)`) rather than
+reading `/dev/fd`: `opendir`/`readdir` are `readdir$INODE64` on Intel Macs and
+plain `readdir` on Apple silicon, two struct layouts, and the Darwin runtime is
+one file for both. `portability.sh` caught that in the first version, which
+had used them; this is what its architecture check is for. Test 69 counts the
+descriptors a child sees with and without files open here (not an absolute
+number: macOS's `ls` opens two for itself) and fails when the closing is
+removed.
+`String.chr(0)` was an empty String because `chr` built a C string; it uses
+`new_string(1)` now.
+
 `link "SDL2"` names a library. The preprocessor removes the line, so there is
 no grammar rule and no AST node; `catmintc` greps the sources for it, as it
 already does for `using`, and turns each into a `-l`. `-l` and `-L` on the

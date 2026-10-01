@@ -105,6 +105,36 @@ else
   failed=1
 fi
 
+# SDL, headless: the video, renderer and audio drivers that need no screen or
+# sound card. The library's own test runs always; the game's two suites (its
+# simulation against an independent port, and scripted input with pixel
+# checks) run with --thorough. Without SDL2 installed this says so.
+printf "\n${BOLD}SDL and the game${NC}\n"
+if sdl_out=$("$ROOT/tools/sdl_test/run.sh" 2>&1); then
+  printf "  %s\n" "$sdl_out"
+  case "$sdl_out" in
+    skipped*) ;;
+    *)
+      if [ -z "$THOROUGH" ]; then
+        printf "  game: skipped (./test.sh --thorough runs it)\n"
+      elif ( cd "$ROOT/examples/rps-rts" &&
+             export SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software SDL_AUDIODRIVER=dummy &&
+             ./build.sh && ./check.sh && ./play.sh ) > "$ROOT/.game.log" 2>&1; then
+        printf "  %s\n" "$(grep 'simulation matches' "$ROOT/.game.log")"
+        printf "  %s\n" "$(grep 'play tests passed' "$ROOT/.game.log")"
+      else
+        printf "  ${RED}game failed${NC} - see .game.log\n"
+        tail -6 "$ROOT/.game.log" | sed 's/^/  /'
+        failed=1
+      fi
+      ;;
+  esac
+else
+  printf "  ${RED}failed${NC}\n"
+  printf "%s\n" "$sdl_out" | tail -5 | sed 's/^/  /'
+  failed=1
+fi
+
 printf "\n${BOLD}examples${NC}\n"
 for source in "$ROOT"/examples/*.cm; do
   name=$(basename "$source" .cm)

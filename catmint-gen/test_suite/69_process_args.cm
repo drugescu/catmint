@@ -1,0 +1,124 @@
+# Running a program with its arguments as a list, and no shell.
+#
+# Process.run, start and open hand a string to /bin/sh -c, which is right for
+# a script and wrong for anything that puts a file name in it: a file called
+# `a;touch x` becomes two commands. The Args forms take the program and each
+# of its arguments separately and execvp it directly, so no argument is ever
+# parsed by anything. openArgs reads the program's output (its stderr too) and
+# gives it no input, so it can never wait on a terminal.
+
+class Main from IO
+  # How many descriptors a child sees, as `ls /dev/fd` lists them.
+  def Int descriptors:
+    List ls = new List()
+    ls.append("/bin/ls")
+    ls.append("-1")
+    ls.append("/dev/fd")
+    Process lister = new Process()
+    lister.openArgs(ls)
+    Int count = 0
+    while lister.eof() == 0:
+      lister.readLine()
+      count = count + 1
+    end
+    lister.finish()
+    return count
+  end
+
+  def main:
+    String marker = "/tmp/catmint_args_test_marker"
+    File.remove(marker)
+
+    # Every character a shell would act on, in one argument.
+    String nasty = "x; touch " + marker + " ; echo $(echo X) `echo Y` \"q\" 'r' *"
+    List echo = new List()
+    echo.append("/bin/echo")
+    echo.append(nasty)
+
+    Process p = new Process()
+    Int started = p.openArgs(echo)
+    String line = p.readLine()
+    Int status = p.finish()
+    out("${started} ${line == nasty} ${status} marker made: ${File.exists(marker)}\n")
+
+    # The exit status of a program run to completion, and of one not found.
+    List seven = new List()
+    seven.append("/bin/sh")
+    seven.append("-c")
+    seven.append("exit 7")
+    out("${Process.runArgs(seven)}\n")
+
+    List missing = new List()
+    missing.append("/definitely/not/a/program")
+    out("${Process.runArgs(missing)}\n")
+
+    # Several at once: start, then collect.
+    List three = new List()
+    three.append("/bin/sh")
+    three.append("-c")
+    three.append("exit 3")
+    Int pid = Process.startArgs(three)
+    out("${pid > 0} ${Process.wait(pid)}\n")
+
+    # Its stderr comes through the same pipe, in order.
+    List both = new List()
+    both.append("/bin/sh")
+    both.append("-c")
+    both.append("echo to-stdout; echo to-stderr 1>&2")
+    Process q = new Process()
+    q.openArgs(both)
+    out("${q.readLine()} ${q.readLine()}\n")
+    q.finish()
+
+    # No input: cat sees end of file at once instead of waiting for us.
+    List cat = new List()
+    cat.append("/bin/cat")
+    Process r = new Process()
+    r.openArgs(cat)
+    out("cat saw eof: ${r.eof()}\n")
+    r.finish()
+
+    # Nothing the parent has open is lent to the child. A file, a socket, a
+    # document: the child would hold it open for as long as it ran, and could
+    # read it. `ls /dev/fd` lists the child's descriptors. How many `ls` opens
+    # for itself is its own business (macOS's walks the directory with two), so
+    # the child is counted with nothing of ours open and again with two files
+    # open, and the two counts must agree.
+    Int before = descriptors()
+    File hosts = new File()
+    hosts.open("/etc/hosts", "r")
+    File passwd = new File()
+    passwd.open("/etc/passwd", "r")
+    Int after = descriptors()
+    out("a child sees the same descriptors with two files open here: ${before == after}\n")
+
+    # The argument list is checked before anything is started.
+    List empty = new List()
+    try:
+      Process.runArgs(empty)
+      out("not caught\n")
+    catch e:
+      out("${e}\n")
+    end
+
+    List numbers = new List()
+    numbers.append("/bin/echo")
+    numbers.append(5)
+    try:
+      Process.runArgs(numbers)
+      out("not caught\n")
+    catch e:
+      out("${e}\n")
+    end
+
+    List withNul = new List()
+    withNul.append("/bin/echo")
+    withNul.append("a" + String.chr(0) + "b")
+    try:
+      Process.runArgs(withNul)
+      out("not caught\n")
+    catch e:
+      out("${e}\n")
+    end
+  end
+end

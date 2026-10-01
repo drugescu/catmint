@@ -664,6 +664,10 @@ Each of these was run, not assumed, and each changes something below.
    queues, converted to signed 16-bit stereo at 44.1 kHz whatever was asked
    for, so sound can be tested too.
 
+Status: item 1 is fixed (below). Items 2 to 9 are fixed on the `ffi-edges`
+branch, in section B, except the game's tests running on the *Windows* runner,
+which waits for the Windows build.
+
 ### The runtime, per OS and per architecture
 
 **Fixed on `master`**, and recorded here because the design claimed otherwise.
@@ -877,37 +881,83 @@ language project. They are not on the path to the editor.
 - `bindgen` on a header with a callback typedef: the type written, the
   function bound with it, `signal` listed as refused.
 
-### B. Completing the FFI's edges
+### B. Completing the FFI's edges — **done**, on the `ffi-edges` branch
 
-Four small changes, each from "Found while checking" above, none a redesign.
+The changes below were made as designed, with three departures worth stating,
+and each has a test that was seen to fail without it.
 
-- **`String.fromC(Ptr p, Int max)`**, `unsafe`: copies up to the first NUL or
-  `max` bytes, whichever comes first, into a new counted String. A copy, never
-  an alias, so C still cannot write into a String; the cap turns an
-  unterminated buffer into a bounded read where `strlen` would run on. A null
-  `Ptr` answers null. `bindgen` keeps returning `Ptr` for `char *`, because it
-  cannot know who frees it (`SDL_GetPrefPath` returns malloc'd memory,
-  `SDL_GetError` a static buffer); `lib/sdl.cmm` calls `fromC` on the ones it
-  knows, and `SDL_GetError`'s text finally goes into its error messages.
-- **A literal `null` for a `String` parameter is C's `NULL`.** Only the
-  literal: a `String` variable that happens to be null is still the error it
-  was, because that is the accident worth catching.
-- **Variadic functions, by instantiation.** An extern declaration may name
-  the fixed prefix and give the types of the extra arguments, under its own name:
-  `def Int fcntl_flags = fcntl(Int fd, Int cmd, ... Int flags)`. The call is
-  emitted through a variadic function type, which is what makes Apple's arm64
-  convention come out right. Refused: `String` in the variable part, and any
-  function clang marks with a `format` attribute (the `printf` family), which is
-  where variadic calls become format-string bugs.
-- **`bindgen`** learns the target's scalar sizes by asking clang for them
-  (`long`, `wchar_t`, `size_t`) instead of assuming LP64; reports how many names
-  each pattern matched; and takes a list of `char *`-returning functions to
-  bind as `String` with the copy done for you.
+- **`String.fromC(Ptr p, Int max)`**, `unsafe`. Copies up to the first NUL or
+  `max` bytes into a new counted String; a copy, never an alias, so C still
+  cannot write into a String. A null `Ptr` answers null; a negative `max` is a
+  catchable error. *Departure:* a `Bytes` is accepted as the source too, read
+  through its own entry that clamps `max` to the buffer's length, because the
+  natural way to get C text into catmint is a buffer filled by a C call
+  (`snprintf`, `recv`), and a bare `max` there is an over-read waiting to
+  happen. `Ints`, `Floats` and structs are refused as the source. (Test 66.)
+- **A function declared to return `String` has the copy made for it**, capped
+  at a megabyte. *Departure, a fix:* this was not in the plan because the bug
+  was not known. An extern function declared to return `String` used to hand
+  C's `char *` back typed as a catmint String, which it is not (no run-time
+  type information, no count, no length in front). That was type confusion
+  inside `unsafe`, and arrays are refused as returns for the same reason.
+  `bindgen` still leaves a `char *` return a `Ptr` unless the function is
+  named by `--string-returns`, since who frees it is not in the header.
+- **A literal `null` for a `String` or buffer parameter is C's `NULL`.** Only
+  the literal, decided by the argument's static type: a `String` variable that
+  holds null is still the error it was. (`dlopen(null, 2)` in test 66; the
+  null variable's refusal is in the same test.)
+- **Variadic functions, by instantiation, and C functions under another name.**
+  `def Int fcntl_dup = fcntl(Int fd, Int cmd, ... Int minimum)`. The call is
+  made through a variadic function type with C's default promotions applied.
+  *Departure:* the alias (`name = symbol(...)`) is general, not only for
+  variadics, because the same C function wants declaring twice anyway
+  (`strerror` as a `Ptr` and as a `String`). The variable part takes `Int`,
+  `Int64`, `Float` or `Ptr`; `String`, arrays and `Float32` are refused, each
+  with the reason. *The ABI claim was checked, not assumed:* `snprintf`
+  declared as an ordinary function prints `0.000|83734528` for `3.142|42` on
+  this Apple arm64 machine; declared variadic it is right. (Test 67; the
+  grammar's conflict count did not move, 12 and 1.)
+- **`bindgen`** reads the target's scalar sizes from clang
+  (`__SIZEOF_LONG__`, `__CHAR_UNSIGNED__`) instead of assuming LP64, and
+  takes `--target` and `--clang-arg=` so it can bind for a machine it is not
+  running on: the same test struct is 40 bytes with `long` as `Int64` here and
+  32 bytes with `long` as `Int` for `x86_64-pc-windows-msvc`, both from clang.
+  `--constants-match` repeats and the header counts what each pattern matched,
+  and stderr says so when one matched nothing (the missing `AUDIO_*` constants).
+  `--string-returns` binds the named `char *` returns as `String`. A variadic
+  function's refusal now says what to do, and names the `printf` family when
+  clang marks it with a format attribute. `lib/sdl2.cmm` was regenerated:
+  18 `AUDIO_*` constants gained, nine static-text returns now `String`.
+- **`Process.runArgs(List)`, `startArgs(List)` and `p.openArgs(List)`**: no
+  shell. The program and each argument are separate Strings, validated first
+  (null, empty, more than 4096, a non-String, a NUL), then `execvp`ed.
+  `openArgs` reads standard output and error together and gives the child
+  `/dev/null` for input, and closes every descriptor the parent has open
+  before it runs the program (found by reviewing this feature, not in the plan:
+  without it a child holds the parent's files and sockets). A test passes an
+  argument holding every character a shell acts on, and the marker file it
+  would have created is never created; another counts a child's descriptors
+  with and without files open in the parent. (Tests 69 and 42.)
+- **`Entropy.bytes(n)` and `Entropy.int64()`** in `lib/entropy.cmm`, over
+  `getentropy`, 256 bytes at a time. Statistical properties are the test
+  (every byte value appears in 16 KB, one failure in 10^28; bits balanced
+  within six standard deviations); it fails when the call is removed. The
+  Windows half (`BCryptGenRandom`) waits for the Windows build. (Test 70.)
+- **`String.chr(0)`** is a one-character String holding a NUL; it was empty
+  because `chr` built a C string. (Test 68; the only runtime change that is not
+  the C boundary.)
+- **SDL's own error text** reaches the safe layer's exceptions
+  (`could not initialise SDL: no_such_driver not available`), now that
+  `SDL_GetError` is a `String`. (`tools/sdl_test`.)
+- **The game and SDL run headless in `test.sh`** on the dummy video, renderer
+  and audio drivers: the library test always, the game's simulation check and
+  17 input tests with `--thorough`; `build.sh` no longer assumes Homebrew's
+  location, and the Linux image has `libsdl2-dev`.
 
-And one library change, not an FFI one: **`Process` gets an argument-vector
-form**, `Process.runArgs(List)` and `startArgs`, which `execvp`s without a
-shell. The `sh -c` forms stay for scripts that want a shell and are documented
-as such; the editor below uses only the new ones.
+Still open from this list: the optional-string rule is only for the literal
+`null` and for `String`/buffer parameters, so a `Ptr` parameter was already
+fine and a struct parameter already took `null`; nothing more is planned. The
+callbacks of section A are the next piece of FFI work.
 
 ### C. Windows
 
@@ -993,35 +1043,113 @@ Phase 7.
 **The toolkit is immediate-mode**, as Dear ImGui and egui are, in
 `lib/gui.cmm` over `lib/sdl.cmm`: widgets are calls that draw and report in
 the same breath, so the whole application is one loop with no handlers and no
-object graph to keep alive.
+object graph to keep alive. egui's own README says the point plainly -- "you
+never need to have any on-click handlers and callbacks that disrupts your code
+flow" -- and lists what it gives up for it: it is "not a framework", does not
+aim at a "native looking interface", and has weaker layout and higher CPU use
+than a retained toolkit. All three are accepted here, and the third is answered
+below.
 
 ```
 ui.begin(sdl)
-if ui.button("Run"):
-  run()
+if ui.key("ctrl+p"):
+  palette.open()
 end
 ui.text_edit(buffer)
+ui.status(buffer.name, buffer.position())
 ui.end()
 ```
 
-- **Widgets**: label, button, checkbox, single-line text field, a multi-line
-  text editor, a list, a scroll area, a split pane, a menu bar and popup, a
-  modal dialog, a tooltip.
-- **Layout**: rows, columns and fixed or flexible sizes; one pass.
-- **Input**: focus and tab order; mouse capture while dragging; text input
-  events (`SDL_TEXTINPUT`, so a typed `é` arrives as text, not as a key);
-  key repeat; the clipboard (`SDL_GetClipboardText`, whose result is
-  malloc'd and must be freed — read through `String.fromC`, then free); the
-  window's pixel density, so a high-DPI display is not tiny.
+#### Look and feel: minimal, and kept small by the rules below
+
+The aim was a program that is nothing but its text, and the reading that
+shaped it came from the editors people describe as calm and fast. What it
+gave, and what each rule costs the toolkit (which is the point: every rule
+removes a widget):
+
+1. **Text is the interface.** iA Writer "avoids all distracting glitz in the
+   user interface and puts all the beauty in the shape of the text"; Zed
+   describes itself as "minimalist, distraction-free, yet modern with native
+   UI", and Sublime as a "minimalist interface, focus mode, clean design" with
+   "legendary speed and ultra-low memory use" -- the same stance, from three
+   places. So: the window is the text and one status line. No toolbar,
+   no icons, no menu bar, no tab strip, no scrollbar until the pointer is over
+   it (then a 2 px thumb). *Removes:* toolbar, menu bar, popup menu, tooltip,
+   icon set, and every dialog.
+2. **A command palette instead of menus** (VS Code, Sublime, Zed, Raycast,
+   Linear): one shortcut opens a box, you type, it narrows. Fuzzy matching;
+   the best match first whatever its kind ("top result", as Retool's write-up
+   of theirs recommends); the shortcut shown beside each command so the palette
+   teaches the keyboard; recent items first when the box is empty. It does four
+   jobs, which is the saving: **commands** (`Run`, `Save`, `Find`, `Go to
+   line`), **open file** (type a path fragment; this is the file picker, so
+   there is no file dialog to build), **switch file**, and **goto symbol**.
+   *Removes:* file dialog, menu bar, tab strip (open files are a palette mode),
+   modal dialog (confirmations are a line in the status bar).
+3. **One status line, quiet** (Helix lets you place file name, position,
+   selections and diagnostics left, centre or right; that is the whole of its
+   chrome). Left: file name and a dot when modified. Right: `line:column`, and
+   the build state while one runs. Dim until something needs attention.
+4. **Colour is rationed.** Nord is "deliberately low-contrast" and Catppuccin
+   asks for balance, "not too dull, not too bright"; both are a dark ground,
+   muted hues and a single accent. The editor reuses the game's palette (slate
+   ground, warm off-white text), one amber accent for the caret, selection and
+   focus, a muted red for errors, and **at most four muted hues for syntax**
+   (keywords, strings, comments, numbers). *Checkable, so checked:* a test
+   computes the WCAG contrast ratio of every theme colour against its ground and
+   fails below 7:1 for body text and 4.5:1 for dim text, in both the dark and
+   the light theme. No bold or italic; weight is not available in a bitmap font
+   and was never needed.
+5. **Type does the work.** One monospace bitmap font, one size, scaled by whole
+   numbers for high-DPI; line height 1.4; a two-character gutter on each side
+   and line numbers in the dim colour, the current line's in the text colour.
+   Hairlines (1 px) and no shadows, gradients or rounded corners; a hovered
+   thing brightens rather than gaining a box; focus is an accent underline.
+6. **Nothing to configure.** iA Writer "has no graphical settings or
+   formatting features". The editor has `Ctrl +` and `Ctrl -` for size, one
+   command to flip dark and light, and no preferences. *Removes:* a settings
+   screen, a config file, and the bugs in both.
+7. **Quiet when idle**, the answer to immediate mode's CPU cost: the loop
+   blocks in `SDL_WaitEventTimeout` and redraws only on an event or the
+   500 ms caret blink. Measured, not hoped: a test samples the process's CPU
+   time over five idle seconds and bounds it.
+8. **Focus mode, if it is cheap** (iA fades everything but the current few
+   lines): draw the other lines in the dim colour. A toggle on the palette; it
+   costs one condition in the draw loop, and is dropped if it costs more.
+
+**What is left of the toolkit** after those rules: label, a text-only button
+(the build panel's, and the palette's rows), a single-line text field (the
+palette, find, go-to-line), the multi-line text editor, a scrolling list (the
+palette's results and the build output), and a scroll area. Layout is a single
+column with a fixed status line and one panel that appears at the bottom on
+`F5` and goes on `Esc`. Rows, columns and fixed or flexible sizes in one pass
+are still all it needs.
+
+- **Input**: focus; mouse capture while dragging; text input events
+  (`SDL_TEXTINPUT`, so a typed `é` arrives as text, not as a key); key repeat;
+  the clipboard (`SDL_GetClipboardText`, whose result is malloc'd and must be
+  freed -- read through `String.fromC`, then free); the window's pixel density.
 - **The text buffer** is a gap buffer over `Bytes`, with line starts indexed
   separately, undo and redo as a log of edits, and a hard cap on file size
   (64 MB, refused beyond it, with a message).
 
-**The editor**: tabs, line numbers, selection by mouse and keyboard, find and
-replace, syntax highlighting from the lexer's own keyword list (read from
-`catmint.l` by a tool at build time, so the two cannot drift), and **F5**: save,
-run `catmintc` through `Process.runArgs`, show its output in a panel, and let
-a click on `Line 62` in an error jump to that line.
+**The editor**, `examples/pad`: line numbers, selection by mouse and keyboard,
+find and replace (in the palette's single-line field), syntax highlighting from
+the lexer's own keyword list (read from `catmint.l` by a tool at build time, so
+the two cannot drift), and **F5**: save, run `catmintc` through
+`Process.runArgs`, show its output in the bottom panel, and let a click on
+`Line 62` in an error jump to that line.
+
+Sources for the above: [iA Writer's principles](https://ia.net/topics/writer-for-ipad)
+and [a close reading of its interface](https://dbushell.com/2011/05/28/simplicity-in-ui-design-ia-writer-for-mac/);
+[Zed against Sublime](https://zed.dev/compare/sublime);
+[Helix's configurable status line](https://docs.helix-editor.com/editor.html);
+[egui's goals and non-goals](https://github.com/emilk/egui);
+[Dear ImGui's immediate-mode model](https://www.mintlify.com/ocornut/imgui/core-concepts/immediate-mode);
+[Retool on designing a command palette](https://retool.com/blog/designing-the-command-palette)
+and [Command.ai on its history](https://command.ai/blog/command-palette-past-present-and-future);
+[Catppuccin's stated principles](https://github.com/catppuccin/catppuccin/blob/main/README.md)
+and [Nord's low-contrast palette](https://best-of-web.builder.io/library/nordtheme/nord).
 
 **Security, the editor and the toolkit**
 
@@ -1044,8 +1172,12 @@ a click on `Line 62` in an error jump to that line.
   regions that matter, run under the dummy video driver on all three OSes.
   Pixel-exact comparison between operating systems is not promised, since text
   hinting and the renderer may differ; region and colour counts are.
-- **The run button**: a test program with a deliberate error; F5; the panel
+- **The run command**: a test program with a deliberate error; F5; the panel
   contains the compiler's message and the click lands on the line.
+- **The look, where it can be measured**: every theme colour clears its
+  contrast ratio (computed, not eyeballed); an idle editor uses next to no CPU;
+  the palette's first result for each of a set of typed fragments is the one
+  expected, and typing a file fragment opens that file.
 - **Large files**: a 5 MB file scrolls, searches and saves within a time bound
   generous enough not to flake; memory returns to the baseline after closing it
   (`IO.allocated()`).
