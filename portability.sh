@@ -122,6 +122,53 @@ for os in darwin linux; do
   done
 done
 
+# ---- 2b. the same meaning on both architectures --------------------------
+# The file for an OS is built on one architecture (build-runtime.sh explains
+# why) and used on both, which is only right if the architectures cannot make
+# it mean different things. They did not always agree: before the optimiser
+# was taken out, an x86-64 build unrolled loops an aarch64 build did not, and
+# plain `char` is unsigned on aarch64 Linux and signed on x86-64, so the
+# committed Linux file was reading bytes differently from the macOS one. What
+# may still differ is a short list that does not change what a function does:
+# alignment hints, the sync/async flavour of `uwtable`, the shape of `jmp_buf`
+# (the runtime holds pointers to it and passes them on), and each target's
+# default function attributes and module flags (`frame-pointer`,
+# `min-legal-vector-width`). The module flags are otherwise compared: the PIC
+# and PIE levels must agree.
+# Everything else -- every instruction -- must be identical.
+printf "\nthe runtime means the same on both architectures\n"
+meaning() {
+  "$LLVM_BIN/llvm-dis" "$1" -o - | grep -v '^; ModuleID' \
+    | grep -v '^%struct.__jmp_buf_tag = ' \
+    | sed -E -e 's/!([0-9]+)/!N/g' -e 's/align [0-9]+/align N/g' \
+             -e 's/uwtable\(sync\)/uwtable/g' -e 's/\[(37|48) x i32\]/[J x i32]/g' \
+             -e 's/ "frame-pointer"="[a-z-]*"//g' -e 's/ "min-legal-vector-width"="0"//g' \
+             -e 's/(!"uwtable", i32) [0-9]/\1 N/' \
+             -e '/^!N = !\{i32 7, !"frame-pointer", i32 [0-9]\}$/d' \
+             -e 's/^(!llvm\.module\.flags) = .*/\1/'
+}
+same_meaning() {   # label, file A, file B
+  meaning "$2" > "$WORK/meaning.a"; meaning "$3" > "$WORK/meaning.b"
+  if diff -q "$WORK/meaning.a" "$WORK/meaning.b" >/dev/null; then
+    printf "  %-30s ${GREEN}identical${NC}\n" "$1"
+  else
+    printf "  %-30s ${RED}DIFFERS${NC}\n" "$1"
+    diff "$WORK/meaning.a" "$WORK/meaning.b" | grep '^[<>]' | cut -c1-150 | head -6 | sed 's/^/      /'
+    failed=1
+  fi
+}
+if [ "$(uname -s)" = Darwin ]; then
+  RUNTIME_TARGET=arm64-apple-macos "$ROOT/catmint-gen/build-runtime.sh" --out "$WORK/rt.arm64.bc"
+  RUNTIME_TARGET=x86_64-apple-macos "$ROOT/catmint-gen/build-runtime.sh" --out "$WORK/rt.x86.bc"
+  same_meaning "darwin arm64 / x86_64" "$WORK/rt.arm64.bc" "$WORK/rt.x86.bc"
+  printf "  %-30s not checked here (needs a Linux host of the other architecture)\n" "linux x86_64 / aarch64"
+elif [ "$(uname -m)" = x86_64 ]; then
+  printf "  %-30s not checked here (the committed file is x86_64; compared on an aarch64 host)\n" "linux x86_64 / aarch64"
+else
+  "$ROOT/catmint-gen/build-runtime.sh" --out "$WORK/rt.native.bc"
+  same_meaning "linux x86_64 / $(uname -m)" "$ROOT/catmint-gen/runtime-linux.bc" "$WORK/rt.native.bc"
+fi
+
 # ---- 3. a generated program -----------------------------------------------
 printf "\ngenerated program IR\n"
 SOURCE=${1:-"$ROOT/catmint-gen/test_suite/08_tour.cm"}

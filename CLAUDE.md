@@ -172,8 +172,13 @@ has just built).
   `__maskrune`; on Linux it calls glibc's `stdin`, `stderr` and
   `__ctype_b_loc`. The old claim that one `runtime.ll` served every host held
   only because `build-runtime.sh` quietly recompiled `runtime.c` wherever
-  there was a C compiler. Within one OS the file is architecture-neutral, and
-  `portability.sh` compiles each for both architectures of its OS.
+  there was a C compiler. **Within one OS the file is valid on every
+  architecture, but not identical across them**, and it was believed to be
+  until a CI runner disagreed with the container it had been built in. Built
+  by clang's own `-O2` it carried the builder's cost model (a loop unrolled by
+  two on x86-64, not on aarch64), `align 16` on arrays x86-64 aligns and
+  `align 8` where aarch64 does not, and `zext` where x86-64 has `sext`: plain
+  `char` is unsigned on aarch64 Linux. See the next section.
 - **Stamped.** `runtime.c` defines `__catmint_abi_<CATMINT_ABI>`; the
   generated `main` reads it volatile, so every program needs that exact
   symbol and a runtime from another agreement fails to link. **Bump
@@ -192,9 +197,29 @@ packager makes by default are stated: a PIE and no stack protector on Linux,
 `-fstack-protector` on macOS. That the two differ is inherited, not decided --
 the macOS runtime has the protector on 160 functions and the Linux one on
 none. A failing `--check` prints the disassembly diff, and as a GitHub
-annotation when run there. `tools/linux/run.sh catmint-gen/build-runtime.sh` builds the Linux
-one in a container. **If you change `runtime.c`, rebuild both files and commit
-them**; `build-runtime.sh --check` fails when the committed file is not what
+annotation when run there (readable without signing in, via the check-runs
+annotations API -- the job log is not).
+
+**The runtime ships as the front end's output, unoptimised, built on one
+architecture per OS.** `-O2 -Xclang -disable-llvm-passes -fsigned-char`: the
+optimiser is the `opt -O2 -mtriple=<host>` in `catmintc`, which sees the whole
+program with the runtime inside it and optimises for the machine that runs it
+(`bench/run.sh` is unchanged: within the noise on every benchmark). `-O0`
+would add `optnone`, which is why it is not that. `-fsigned-char` removes the
+one difference that could change behaviour; what remains is alignment hints,
+the sync/async flavour of `uwtable`, `jmp_buf`'s type, and each target's
+default function attributes, none of which changes what a function does.
+`portability.sh` enforces exactly that: it normalises those and requires every
+instruction and module flag to match, on macOS by building both Darwin
+architectures by target, and on an aarch64 Linux host against the committed
+x86-64 file. It says "not checked here" where it cannot. The canonical
+builders are **x86-64 on Linux (the CI runner) and arm64 on macOS**;
+`build-runtime.sh` refuses to write the committed file anywhere else, and
+`--check` says it is skipping rather than failing. On a Mac that is a target
+away; for Linux:
+`PLATFORM=linux/amd64 tools/linux/run.sh catmint-gen/build-runtime.sh`
+(emulated on Apple silicon, so slow). **If you change `runtime.c`, rebuild both
+files and commit them**; `build-runtime.sh --check` fails when the committed file is not what
 `runtime.c` builds to. `ctest.sh` builds a fresh runtime into its work
 directory, so the suite tests the source being edited even before you do.
 
@@ -538,14 +563,17 @@ skipped and the optimiser can inline through. It answers no when compiling a
 module alone or a program that imports separately compiled ones, because an
 override could be hiding there. This took `fib` to parity with C.
 
-**The runtime is compiled at `-O2`, and that is not about the runtime's own
-speed.** At `-O0` clang marks every function `optnone noinline`, so nothing
-in `runtime.c` could ever be inlined into a program that linked against it --
-not `String.len`, not an array element access, nothing. Changing the one flag
-in `build-runtime.sh` took the sieve benchmark from 0.050 s to 0.014 s and
-string building from 0.302 s to 0.212 s. The emitted IR stays portable:
-generic LLVM intrinsics and generic vector types, which every backend
-lowers.
+**The runtime is built at `-O2` but not optimised, and that is not about the
+runtime's own speed.** At `-O0` clang marks every function `optnone noinline`,
+so nothing in `runtime.c` could ever be inlined into a program that linked
+against it -- not `String.len`, not an array element access, nothing. Changing
+that one flag in `build-runtime.sh` took the sieve benchmark from 0.050 s to
+0.014 s and string building from 0.302 s to 0.212 s. `-O2` with the LLVM
+passes disabled keeps the attributes that allow inlining and leaves the
+optimising to the single `opt` run over the linked program, for the host. The
+emitted IR stays portable: generic LLVM intrinsics and generic vector types,
+which every backend lowers. (A program built with `catmintc -O0` now gets an
+unoptimised runtime too; that flag is for debugging.)
 
 A chain of string concatenations is emitted as one `__cm_concatAll` rather
 than a tree of `M6_String_concat` calls, so the result is allocated once and

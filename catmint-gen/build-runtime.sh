@@ -20,8 +20,26 @@
 # - One per OS. The C library's headers are not neutral: built on macOS, the
 #   IR calls `\01_fputs` and `\01_fopen` (Darwin's symbol aliases) and
 #   `__maskrune` (its ctype), and `stdin`/`stderr` name different globals on
-#   glibc. Within one OS the IR does not depend on the architecture, which
-#   portability.sh checks by compiling it for both.
+#   glibc.
+#
+# - Not optimised, and built on one architecture per OS. Within one OS the
+#   file is valid on every architecture, but it is not *identical* across
+#   them, and for a while it was believed to be. clang -O2 bakes the builder's
+#   cost model into the IR (a loop unrolled by two on x86-64 and not on
+#   aarch64), and the front end bakes in the ABI's choices: arrays of 16 bytes
+#   or more are `align 16` on x86-64 and `align 8` on aarch64, `char` is
+#   signed on x86-64 and unsigned on aarch64 Linux, `jmp_buf` has a different
+#   shape. So the runtime ships as the front end's output with no optimiser
+#   run over it (`-disable-llvm-passes`; not -O0, which adds `optnone`), and
+#   the one `opt -O2 -mtriple=<host>` in catmintc, which sees the whole program
+#   with the runtime inside it, optimises for the machine that runs it.
+#   `-fsigned-char` removes the one difference that could change behaviour.
+#   What remains -- alignment hints, the sync/async flavour of `uwtable`, the
+#   `jmp_buf` type -- is harmless on either architecture, but it is why the
+#   committed file has a canonical builder: x86-64 on Linux (the CI runner),
+#   arm64 on macOS. On macOS any Mac builds the canonical one, by target; on
+#   Linux use an x86-64 container: PLATFORM=linux/amd64 tools/linux/run.sh
+#   catmint-gen/build-runtime.sh
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 SOURCE="$HERE/runtime.c"
@@ -83,9 +101,30 @@ fi
 # where it is the platform's own default. (Linux without one while macOS has
 # it was an accident of those defaults, not a decision.)
 case "$OS" in
-  darwin) FLAGS="-fstack-protector" ;;
-  *)      FLAGS="-fPIE -fno-stack-protector" ;;
+  darwin) FLAGS="-fstack-protector";             CANON=arm64  ;;
+  *)      FLAGS="-fPIE -fno-stack-protector";    CANON=x86_64 ;;
 esac
+FLAGS="$FLAGS -fsigned-char -Xclang -disable-llvm-passes"
+
+# RUNTIME_TARGET builds for a particular target (portability.sh uses it to
+# compare the two Darwin architectures). The committed file is always the
+# canonical one: on a Mac that is a target away, anywhere else it has to be
+# built on the canonical architecture.
+HOST_ARCH=$(uname -m)
+if [ -n "$RUNTIME_TARGET" ]; then
+  FLAGS="$FLAGS --target=$RUNTIME_TARGET"
+elif [ "$OS" = darwin ] && { [ "$MODE" = build ] || [ "$MODE" = check ]; }; then
+  FLAGS="$FLAGS --target=$CANON-apple-macos"
+elif [ "$HOST_ARCH" != "$CANON" ] && { [ "$MODE" = build ] || [ "$MODE" = check ]; }; then
+  if [ "$MODE" = check ]; then
+    echo "build-runtime: skipped: the committed $COMMITTED is built on $CANON and this is $HOST_ARCH" >&2
+    echo "  (CI checks it on $CANON; to check here, PLATFORM=linux/amd64 tools/linux/run.sh catmint-gen/build-runtime.sh --check)" >&2
+    exit 0
+  fi
+  echo "build-runtime: the committed runtime is built on $CANON and this is $HOST_ARCH." >&2
+  echo "  Use an $CANON container: PLATFORM=linux/amd64 tools/linux/run.sh catmint-gen/build-runtime.sh" >&2
+  exit 1
+fi
 
 build() {
   tmp="$1.tmp.$$"
