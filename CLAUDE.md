@@ -761,6 +761,45 @@ removed.
 `String.chr(0)` was an empty String because `chr` built a C string; it uses
 `new_string(1)` now.
 
+**Callbacks.** `extern def Compare(Ptr left, Ptr right) Int` is a `Class` with
+`isCallbackType()` (a flag of its own: `isCStruct()` is `cKind != 0`, so reusing
+a kind would have made it look like a struct) holding one static method,
+"call", for the signature; it is also `isExtern()`, which is what makes the
+generator skip its initialiser, metadata and bodies. There is deliberately **no
+`callback` keyword**: it is a field and parameter name throughout the generated
+`sdl2.cmm` and the obvious name of a variable. A callback is passed by
+*naming* the method, which the parser already reads as a field access on a
+class name; `checkCallbackArgument` reinterprets it when the extern parameter is
+a callback type, and `emitExternCall` never evaluates it. `callbackTrampoline`
+writes, in IR, the function C calls: `__cm_callbackEnter` (aborts off the main
+thread, answers 1 if an error is pending), a handler and `setjmp`, a pool, the
+conversion of C's arguments (`UInt8/16` zero-extended to `i32`, `UInt32` to
+`i64`, a struct pointer made a view), the call, and on a throw
+`__cm_callbackFail` keeps the error. **Every extern call is followed by
+`__cm_callbackRethrow`**, which throws what a callback kept; it is a load and a
+branch. Note the consequence: that check also runs for extern calls *inside* a
+callback body, so a body that makes one while an error is pending dies at it.
+That is correct, and it once hid a missing skip in the test, which now counts
+through a handle so that no comparator makes an extern call.
+`gMainThread` is recorded by a C constructor in the runtime, so the generated
+`main` needed no change and `CATMINT_ABI` did not move. `Handles` is a
+static-only built-in class (`Math`'s shape; registered in `StringConstants.h`,
+`TypeTable.cpp`, `IRGenerator.cpp`, `catmint.y`'s global type names and
+`runtime.c`), a table of `{object, generation, next_free}`; a handle is
+`0x4348 << 48 | generation << 24 | index + 1`, so a number that is not one
+fails the magic check, and a dropped slot's generation moves on so a stale
+handle cannot reach whatever reuses it. Two Ptrs cannot be compared with each
+other (only with `null`), so tests observe handles through `get`, reference
+counts and `allocated()`.
+
+Found while testing this, and **not fixed**: (1) `items.cells[2].value = 42`
+on an array of structs compiles and writes to a copy -- `cells[2]` is a nested
+struct used whole, which is copied -- so the store is silently lost; named
+fields (`c0`, `c1`) use offset chains and work. (2) `a = o` where `o` is an
+`Object` and `a` was declared `A` re-types `a` to `Object`, so `a.n` is then
+an error; a *declaration* (`A a = o`) downcasts. (3) `allocated()` read in the
+same method that made the objects counts them until the method's pool closes.
+
 `link "SDL2"` names a library. The preprocessor removes the line, so there is
 no grammar rule and no AST node; `catmintc` greps the sources for it, as it
 already does for `using`, and turns each into a `-l`. `-l` and `-L` on the

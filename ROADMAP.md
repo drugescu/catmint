@@ -719,7 +719,44 @@ Still to do: an aarch64 Linux job in CI (`ubuntu-24.04-arm`), so the Linux file
 is run, not only compared, on both architectures on every push; locally the
 arm64 container does that today.
 
-### A. Callbacks
+### A. Callbacks — **done**, on the `callbacks` branch
+
+Built as designed below, with these departures, each for a reason found while
+building it:
+
+- **No `callback` keyword, no `extern callback`.** `callback` is a field and a
+  parameter name all through the generated `sdl2.cmm` and the obvious name of a
+  variable; reserving it would have broken those and invited more. The type is
+  declared `extern def Compare(Ptr left, Ptr right) Int` (existing keywords,
+  reads like a C typedef), and a method is passed by *naming* it,
+  `Libc.qsort(buf, n, 8, Order.ascending)`, which the parser already reads as a
+  field access on a class name. No new token, no new AST node, and the grammar's
+  conflict count did not move (12 and 1). `&Order.ascending` was considered and
+  would have added a conflict.
+- **The foreign-thread kind stays deferred, as planned, and the generator
+  steers around it.** `bindgen --foreign-thread REGEX` keeps a function-pointer
+  type a `Ptr` when the library calls it from threads of its own, and says so;
+  SDL's audio, timer, thread, event-filter, log and allocator types are listed
+  that way. Without that, the generated bindings would have invited a program to
+  pass a method that stops it the first time SDL calls it from SDL's thread.
+- **Handles are guarded too.** `Handles.get` needs `unsafe` (it turns a Ptr into
+  an object, though it validates what it is given), and every `Handles` call
+  checks the thread, so the table cannot be reached from a foreign thread even
+  by code that is not a callback.
+- **Three things the work turned up are recorded in `CLAUDE.md`, not fixed:**
+  writes through an element of an array of structs go to a copy and are lost
+  silently; assigning an `Object` to a subclass-typed variable retypes it;
+  `allocated()` read in the method that made the objects counts them.
+
+What proved it, each with a mutation that made it fail: the skip after an error
+(the method ran 6 times instead of 3 without it), the thread refusal, unsigned
+widening (`4000000000` read as negative with a sign extension), and the table's
+own reference. One test was wrong in a way worth recording: the first version
+counted calls through `getenv`/`setenv` and passed with the skip *removed*,
+because every extern call, including one inside a callback body, rethrows a
+pending error, so the body died at its first one. The test now counts through a
+handle, with no extern call in any comparator.
+
 
 #### What rule 7 says, and what it should say
 

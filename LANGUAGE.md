@@ -361,6 +361,68 @@ meaning only the callee knows goes through an explicit `Ptr`.
 → `49_ffi.cm`, `64_extern_struct.cm`, `65_extern_refusals.cm`,
 `66_c_strings.cm`, `67_variadic.cm`
 
+## Callbacks
+
+```
+extern def Compare(Ptr left, Ptr right) Int
+
+extern class Libc
+  def Void qsort(Ptr base, UInt64 count, UInt64 size, Compare order)
+end
+
+class Order
+  static def Int ascending(Ptr left, Ptr right):
+    ...
+  end
+end
+
+unsafe:
+  Libc.qsort(numbers, 6, 8, Order.ascending)
+end
+```
+
+`extern def Name(params) Result` declares the type of a C function pointer, as a
+typedef does in a header. A **static method** is passed where a parameter has
+that type, by naming it: `Order.ascending`. Its signature must be exactly the
+type's (a mismatch says both), and it must be written in catmint. A callback
+type is the type of an extern function's parameter and nothing else -- not a
+variable, a field or a result -- and has no instances.
+
+The compiler writes the function C actually calls, with C's calling
+convention: it converts what C passes (an unsigned argument is zero-extended,
+a pointer to an extern struct arrives as a view of it), runs the method, and
+converts the result back. What a callback may take and return is a number, a
+`Ptr`, or an extern struct; never a String or an array, which would be C's
+`char *` taken for a catmint object.
+
+What keeps it safe, each shown by a test that fails without it:
+
+- **It runs on the program's own thread only.** The reference counts, the pools
+  and the handler stack are not atomic. A C library that calls a callback from a
+  thread of its own stops the program at once, saying so, before anything shared
+  is touched. (`Handles` has the same guard.) A library that does that --
+  an audio callback, a timer -- is not yet supported, and the binding generator
+  leaves such types as a `Ptr` (`--foreign-thread`).
+- **An error cannot escape through C.** A `throw` is a `longjmp`, and a jump
+  over `qsort`'s frames skips whatever it still had to do. So the function the
+  compiler writes catches it, remembers it, answers zero to every later call
+  without running the method, and the extern call that started it throws it once
+  C has returned -- to the `catch` around that call.
+- **C never holds an address inside a catmint object**, which would be a
+  reference nobody counts. State goes through `Handles`: `Handles.make(object)`
+  gives a `Ptr` that is a number naming a slot in a table, which holds a
+  reference until `Handles.drop(handle)`; `Handles.get(handle)` (needs `unsafe`)
+  gives the object back, or `null` for a handle that was dropped, from a reused
+  slot, or never was one. C keeps the `Ptr` as its `void *userdata`.
+- **A callback gets a pool of its own**, so what each call makes is gone when it
+  returns, however many times C calls it.
+
+Not supported: C functions that install a handler for a signal or for the
+process exiting (`signal`, `sigaction`, `atexit`), which the binding generator
+never binds, since catmint code cannot run at an arbitrary instant.
+→ `71_handles.cm`, `72_callbacks.cm`, `65_extern_refusals.cm`,
+`tools/callback_test`
+
 ## C structs and unions
 
 ```
@@ -402,8 +464,9 @@ of object, over memory C owns, which catmint never frees. Making a view needs
 its fields read like any other. A null pointer gives `null`. A struct
 parameter takes `null` too, for C's "none". A nested struct used whole is
 copied, as C assigns structs; a `Ptr` parameter takes a struct's bytes, which
-is how an out-parameter is written. Passing structs by value and callbacks are
-not supported; a variadic function is called by instantiation, above.
+is how an out-parameter is written. Passing structs by value is not supported;
+a variadic function is called by instantiation, above, and a callback is passed
+as described under "Callbacks".
 → `64_extern_struct.cm`, `65_extern_refusals.cm`
 
 ## finalize
