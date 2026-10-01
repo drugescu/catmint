@@ -10,3 +10,5 @@ colors 1 2 10
 wide -4999999986
 name one none-is-null 1 dup copy
 other 99
+visited 5, last 4
+largest at index 1
