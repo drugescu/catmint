@@ -1,0 +1,52 @@
+# Textures and text, drawn headless and checked pixel by pixel by
+# check_texture.py. The frame is saved to the path in the first argument.
+
+using sdl
+using font
+
+class Main from IO
+  def main:
+    Sdl sdl = new Sdl()
+    Window win = new Window(sdl, "texture", 200, 120)
+    Renderer view = new Renderer(win)
+    view.clear(0, 0, 0)
+
+    # A 2 x 2 texture: red, green / blue, white. Four bytes a pixel, blue first.
+    Bytes px = new Bytes(16)
+    px.set(0, 0)
+    px.set(1, 0)
+    px.set(2, 255)
+    px.set(3, 255)
+    px.set(4, 0)
+    px.set(5, 255)
+    px.set(6, 0)
+    px.set(7, 255)
+    px.set(8, 255)
+    px.set(9, 0)
+    px.set(10, 0)
+    px.set(11, 255)
+    px.set(12, 255)
+    px.set(13, 255)
+    px.set(14, 255)
+    px.set(15, 255)
+    Texture t = new Texture(view, 2, 2, px)
+    t.draw(0, 0, 2, 2, 10, 10, 16, 16)
+    # Only the right-hand column of it, tinted, at half opacity.
+    t.tint(255, 0, 0)
+    t.opacity(128)
+    t.draw(1, 0, 1, 2, 30, 10, 8, 16)
+
+    Font font = new Font(view)
+    font.draw("H", 50, 10, 1, 255, 255, 0)
+    font.draw("H", 50, 40, 2, 0, 255, 255)
+    font.draw(String.chr(200), 80, 10, 1, 255, 255, 255)
+    out("width ${font.width("abc", 3)}\n")
+
+    # Clipped: only what is inside x < 60 is drawn.
+    view.clip(0, 0, 60, 120)
+    font.draw("HHHH", 40, 80, 1, 255, 255, 255)
+    view.unclip()
+
+    out("saved ${view.saveBMP(arg(1))}\n")
+  end
+end

@@ -28,3 +28,16 @@ case "$out" in
   *"could not initialise SDL:"*no_such_driver*) echo "SDL's error text reaches the program" ;;
   *) echo "the error did not carry SDL's reason:"; echo "$out"; exit 1 ;;
 esac
+
+# Textures and text: a frame drawn with a known texture and known glyphs, then
+# compared pixel by pixel with what the font data says it should be.
+if ! "$ROOT/catmintc" -I "$ROOT/lib" $LIBS "$HERE/texture.cm" -o "$work/texture" \
+      > "$work/texture.log" 2>&1; then
+  cat "$work/texture.log"; exit 1
+fi
+if ! SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software SDL_AUDIODRIVER=dummy \
+      "$work/texture" "$work/texture.bmp" > "$work/texture.out" 2>&1; then
+  cat "$work/texture.out"; exit 1
+fi
+grep -q "width 72" "$work/texture.out" || { echo "Font.width is wrong:"; cat "$work/texture.out"; exit 1; }
+python3 "$HERE/check_texture.py" "$work/texture.bmp" "$ROOT/lib/fontdata.cmm"

@@ -1,0 +1,85 @@
+# Text drawn from a bitmap font: Unscii's printable ASCII, 8 x 16 pixels a glyph
+# (lib/fontdata.cmm, public domain), built into one Texture when the Font is
+# made. There is no font file to load and no library; the glyphs are in the
+# program.
+#
+#   using font
+#   Font font = new Font(renderer)
+#   font.draw("hello", 10, 10, 1, 231, 226, 214)
+#
+# Fixed pitch, so a column of text is arithmetic. Anything that is not printable
+# ASCII is drawn as `?`: this is a font for code and tools, not for prose in
+# every script.
+
+using sdl
+using fontdata
+
+class Font from Object
+  Texture atlas = null
+
+  constructor(Renderer r):
+    String hex = FontData.hex()
+    # 16 glyphs across, 6 down: 128 x 96 pixels of 4 bytes.
+    Bytes pixels = new Bytes(128 * 96 * 4)
+    Int glyph = 0
+    while glyph < 95:
+      Int row = glyph / 16
+      Int col = glyph - row * 16
+      Int y = 0
+      while y < 16:
+        Int bits = Font.hexByte(hex, glyph * 32 + y * 2)
+        Int x = 0
+        while x < 8:
+          if ((bits >> (7 - x)) & 1) == 1:
+            Int at = ((row * 16 + y) * 128 + col * 8 + x) * 4
+            pixels.set(at, 255)
+            pixels.set(at + 1, 255)
+            pixels.set(at + 2, 255)
+            pixels.set(at + 3, 255)
+          end
+          x = x + 1
+        end
+        y = y + 1
+      end
+      glyph = glyph + 1
+    end
+    atlas = new Texture(r, 128, 96, pixels)
+  end
+
+  static def Int digit(Int c):
+    if c >= 65:
+      return c - 55
+    end
+    return c - 48
+  end
+
+  static def Int hexByte(String hex, Int at):
+    return Font.digit(hex.at(at)) * 16 + Font.digit(hex.at(at + 1))
+  end
+
+  # Draw text with its top left at (x, y), each glyph pixel scale pixels
+  # square, in colour (r, g, b). The width drawn, in pixels.
+  def Int draw(String text, Int x, Int y, Int scale, Int r, Int g, Int b):
+    atlas.tint(r, g, b)
+    Int i = 0
+    while i < text.len():
+      Int c = text.at(i)
+      if c < 32 or c > 126:
+        c = 63
+      end
+      if c != 32:
+        Int index = c - 32
+        Int row = index / 16
+        atlas.draw((index - row * 16) * 8, row * 16, 8, 16,
+                   x + i * 8 * scale, y, 8 * scale, 16 * scale)
+      end
+      i = i + 1
+    end
+    return text.len() * 8 * scale
+  end
+
+  # How wide text would be drawn, in pixels.
+  def Int width(String text, Int scale):
+    return text.len() * 8 * scale
+  end
+end
