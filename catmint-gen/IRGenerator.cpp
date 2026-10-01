@@ -3358,27 +3358,41 @@ llvm::Value *IRGenerator::cFieldAddress(FieldAccess *FA, ClassInfo::CField &Out)
                                   "' has no field '" + FA->getField() + "'");
   Out = It->second;
 
-  // A field reached through another field held by value is one more offset
-  // into the same bytes, not a copy.
-  llvm::Value *Base = nullptr;
-  auto *Inner = dynamic_cast<FieldAccess *>(FA->getObject());
-  if (Inner && !Inner->getValue()) {
-    ClassInfo *InnerCI = lookupClass(staticTypeOf(Inner->getObject()));
-    if (InnerCI && InnerCI->IsCStruct) {
-      ClassInfo::CField Holder;
-      Base = cFieldAddress(Inner, Holder);
-    }
-  }
-  if (!Base) {
-    llvm::Value *Obj = emit(FA->getObject());
-    if (!Obj)
-      fail(FA->getLineNumber(), "the object of '." + FA->getField() +
-                                    "' produced no value");
-    Builder.CreateCall(Runtime.checkNull(), {Obj});
-    Base = dataPointer(Obj, CI);
-  }
+  // One more offset into the bytes of whatever holds this field -- reached
+  // through a field held by value or an element of an array of structs it is
+  // still those same bytes, not a copy.
+  llvm::Value *Base = cStructAddress(FA->getObject());
   return Builder.CreateConstInBoundsGEP1_64(llvm::Type::getInt8Ty(Context), Base,
                                             Out.Offset, FA->getField() + ".c");
+}
+
+llvm::Value *IRGenerator::cStructAddress(Expression *E) {
+  ClassInfo *CI = lookupClass(staticTypeOf(E));
+  if (!CI || !CI->IsCStruct)
+    fail(E->getLineNumber(), "this is not an extern struct");
+
+  // A struct held by value in another struct: a place inside it.
+  if (auto *FA = dynamic_cast<FieldAccess *>(E)) {
+    if (!FA->getValue()) {
+      ClassInfo *Holder = lookupClass(staticTypeOf(FA->getObject()));
+      if (Holder && Holder->IsCStruct) {
+        ClassInfo::CField Field;
+        return cFieldAddress(FA, Field);
+      }
+    }
+  }
+  // An element of an array of structs: a place inside the array.
+  if (auto *D = dynamic_cast<Dispatch *>(E)) {
+    ClassInfo::CField Array;
+    if (cArrayField(D, Array) && D->getName() == "get")
+      return cElementAddress(D, Array);
+  }
+
+  llvm::Value *Obj = emit(E);
+  if (!Obj)
+    fail(E->getLineNumber(), "an extern struct was expected and produced no value");
+  Builder.CreateCall(Runtime.checkNull(), {Obj});
+  return dataPointer(Obj, CI);
 }
 
 llvm::Value *IRGenerator::emitCFieldAccess(FieldAccess *FA) {
@@ -3447,9 +3461,7 @@ void IRGenerator::emitRuntimeErrorIf(llvm::Value *Cond, const std::string &Messa
 /// s.pad[i], and s.pad[i] = v (which the parser made set(i, v)). The index is
 /// checked against the declared length, so an array in a C struct is as
 /// bounds-safe as a Bytes.
-llvm::Value *IRGenerator::emitCArrayElement(Dispatch *D) {
-  ClassInfo::CField F;
-  cArrayField(D, F);
+llvm::Value *IRGenerator::cElementAddress(Dispatch *D, ClassInfo::CField &F) {
   auto *FA = dynamic_cast<FieldAccess *>(D->getObject());
   const int Line = D->getLineNumber();
   llvm::Value *Base = cFieldAddress(FA, F);
@@ -3467,8 +3479,18 @@ llvm::Value *IRGenerator::emitCArrayElement(Dispatch *D) {
                                      std::to_string(F.ArrayLen) +
                                      " elements of '" + FA->getField() + "'");
   auto *Offset = Builder.CreateMul(Index, llvm::ConstantInt::get(I64, F.ElemSize));
-  auto *Addr = Builder.CreateInBoundsGEP(llvm::Type::getInt8Ty(Context), Base,
-                                         Offset, "c.element");
+  return Builder.CreateInBoundsGEP(llvm::Type::getInt8Ty(Context), Base, Offset,
+                                   "c.element");
+}
+
+llvm::Value *IRGenerator::emitCArrayElement(Dispatch *D) {
+  ClassInfo::CField F;
+  cArrayField(D, F);
+  const int Line = D->getLineNumber();
+  llvm::Value *Addr = cElementAddress(D, F);
+  std::vector<Expression *> Args;
+  for (auto *A : *D)
+    Args.push_back(A);
 
   if (D->getName() == "set") {
     const std::string FromType = staticTypeOf(Args.at(1));

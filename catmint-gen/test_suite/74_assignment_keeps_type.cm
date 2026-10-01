@@ -1,0 +1,80 @@
+# An assignment keeps the type its variable was declared with.
+#
+# `x = expr` parses as a definition of type "auto", and the generator treats it
+# as an assignment when x already exists. The checker did not: it bound a new
+# x of the right-hand side's type over the old one, so after `a = o` (an
+# Object into a variable declared A) the compiler believed a was an Object and
+# refused `a.n`. And since no scope was ever closed, "already exists" meant
+# "was ever declared anywhere". Both are fixed together.
+
+class A
+  Int n
+  constructor(Int v):
+    n = v
+  end
+end
+
+class B from A
+  Int extra
+  constructor(Int v):
+    n = v
+    extra = v * 2
+  end
+end
+
+class Main from IO
+  A held
+
+  def main:
+    List things = new List()
+    things.append(new A(5))
+    things.append(new B(6))
+
+    # A downcast on assignment is checked at run time, and the variable is
+    # still an A afterwards.
+    Object o = things.get(0)
+    A a = new A(1)
+    a = o
+    out("${a.n}\n")
+    Object p = things.get(1)
+    a = p
+    out("${a.n}\n")
+
+    # A subclass goes into a variable of its parent's type without a check.
+    a = new B(7)
+    out("${a.n}\n")
+
+    # In a nested block the assignment is to the outer variable.
+    if 1 == 1:
+      a = things.get(0)
+      out("inner ${a.n}\n")
+    end
+    out("outer ${a.n}\n")
+
+    # A field keeps its type too.
+    held = o
+    out("field ${held.n}\n")
+
+    # An object of the wrong type is caught when it is assigned, and the
+    # variable is left as it was.
+    Object s = "text"
+    try:
+      a = s
+      out("not caught\n")
+    catch e:
+      out("refused at run time\n")
+    end
+    out("still ${a.n}\n")
+
+    # A name from a block that has ended is not visible in the next: this is a
+    # new variable, of its own type, not an assignment to the first.
+    if 1 == 1:
+      fresh = "text"
+      out("${fresh.len()}\n")
+    end
+    if 1 == 1:
+      fresh = 12
+      out("${fresh + 1}\n")
+    end
+  end
+end

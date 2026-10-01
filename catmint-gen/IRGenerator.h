@@ -392,6 +392,14 @@ private:
   /// The address of the field \p FA names. A chain through fields held by
   /// value is one offset from the outermost object's bytes.
   llvm::Value *cFieldAddress(FieldAccess *FA, ClassInfo::CField &Out);
+  /// The bytes of the extern struct an expression denotes. A struct held by
+  /// value in another, or an element of an array of structs, is a *place*: its
+  /// address is inside the one it is part of, so that a write reaches the
+  /// original. Anything else (a variable, a call, a view) is an object whose
+  /// bytes are found through it.
+  llvm::Value *cStructAddress(Expression *E);
+  /// The address of s.array[i], index checked against the declared length.
+  llvm::Value *cElementAddress(Dispatch *D, ClassInfo::CField &Out);
   /// The array field a subscript indexes, or null when it is not one.
   ClassInfo *cArrayField(Dispatch *D, ClassInfo::CField &Out);
   llvm::Value *loadCScalar(llvm::Value *Addr, const std::string &CType);

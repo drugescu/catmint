@@ -25,14 +25,31 @@ void SymbolTable::popScope() {
   delete scope;
 }
 
+void SymbolTable::closeScope() {
+  if (SymbolTableScope *scope = innermostOpen()) {
+    scope->open = false;
+  }
+}
+
+auto SymbolTable::innermostOpen() const -> SymbolTableScope * {
+  for (int i = symbolTable.size() - 1; i >= 0; i--) {
+    if (symbolTable[i]->open) {
+      return symbolTable[i];
+    }
+  }
+  return nullptr;
+}
+
 void SymbolTable::insert(TreeNode *v, const std::string &name) {
-  SymbolTableScope *scope = symbolTable.back();
+  SymbolTableScope *scope = innermostOpen();
+  assert(scope && "insert with no open scope");
 
   (*(scope->uscope)) [name] = v;
 }
 
 void SymbolTable::insert(TreeNode *v, const std::vector<std::string> &name) {
-  SymbolTableScope *scope = symbolTable.back();
+  SymbolTableScope *scope = innermostOpen();
+  assert(scope && "insert with no open scope");
 
   for (auto& n : name) {
     (*(scope->uscope))[n] = v;
@@ -73,6 +90,9 @@ auto SymbolTable::getScope(const std::string &name) const -> SymbolTableScope
     * {
   for (int i = symbolTable.size() - 1; i >= 0; i--) {
     SymbolTableScope *scope = symbolTable[i];
+    if (!scope->open) {
+      continue;
+    }
     UnnamedSymbolTableScope::iterator it = (scope->uscope)->find(name);
     if (it != (scope->uscope)->end()) {
       return scope;
@@ -91,7 +111,8 @@ void SymbolTable::print(std::ostream& f) {
   for (int i = 0; i < symbolTable.size(); i++) {
     SymbolTableScope *scope = symbolTable[i];
 
-    f << "Scope_" << i << " : Name '" << scope->name << "' :" << std::endl;
+    f << "Scope_" << i << " : Name '" << scope->name << "'"
+      << (scope->open ? "" : " (closed)") << " :" << std::endl;
 
     UnnamedSymbolTableScope::iterator it = (scope->uscope)->begin();
 

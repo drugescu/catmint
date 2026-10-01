@@ -776,11 +776,17 @@ bool SemanticAnalysis::visit(Dispatch *d) {
   if (obj) {
     std::cout << "  Object exists in dispatch and visiting.\n";
     auto field = dynamic_cast<FieldAccess *>(obj);
+    // The array this access names, so that visiting it knows it is being
+    // indexed and not used whole. Saved and put back rather than cleared: an
+    // access inside another (`items.cells[0].tags[1]`, where indexing `cells`
+    // is part of reaching `tags`) used to clear the outer one's, and the outer
+    // was then refused as an array used whole.
+    FieldAccess *const enclosing = cArrayContext;
     if (field && (d->getName() == "get" || d->getName() == "set")) {
       cArrayContext = field;
     }
     const bool visited = visit(obj);
-    cArrayContext = nullptr;
+    cArrayContext = enclosing;
     if (!visited) {
       return false;
     }
@@ -1990,6 +1996,28 @@ bool SemanticAnalysis::visit(LocalDefinition *local) {
   if (local->getInit()) {
     if (!visit(local->getInit())) {
       return false;
+    }
+  }
+
+  // `x = expr` is an assignment when x is already visible: to that variable,
+  // which keeps the type it was declared with. Binding a new x here, of the
+  // right-hand side's type, made `a = o` (an Object into a variable declared
+  // A) leave the checker believing a was an Object, so the next `a.n` was
+  // refused. The generator has always treated it as an assignment and coerces
+  // to the variable's own type; this makes the checker agree. (Whether the
+  // value fits is the generator's to say, as it is for a declaration.)
+  if (local->getType() == "auto" && local->getInit() &&
+      !local->getName().empty()) {
+    bool allVisible = true;
+    for (const auto &name : local->getName()) {
+      if (!symbolTable.contains(name)) {
+        allVisible = false;
+      }
+    }
+    if (allVisible) {
+      auto existing = symbolTable.lookup(local->getName().front(), local);
+      typeTable.setType(local, typeTable.getType(existing));
+      return true;
     }
   }
 
