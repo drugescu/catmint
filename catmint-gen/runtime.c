@@ -23,7 +23,6 @@
  */
 
 #include <ctype.h>
-#include <dirent.h>
 #include <fcntl.h>
 #include <math.h>
 #include <setjmp.h>
@@ -2265,36 +2264,28 @@ static char **argv_from_list(struct TList *args) {
  * three standard ones before it execs.
  *
  * The list is taken here, in the parent, because between fork and exec a
- * child may call only async-signal-safe functions -- opendir is not one, and
- * another thread (SDL starts several) may have held the malloc lock at the
- * moment of the fork and never release it in the child. The child only calls
- * close. /dev/fd lists them on macOS and, through /proc, on Linux; without it
- * the fallback is every descriptor the process could have, up to the room
- * there is. A process with more than `cap` open at once keeps the rest open in
- * the child, which is the one limit of this. */
+ * child may call only async-signal-safe functions -- and another thread (SDL
+ * starts several) may have held the malloc lock at the moment of the fork and
+ * never release it in the child. The child only calls close.
+ *
+ * It is found by asking each descriptor in turn, not by reading /dev/fd. The
+ * obvious way, opendir and readdir, is two different symbols on Intel and on
+ * Apple-silicon Macs (readdir$INODE64 against readdir: the old and the new
+ * struct dirent), and this file is one for both architectures; portability.sh
+ * caught exactly that. fcntl is the same symbol on both. The scan stops at the
+ * descriptor table's size, at most 65536, and `cap` descriptors are returned;
+ * a process with more than that open at once keeps the rest open in the
+ * child, which is the one limit of this. */
 static int open_descriptors(int *fds, int cap) {
   int count = 0;
-  DIR *dir = opendir("/dev/fd");
+  int limit = getdtablesize();
+  int fd;
 
-  if (dir) {
-    struct dirent *entry;
-    int own = dirfd(dir);
-
-    while ((entry = readdir(dir)) != NULL) {
-      char *end;
-      long fd = strtol(entry->d_name, &end, 10);
-
-      if (end != entry->d_name && *end == '\0' && fd > 2 && fd != own &&
-          count < cap) {
-        fds[count++] = (int)fd;
-      }
-    }
-    closedir(dir);
-  } else {
-    int limit = getdtablesize();
-    int fd;
-
-    for (fd = 3; fd < limit && count < cap; fd++) {
+  if (limit > 65536) {
+    limit = 65536;
+  }
+  for (fd = 3; fd < limit && count < cap; fd++) {
+    if (fcntl(fd, F_GETFD) != -1) {
       fds[count++] = fd;
     }
   }

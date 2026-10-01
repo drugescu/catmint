@@ -747,10 +747,14 @@ with `fclose` and a `waitpid` on `TProcess::pid`, not `pclose` -- that is what
 and `RProcess` is now a 12-slot vtable (`catmint_rtti12_process`). **The child
 closes the parent's other descriptors** (CWE-403: a socket or a document would
 stay open in a program that could read it). `open_descriptors` snapshots them
-from `/dev/fd` *in the parent* and the child only calls `close`, because
-between `fork` and `exec` only async-signal-safe functions are allowed and
-`opendir` is not one -- SDL starts threads, and one may have held the malloc
-lock at the fork and never release it in the child. Test 69 counts the
+*in the parent* and the child only calls `close`, because between `fork` and
+`exec` only async-signal-safe functions are allowed -- SDL starts threads, and
+one may have held the malloc lock at the fork and never release it in the
+child. It asks each descriptor in turn (`fcntl(fd, F_GETFD)`) rather than
+reading `/dev/fd`: `opendir`/`readdir` are `readdir$INODE64` on Intel Macs and
+plain `readdir` on Apple silicon, two struct layouts, and the Darwin runtime is
+one file for both. `portability.sh` caught that in the first version, which
+had used them; this is what its architecture check is for. Test 69 counts the
 descriptors a child sees with and without files open here (not an absolute
 number: macOS's `ls` opens two for itself) and fails when the closing is
 removed.
