@@ -705,8 +705,32 @@ bool SemanticAnalysis::visit(Dispatch *d) {
               "the call or 'unsafe def' on the method doing it",
           d);
     }
-    if (!checkDispatchArgs(d, method, staticClass->isExtern())) {
+    // String.fromC is the other way out through a Ptr: it reads memory C owns
+    // and promises that the pointer is valid, so it is marked the same way.
+    const bool fromC = staticClass->getName() == strings::String &&
+                       d->getName() == "fromC";
+    if (fromC && unsafeDepth == 0) {
+      throw SemanticException(
+          "'String.fromC' turns a Ptr into text, which promises the pointer "
+          "is valid; it needs 'unsafe:' around the call or 'unsafe def' on "
+          "the method doing it",
+          d);
+    }
+    if (!checkDispatchArgs(d, method, staticClass->isExtern() || fromC)) {
       return false;
+    }
+    if (fromC) {
+      // A Ptr, a null, or a Bytes buffer (whose own length bounds the read).
+      // The other arrays and a struct are accepted by a Ptr parameter in an
+      // extern call; here they would be text read out of numbers.
+      auto first = *d->begin();
+      const std::string given = typeTable.getType(first)->getName();
+      if (given != strings::Ptr && given != strings::Null &&
+          given != strings::Bytes) {
+        throw SemanticException("'String.fromC' reads text from a Ptr or a "
+                                "Bytes, not from a " + given,
+                                d);
+      }
     }
     typeTable.setType(d, typeTable.getType(method->getReturnType()));
     return true;
@@ -1054,7 +1078,19 @@ void SemanticAnalysis::checkExternSignature(Class *c, Method *m) {
     throw SemanticException("'" + c->getName() + "." + m->getName() +
                                 "' returns '" + m->getReturnType() +
                                 "', which cannot cross to C; use a number, a "
-                                "Ptr, a String or an array",
+                                "Ptr or a String",
+                            m);
+  }
+  // C hands back a pointer, and a pointer is not a catmint array: it has no
+  // run-time type information, count or length in front of it, so treating one
+  // as a Bytes would read whatever was there. A String is copied out of it
+  // (bounded, see String.fromC); a Ptr stays a Ptr.
+  const std::string ret = m->getReturnType();
+  if (ret == strings::Bytes || ret == strings::Ints || ret == strings::Floats) {
+    throw SemanticException("'" + c->getName() + "." + m->getName() +
+                                "' returns '" + ret + "', but C returns a "
+                                "pointer, not a catmint array; return a Ptr "
+                                "and read it through unsafe",
                             m);
   }
   for (auto param : *m) {
@@ -1065,6 +1101,36 @@ void SemanticAnalysis::checkExternSignature(Class *c, Method *m) {
               "', which cannot cross to C; use a number, a Ptr, a String or "
               "an array",
           m);
+    }
+  }
+
+  // The variable part of a variadic C function. What C reads there is decided
+  // by the callee (a format string, a count), not by any prototype, so each
+  // declaration states the types it passes, and they are limited to what has
+  // one machine representation under C's default argument promotions: an
+  // integer (small ones are widened to int), a double, a pointer. A float is
+  // promoted to double by C, so it is declared as one rather than converted
+  // behind the programmer's back; a String or an array would be a pointer
+  // whose meaning only the callee knows, so it goes through an explicit Ptr.
+  if (m->isVariadic()) {
+    int index = 0;
+    for (auto param : *m) {
+      if (index++ < m->getFixedParams()) {
+        continue;
+      }
+      const std::string t = param->getType();
+      const bool fine = TypeTable::integerWidth(t) ||
+                        (TypeTable::floatWidth(t) && t != "Float32") ||
+                        t == strings::Ptr;
+      if (!fine) {
+        throw SemanticException(
+            "'" + c->getName() + "." + m->getName() + "' passes '" + t + " " +
+                param->getName() +
+                "' as a variable argument; C passes those as an int, a "
+                "double or a pointer, so declare it Int, Int64, Float or Ptr" +
+                (t == "Float32" ? " (a float is promoted to a double)" : ""),
+            m);
+      }
     }
   }
 }

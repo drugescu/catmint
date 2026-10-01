@@ -23,6 +23,7 @@
  */
 
 #include <ctype.h>
+#include <fcntl.h>
 #include <math.h>
 #include <setjmp.h>
 /* Spelled through a macro so the file still compiles as plain C89 anywhere
@@ -205,7 +206,7 @@ CATMINT_RTTI_TYPE(catmint_rtti20_io, 20);
 CATMINT_RTTI_TYPE(catmint_rtti11_list, 11);
 CATMINT_RTTI_TYPE(catmint_rtti8_integer, 8);
 CATMINT_RTTI_TYPE(catmint_rtti15_file, 15);
-CATMINT_RTTI_TYPE(catmint_rtti11_process, 11);
+CATMINT_RTTI_TYPE(catmint_rtti12_process, 12);
 CATMINT_RTTI_TYPE(catmint_rtti10_array, 10);
 /* Bytes carries two more than Ints and Floats do: it is the one of the three
  * that bridges to String and File, because it is the one whose element is a
@@ -235,6 +236,8 @@ struct TString *M6_String_upper(struct TString *self);
 struct TString *M6_String_lower(struct TString *self);
 struct TList *M6_String_split(struct TString *self, struct TString *separator);
 struct TString *M6_String_chr(int code);
+struct TString *M6_String_fromC(const char *source, int max);
+struct TString *M6_String_fromBytes(struct TBytes *source, int max);
 struct TString *M6_String_replace(struct TString *self, struct TString *from,
                                   struct TString *to);
 double M6_String_toFloat(struct TString *self);
@@ -273,8 +276,12 @@ struct TString *M7_Process_readLine(struct TProcess *self);
 struct TProcess *M7_Process_write(struct TProcess *self, struct TString *text);
 int M7_Process_eof(struct TProcess *self);
 int M7_Process_finish(struct TProcess *self);
+int M7_Process_openArgs(struct TProcess *self, struct TList *args);
+static int process_close(struct TProcess *self);
 int M7_Process_run(struct TString *command);
 int M7_Process_start(struct TString *command);
+int M7_Process_runArgs(struct TList *args);
+int M7_Process_startArgs(struct TList *args);
 int M7_Process_wait(int pid);
 int M7_Process_pid(void);
 
@@ -443,12 +450,12 @@ catmint_rtti10_array RFloats = {
     (void *)M6_Floats_fill }
 };
 
-catmint_rtti11_process RProcess = {
+catmint_rtti12_process RProcess = {
   &NProcess, sizeof(struct TProcess), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M7_Process_open, (void *)M7_Process_readLine,
     (void *)M7_Process_write, (void *)M7_Process_eof,
-    (void *)M7_Process_finish }
+    (void *)M7_Process_finish, (void *)M7_Process_openArgs }
 };
 
 catmint_rtti11_list RList = {
@@ -714,11 +721,7 @@ static void release_owned_buffers(struct TObject *self) {
       file->handle = NULL;
     }
   } else if (self->rtti == RTTI(RProcess)) {
-    struct TProcess *process = (struct TProcess *)self;
-    if (process->pipe) {
-      pclose(process->pipe);
-      process->pipe = NULL;
-    }
+    process_close((struct TProcess *)self);
   } else if (self->rtti == RTTI(RBytes) || self->rtti == RTTI(RInts) ||
              self->rtti == RTTI(RFloats)) {
     /* All three have their length and their buffer in the same two fields,
@@ -1470,11 +1473,48 @@ struct TList *M6_String_split(struct TString *self, struct TString *separator) {
  * one string operation that cannot be written in catmint, because there is no
  * way to build a character out of a number. It is static: String.chr(65). */
 struct TString *M6_String_chr(int code) {
-  char buffer[2];
+  /* Built by length, not as a C string: chr(0) is one character, a NUL, and
+   * a C string would have been empty. */
+  struct TString *result = new_string(1);
 
-  buffer[0] = (char)(code & 0xff);
-  buffer[1] = '\0';
-  return make_string(buffer);
+  result->string[0] = (char)(code & 0xff);
+  return result;
+}
+
+/* Text that C owns, copied: the bytes at `source` up to the first NUL or
+ * `max` of them, whichever comes first. A copy and never an alias, so C still
+ * cannot write into a String. NULL gives null. The compiler makes this call
+ * only inside `unsafe`, because reading through a pointer is the promise that
+ * it is valid; the bound is what turns an unterminated buffer into a short
+ * read where strlen would run on. */
+struct TString *M6_String_fromC(const char *source, int max) {
+  struct TString *result;
+  const char *end;
+  size_t length;
+
+  if (max < 0) {
+    __cm_runtimeError("String.fromC needs a length of zero or more");
+  }
+  if (!source) {
+    return NULL;
+  }
+  end = (const char *)memchr(source, '\0', (size_t)max);
+  length = end ? (size_t)(end - source) : (size_t)max;
+  result = new_string((int)length);
+  memcpy(result->string, source, length);
+  return result;
+}
+
+/* The same out of a Bytes, which knows how large it is: `max` can never reach
+ * past the end of the buffer. */
+struct TString *M6_String_fromBytes(struct TBytes *source, int max) {
+  if (!source) {
+    __cm_runtimeError("String.fromC was given a null Bytes.");
+  }
+  if (max > source->length) {
+    max = source->length;
+  }
+  return M6_String_fromC((const char *)source->data, max);
 }
 
 /* Every occurrence, left to right. Replacing an empty string would never
@@ -2054,6 +2094,33 @@ static int exit_status(int status) {
   return -1;
 }
 
+/* Let go of a Process's pipe and give back the exit status of what was on the
+ * other end, or -1. A pipe from popen is closed with pclose, which also waits;
+ * one from openArgs was made by hand, with a child of our own to wait for, and
+ * pclose on it would be undefined. */
+static int process_close(struct TProcess *self) {
+  int status = -1;
+  int wait_status;
+
+  if (!self->pipe) {
+    return -1;
+  }
+  if (self->pid > 0) {
+    fclose(self->pipe);
+    if (waitpid((pid_t)self->pid, &wait_status, 0) >= 0) {
+      status = exit_status(wait_status);
+    }
+  } else {
+    wait_status = pclose(self->pipe);
+    if (wait_status != -1) {
+      status = exit_status(wait_status);
+    }
+  }
+  self->pipe = NULL;
+  self->pid = 0;
+  return status;
+}
+
 /* Run a command and wait for it. The exit status, or -1 when it could not
  * be started -- never an abort, because a command failing is an ordinary
  * thing for a program to have an opinion about. */
@@ -2103,10 +2170,7 @@ int M7_Process_pid(void) {
  * not. */
 int M7_Process_open(struct TProcess *self, struct TString *command,
                      struct TString *mode) {
-  if (self->pipe) {
-    pclose(self->pipe);
-    self->pipe = NULL;
-  }
+  process_close(self);
   self->pipe = popen(command->string, mode->string);
   return self->pipe != NULL;
 }
@@ -2149,17 +2213,136 @@ int M7_Process_eof(struct TProcess *self) {
 
 /* Close the pipe and wait, giving back the command's exit status. */
 int M7_Process_finish(struct TProcess *self) {
-  int status;
+  return process_close(self);
+}
 
+/* The argument vector for execvp, from a List of Strings. This is where the
+ * no-shell forms earn the name: each argument is checked and then handed over
+ * whole, so nothing in it is ever parsed. Checked before anything starts, and
+ * catchably: an empty list, a null, something that is not a String, and a
+ * String holding a NUL (which C would read as the end of the argument, so
+ * `a\0b` would run as `a`) are all errors rather than guesses. */
+static char **argv_from_list(struct TList *args) {
+  char **argv;
+  int i;
+
+  if (!args) {
+    __cm_runtimeError("Process: the argument list is null");
+  }
+  if (args->length < 1) {
+    __cm_runtimeError("Process: the argument list is empty");
+  }
+  if (args->length > 4096) {
+    __cm_runtimeError("Process: too many arguments");
+  }
+  argv = malloc(sizeof(char *) * ((size_t)args->length + 1));
+  if (!argv) {
+    printf("Runtime error : out of memory starting a process.\n");
+    exit(1);
+  }
+  for (i = 0; i < args->length; i++) {
+    struct TObject *item = (struct TObject *)args->items[i];
+    struct TString *text = (struct TString *)item;
+
+    if (!item || item->rtti != RTTI(RString)) {
+      free(argv);
+      __cm_runtimeError("Process: every argument must be a String");
+    }
+    if (memchr(text->string, '\0', (size_t)text->length)) {
+      free(argv);
+      __cm_runtimeError("Process: an argument contains a NUL");
+    }
+    argv[i] = text->string;
+  }
+  argv[args->length] = NULL;
+  return argv;
+}
+
+/* Start a program without a shell and give back its process id, or 0 when
+ * it could not be started. A program that does not exist starts and exits
+ * with 127, as it does under a shell. */
+int M7_Process_startArgs(struct TList *args) {
+  char **argv = argv_from_list(args);
+  pid_t child;
+
+  fflush(stdout);
+  child = fork();
+  if (child < 0) {
+    free(argv);
+    return 0;
+  }
+  if (child == 0) {
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+  free(argv);
+  return (int)child;
+}
+
+/* Run a program to completion: its exit status, or -1 when it could not be
+ * started. */
+int M7_Process_runArgs(struct TList *args) {
+  int pid = M7_Process_startArgs(args);
+
+  if (pid <= 0) {
+    return -1;
+  }
+  return M7_Process_wait(pid);
+}
+
+/* Start a program and read what it prints, standard output and standard
+ * error together, in order. It is given no input at all (/dev/null), so a
+ * program that reads its terminal sees the end of the file at once instead of
+ * waiting for someone who is not there. 1 when it started, 0 when it did
+ * not. */
+int M7_Process_openArgs(struct TProcess *self, struct TList *args) {
+  char **argv;
+  int ends[2];
+  pid_t child;
+
+  process_close(self);
+  argv = argv_from_list(args);
+  if (pipe(ends) < 0) {
+    free(argv);
+    return 0;
+  }
+  fcntl(ends[0], F_SETFD, FD_CLOEXEC);
+  fflush(stdout);
+  child = fork();
+  if (child < 0) {
+    close(ends[0]);
+    close(ends[1]);
+    free(argv);
+    return 0;
+  }
+  if (child == 0) {
+    int none = open("/dev/null", O_RDONLY);
+
+    if (none >= 0) {
+      dup2(none, 0);
+      if (none > 2) {
+        close(none);
+      }
+    }
+    dup2(ends[1], 1);
+    dup2(ends[1], 2);
+    if (ends[1] > 2) {
+      close(ends[1]);
+    }
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+  close(ends[1]);
+  free(argv);
+  self->pipe = fdopen(ends[0], "r");
   if (!self->pipe) {
-    return -1;
+    int status;
+    close(ends[0]);
+    waitpid(child, &status, 0);
+    return 0;
   }
-  status = pclose(self->pipe);
-  self->pipe = NULL;
-  if (status == -1) {
-    return -1;
-  }
-  return exit_status(status);
+  self->pid = (int)child;
+  return 1;
 }
 
 /* -------------------------------------------------------------------------

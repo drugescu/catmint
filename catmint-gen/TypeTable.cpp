@@ -199,6 +199,10 @@ void TypeTable::addBuiltinClasses(Program *p) {
   // Static, and so after every slot-taking method: a character code does not
   // belong to a particular String. Written String.chr(65).
   declareStatic(methods, "chr", strings::String, {{"code", strings::Int}});
+  // Text that C owns, copied out: up to the first NUL or `max` bytes, whichever
+  // comes first. It turns a Ptr into something, so it needs `unsafe`.
+  declareStatic(methods, "fromC", strings::String,
+                {{"source", strings::Ptr}, {"max", strings::Int}});
   addBuiltinClass(p, strings::String, strings::Object, methods);
 
   // --- List, the one container the runtime provides -------------------
@@ -259,8 +263,14 @@ void TypeTable::addBuiltinClasses(Program *p) {
   declare(methods, "write", strings::Process, {{"text", strings::String}});
   declare(methods, strings::Eof, strings::Int);
   declare(methods, "finish", strings::Int);
+  // Appended after finish, never before: the slots are the runtime's order.
+  declare(methods, "openArgs", strings::Int, {{"args", strings::List}});
   declareStatic(methods, "run", strings::Int, {{"command", strings::String}});
   declareStatic(methods, "start", strings::Int, {{"command", strings::String}});
+  // The same two without a shell: the program and each argument in a List of
+  // Strings, executed directly.
+  declareStatic(methods, "runArgs", strings::Int, {{"args", strings::List}});
+  declareStatic(methods, "startArgs", strings::Int, {{"args", strings::List}});
   declareStatic(methods, "wait", strings::Int, {{"pid", strings::Int}});
   declareStatic(methods, "pid", strings::Int);
   addBuiltinClass(p, strings::Process, strings::Object, methods);

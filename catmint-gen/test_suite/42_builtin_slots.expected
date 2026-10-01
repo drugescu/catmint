@@ -70,6 +70,11 @@ Process.write returned 0
 Process.run 2
 Process.start and wait 5
 Process.pid 1
+Process.openArgs 1
+Process.readLine after openArgs direct
+Process.finish after openArgs 0
+Process.runArgs 0
+Process.startArgs and wait 0
 Worker.wait 42
 Worker.count 1
 Bytes.len 4

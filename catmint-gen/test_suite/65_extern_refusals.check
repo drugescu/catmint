@@ -144,4 +144,69 @@ class Main from IO
 end
 CM
 
+refuse fromc_outside_unsafe "'String.fromC' turns a Ptr into text" <<'CM'
+class Main from IO
+  def main:
+    String s = String.fromC(null, 4)
+  end
+end
+CM
+
+refuse fromc_from_ints "'String.fromC' reads text from a Ptr or a Bytes, not from a Ints" <<'CM'
+class Main from IO
+  def main:
+    Ints numbers = new Ints(4)
+    unsafe:
+      String s = String.fromC(numbers, 4)
+    end
+  end
+end
+CM
+
+refuse extern_returns_array "returns 'Bytes', but C returns a pointer, not a catmint array" <<'CM'
+extern class Libc
+  def Bytes getenv(String name)
+end
+class Main from IO
+  def main:
+    out("x\n")
+  end
+end
+CM
+
+refuse variadic_string "passes 'String text' as a variable argument" <<'CM'
+extern class Libc
+  def Int snprintf_text = snprintf(Ptr buffer, UInt64 size, String format, ... String text)
+end
+class Main from IO
+  def main:
+    out("x\n")
+  end
+end
+CM
+
+refuse variadic_float32 "(a float is promoted to a double)" <<'CM'
+extern class Libc
+  def Int snprintf_f = snprintf(Ptr buffer, UInt64 size, String format, ... Float32 x)
+end
+class Main from IO
+  def main:
+    out("x\n")
+  end
+end
+CM
+
+refuse variadic_wrong_argument "takes an integer as" <<'CM'
+extern class Libc
+  def Int fcntl_dup = fcntl(Int fd, Int cmd, ... Int minimum)
+end
+class Main from IO
+  def main:
+    unsafe:
+      Libc.fcntl_dup(1, 0, 2.5)
+    end
+  end
+end
+CM
+
 exit $failed

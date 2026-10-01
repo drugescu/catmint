@@ -2769,6 +2769,8 @@ llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,
                                          int Line) {
   if (Owner->IsExtern)
     return emitExternCall(M, Args, Line);
+  if (Owner->AST->getName() == strings::String && M->getName() == "fromC")
+    return emitFromC(Args, Line);
   auto *FT = methodType(Owner, M);
 
   std::vector<llvm::Value *> CallArgs;
@@ -2802,6 +2804,36 @@ llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,
              : static_cast<llvm::Value *>(Call);
 }
 
+/// String.fromC(source, max). The source is a Ptr, a null, or a Bytes; the
+/// last is read through the runtime's own entry, which stops at the buffer's
+/// length however large `max` is, since a Bytes knows how big it is and a
+/// bare pointer does not.
+llvm::Value *IRGenerator::emitFromC(const std::vector<Expression *> &Args,
+                                    int Line) {
+  if (Args.size() != 2)
+    fail(Line, "'String.fromC' takes a source and a length");
+  const std::string FromTy = staticTypeOf(Args[0]);
+  llvm::Value *Source = emit(Args[0]);
+  llvm::Value *Max = emit(Args[1]);
+  if (!Source || !Max)
+    fail(Line, "argument to 'String.fromC' produced no value");
+  Max = coerce(Max, staticTypeOf(Args[1]), strings::Int, Line);
+
+  auto *PtrTy = llvm::PointerType::getUnqual(Context);
+  auto *I32 = llvm::Type::getInt32Ty(Context);
+  noteAllocation();
+  if (FromTy == strings::Bytes) {
+    auto Callee = Module.getOrInsertFunction(
+        "M6_String_fromBytes",
+        llvm::FunctionType::get(PtrTy, {PtrTy, I32}, false));
+    return Builder.CreateCall(Callee, {Source, Max}, "c.text");
+  }
+  Source = coerce(Source, FromTy, strings::Ptr, Line);
+  auto Callee = Module.getOrInsertFunction(
+      "M6_String_fromC", llvm::FunctionType::get(PtrTy, {PtrTy, I32}, false));
+  return Builder.CreateCall(Callee, {Source, Max}, "c.text");
+}
+
 /// A call to C. Every argument becomes what the C signature says it is: an
 /// extern struct its bytes (or NULL), a String or an array the address of
 /// its contents, a number C's own width. The result comes back the other way:
@@ -2812,6 +2844,7 @@ llvm::Value *IRGenerator::emitExternCall(Method *M,
   auto *FT = externFunctionType(M);
   std::vector<llvm::Value *> CallArgs;
   auto ParamIt = M->begin();
+  int ArgIndex = 0;
   for (auto *Arg : Args) {
     if (ParamIt == M->end())
       fail(Line, "too many arguments to '" + M->getName() + "'");
@@ -2824,7 +2857,17 @@ llvm::Value *IRGenerator::emitExternCall(Method *M,
 
     ClassInfo *ParamClass = lookupClass(ParamTy);
     ClassInfo *ArgClass = lookupClass(FromTy);
-    if (ParamClass && ParamClass->IsCStruct) {
+    const bool WantsBuffer =
+        ParamTy == strings::String || ParamTy == strings::Bytes ||
+        ParamTy == strings::Ints || ParamTy == strings::Floats;
+    if (WantsBuffer && FromTy == strings::Null) {
+      // The word `null`, written where C takes a string or a buffer, is C's
+      // NULL: dlopen(NULL), recv with no address. It is the literal that
+      // means it. A String variable that merely holds null has the static
+      // type String, not Null, and still meets the null check below, because
+      // that one is the accident.
+      V = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(Context));
+    } else if (ParamClass && ParamClass->IsCStruct) {
       V = structPointerOrNull(V, ParamClass);
     } else if (ParamTy == strings::Ptr && ArgClass && ArgClass->IsCStruct) {
       V = structPointerOrNull(V, ArgClass);
@@ -2838,23 +2881,48 @@ llvm::Value *IRGenerator::emitExternCall(Method *M,
       llvm::Type *CT = lowerCType(CTy);
       if (V->getType() != CT && V->getType()->isIntegerTy() && CT->isIntegerTy())
         V = Builder.CreateTrunc(V, CT, "c.narrow");
+      // C's default argument promotions for the variable part of a variadic
+      // call: anything narrower than an int is passed as one. (A float cannot
+      // get here: the declaration is refused, see checkExternSignature.)
+      if (M->isVariadic() && ArgIndex >= M->getFixedParams() &&
+          V->getType()->isIntegerTy() && V->getType()->getIntegerBitWidth() < 32) {
+        auto *I32 = llvm::Type::getInt32Ty(Context);
+        V = CTy.rfind("UInt", 0) == 0 ? Builder.CreateZExt(V, I32, "c.promote")
+                                      : Builder.CreateSExt(V, I32, "c.promote");
+      }
     }
     CallArgs.push_back(V);
     ++ParamIt;
+    ++ArgIndex;
   }
-  if (CallArgs.size() != FT->getNumParams())
+  // A variadic function's type holds only its fixed parameters; the call
+  // carries the rest.
+  const size_t Declared = static_cast<size_t>(std::distance(M->begin(), M->end()));
+  if (CallArgs.size() != (M->isVariadic() ? Declared : FT->getNumParams()))
     fail(Line, "wrong number of arguments to '" + M->getName() + "'");
 
   if (isReferenceTypeName(M->getReturnType()))
     noteAllocation();
 
   // An extern function keeps its own name: the symbol already exists in a
-  // library, and mangling it would name something that does not.
-  auto Callee = Module.getOrInsertFunction(M->getName(), FT);
+  // library, and mangling it would name something that does not. Declared
+  // under another name in catmint (`def A = b(...)`), it is b that is called.
+  auto Callee = Module.getOrInsertFunction(M->getCSymbol(), FT);
   llvm::Value *Result = Builder.CreateCall(Callee, CallArgs);
   const std::string Ret = M->getReturnType();
   if (Ret == strings::Void || Ret == "auto")
     return nullptr;
+  // C's char * is not a catmint String. Declared to return String, the text is
+  // copied out of it, bounded (a megabyte is longer than any C string a
+  // library hands back); NULL becomes null.
+  if (Ret == strings::String) {
+    auto *PtrTy = llvm::PointerType::getUnqual(Context);
+    auto *I32 = llvm::Type::getInt32Ty(Context);
+    auto FromC = Module.getOrInsertFunction(
+        "M6_String_fromC", llvm::FunctionType::get(PtrTy, {PtrTy, I32}, false));
+    return Builder.CreateCall(FromC, {Result, llvm::ConstantInt::get(I32, 1 << 20)},
+                              "c.text");
+  }
   if (ClassInfo *RetClass = lookupClass(Ret); RetClass && RetClass->IsCStruct)
     return makeView(RetClass, Result);
   const std::string CRet = M->getCReturnType();
@@ -3306,13 +3374,18 @@ llvm::Value *IRGenerator::structPointerOrNull(llvm::Value *Obj, ClassInfo *CI) {
 
 llvm::FunctionType *IRGenerator::externFunctionType(Method *M) {
   std::vector<llvm::Type *> Params;
-  for (auto *P : *M)
+  int Index = 0;
+  for (auto *P : *M) {
+    // A variadic C function's type is its fixed parameters and "...".
+    if (M->isVariadic() && Index++ >= M->getFixedParams())
+      break;
     Params.push_back(lowerCType(P->getCType()));
+  }
   const std::string Ret = M->getCReturnType();
   llvm::Type *RetTy = (Ret == strings::Void || Ret == "auto" || Ret.empty())
                           ? llvm::Type::getVoidTy(Context)
                           : lowerCType(Ret);
-  return llvm::FunctionType::get(RetTy, Params, false);
+  return llvm::FunctionType::get(RetTy, Params, M->isVariadic());
 }
 
 // ---------------------------------------------------------------------------

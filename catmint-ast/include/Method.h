@@ -90,6 +90,20 @@ public:
   void setCReturnType(const std::string &type) { cReturnType = type; }
   bool hasCReturnType() const { return !cReturnType.empty(); }
 
+  /// For an extern function declared under another name -- `def String
+  /// strerror_text = strerror(Int code)` -- the C symbol it stands for.
+  /// Empty means the method's own name.
+  std::string getCSymbol() const { return cSymbol.empty() ? name : cSymbol; }
+  void setCSymbol(const std::string &symbol) { cSymbol = symbol; }
+  bool hasCSymbol() const { return !cSymbol.empty(); }
+
+  /// For a variadic C function, how many of the parameters are C's fixed
+  /// ones; the rest are the types this declaration passes for `...`. Minus
+  /// one means the function is not variadic.
+  int getFixedParams() const { return fixedParams; }
+  void setFixedParams(int count) { fixedParams = count; }
+  bool isVariadic() const { return fixedParams >= 0; }
+
   Expression *getBody() const { return body.get(); }
   
   std::unique_ptr<Expression> getBodyFull() { return std::move(body); }
@@ -99,6 +113,8 @@ public:
 private:
   std::string returnType;
   std::string cReturnType;
+  std::string cSymbol;
+  int fixedParams = -1;
   FormalParamsType parameters;
   bool staticMethod = false;
   bool abstractMethod = false;

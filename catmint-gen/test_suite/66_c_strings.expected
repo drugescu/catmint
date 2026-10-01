@@ -1,0 +1,8 @@
+No such file or directory|No such|7|0
+null in, null out: 1
+1 1 0 hello from C
+dlopen(NULL) gave a handle: 1
+a null String variable is still refused
+String.fromC needs a length of zero or more
+Hi|2
+abc|3

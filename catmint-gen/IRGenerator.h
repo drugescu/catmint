@@ -374,7 +374,9 @@ private:
   llvm::Value *emitFieldAccess(FieldAccess *FA);
   /// A call to a C function declared in an `extern class`.
   llvm::Value *emitExternCall(Method *M, const std::vector<Expression *> &Args,
-                             int Line);
+                              int Line);
+  /// String.fromC(source, max): a copy of C's text, bounded.
+  llvm::Value *emitFromC(const std::vector<Expression *> &Args, int Line);
 
   // ---- C structs ---------------------------------------------------------
   /// Where an extern struct's bytes are: its own, or C's for a view.

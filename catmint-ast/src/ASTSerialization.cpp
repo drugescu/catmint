@@ -34,6 +34,8 @@ const auto CType = "CType";
 const auto ArrayLength = "ArrayLength";
 const auto AssertedOffset = "AssertedOffset";
 const auto CReturnType = "CReturnType";
+const auto CSymbol = "CSymbol";
+const auto FixedParams = "FixedParams";
 const auto Body = "Body";
 const auto FormalParams = "FormalParams";
 const auto Value = "Value";
@@ -264,6 +266,12 @@ bool ASTSerializer::visit(Method *M) {
   auto ret = M->getReturnType();
   if (!ret.empty()) {
     writePair(keys::ReturnType, ret);
+  }
+  if (M->hasCSymbol()) {
+    writePair(keys::CSymbol, M->getCSymbol().c_str());
+  }
+  if (M->isVariadic()) {
+    writePair(keys::FixedParams, M->getFixedParams());
   }
   if (M->hasCReturnType()) {
     writePair(keys::CReturnType, M->getCReturnType());
@@ -1166,6 +1174,16 @@ std::unique_ptr<Method> ASTDeserializer::parseMethod(rapidjson::Value &tree) {
   if (tree.HasMember(keys::CReturnType)) {
     assert(tree[keys::CReturnType].IsString() && "Invalid C return type");
     method->setCReturnType(tree[keys::CReturnType].GetString());
+  }
+
+  if (tree.HasMember(keys::CSymbol)) {
+    assert(tree[keys::CSymbol].IsString() && "Invalid C symbol");
+    method->setCSymbol(tree[keys::CSymbol].GetString());
+  }
+
+  if (tree.HasMember(keys::FixedParams)) {
+    assert(tree[keys::FixedParams].IsInt() && "Invalid fixed parameter count");
+    method->setFixedParams(tree[keys::FixedParams].GetInt());
   }
 
   //if (tree.HasMember(keys::AttributeNodeType)) {
