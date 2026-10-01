@@ -1,6 +1,7 @@
 #!/bin/sh
 # Callbacks from a C library: the widths, a struct, userdata through a handle,
-# an error, and a call from a thread C made. Needs clang to build the C
+# an error, and a call from a thread C made; and calls into C with arguments
+# narrower than an int. Needs clang to build the C
 # library, like the binding generator's test, and says so when it is missing.
 #
 #   tools/callback_test/run.sh
@@ -28,6 +29,12 @@ ar rcs "$work/libcb.a" "$work/cb.o"
 "$work/use" > "$work/use.out" 2>&1 || true
 diff "$HERE/use.expected" "$work/use.out" || failed=1
 
+# Arguments to C narrower than an int arrive with nothing above them.
+"$ROOT/catmintc" -L "$work" "$HERE/narrow.cm" -o "$work/narrow" > "$work/narrow.log" 2>&1 || {
+  cat "$work/narrow.log"; exit 1; }
+"$work/narrow" > "$work/narrow.out" 2>&1 || true
+diff "$HERE/narrow.expected" "$work/narrow.out" || failed=1
+
 "$ROOT/catmintc" -L "$work" "$HERE/thread.cm" -o "$work/thread" > "$work/thread.log" 2>&1 || {
   cat "$work/thread.log"; exit 1; }
 # The abort is the expected result; the braces keep the shell from announcing it.
@@ -40,4 +47,4 @@ elif ! grep -q "thread other than the program's main thread" "$work/thread.err";
   echo "refused, but not saying why:"; cat "$work/thread.err"; failed=1
 fi
 
-[ "$failed" -eq 0 ] && echo "callbacks agree with C, and a foreign thread is refused" || exit 1
+[ "$failed" -eq 0 ] && echo "callbacks agree with C, narrow arguments arrive clean, and a foreign thread is refused" || exit 1

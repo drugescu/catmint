@@ -43,3 +43,12 @@ void cb_from_thread(cb_once_fn fn, void *userdata) {
   pthread_create(&thread, 0, thread_body, both);
   pthread_join(thread, 0);
 }
+
+/* Arguments narrower than an int. Compiled by clang this takes each one from
+ * its register as it finds it, because the ABI (Apple's arm64, and clang's own
+ * callers everywhere) has the caller extend it to 32 bits first. A caller that
+ * only truncates leaves the rest of the register as it was, and the sum is
+ * wrong by whatever was there. */
+__attribute__((noinline)) uint32_t cb_narrow(uint8_t a, uint16_t b, uint8_t c) {
+  return (uint32_t)a + (uint32_t)b + (uint32_t)c;
+}

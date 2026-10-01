@@ -2996,6 +2996,13 @@ llvm::Value *IRGenerator::emitExternCall(Method *M,
                                          int Line) {
   auto *FT = externFunctionType(M);
   std::vector<llvm::Value *> CallArgs;
+  // The arguments C's unsigned types make narrower than an int. A trunc leaves
+  // whatever was above the low bits in the register, and a C function compiled
+  // by clang takes the register as it finds it: Apple's arm64 ABI makes the
+  // caller extend such an argument to 32 bits, and clang's own callers do on
+  // x86-64 too. Without the attribute a UInt8 computed as (c >> 8) arrived as
+  // 0x1E22 and SDL clamped it to 255.
+  std::vector<unsigned> ZeroExtended;
   auto ParamIt = M->begin();
   int ArgIndex = 0;
   for (auto *Arg : Args) {
@@ -3043,6 +3050,9 @@ llvm::Value *IRGenerator::emitExternCall(Method *M,
       llvm::Type *CT = lowerCType(CTy);
       if (V->getType() != CT && V->getType()->isIntegerTy() && CT->isIntegerTy())
         V = Builder.CreateTrunc(V, CT, "c.narrow");
+      if ((CTy == "UInt8" || CTy == "UInt16") &&
+          !(M->isVariadic() && ArgIndex >= M->getFixedParams()))
+        ZeroExtended.push_back(static_cast<unsigned>(CallArgs.size()));
       // C's default argument promotions for the variable part of a variadic
       // call: anything narrower than an int is passed as one. (A float cannot
       // get here: the declaration is refused, see checkExternSignature.)
@@ -3070,7 +3080,13 @@ llvm::Value *IRGenerator::emitExternCall(Method *M,
   // library, and mangling it would name something that does not. Declared
   // under another name in catmint (`def A = b(...)`), it is b that is called.
   auto Callee = Module.getOrInsertFunction(M->getCSymbol(), FT);
-  llvm::Value *Result = Builder.CreateCall(Callee, CallArgs);
+  auto *CallInstr = Builder.CreateCall(Callee, CallArgs);
+  llvm::Value *Result = CallInstr;
+  for (unsigned Index : ZeroExtended) {
+    CallInstr->addParamAttr(Index, llvm::Attribute::ZExt);
+    if (auto *Declared = llvm::dyn_cast<llvm::Function>(Callee.getCallee()))
+      Declared->addParamAttr(Index, llvm::Attribute::ZExt);
+  }
   // An error a callback met while C was running it was kept, not thrown
   // through C's frames; this is where C has returned and it can be.
   Builder.CreateCall(Module.getOrInsertFunction(
