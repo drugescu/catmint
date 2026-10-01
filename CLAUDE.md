@@ -744,7 +744,16 @@ NUL) before anything starts. `openArgs` forks by hand, so its pipe is closed
 with `fclose` and a `waitpid` on `TProcess::pid`, not `pclose` -- that is what
 `process_close` decides, and why `object_free` and `finish` both call it.
 `openArgs` is appended after `finish` in both `TypeTable.cpp` and `RProcess`,
-and `RProcess` is now a 12-slot vtable (`catmint_rtti12_process`).
+and `RProcess` is now a 12-slot vtable (`catmint_rtti12_process`). **The child
+closes the parent's other descriptors** (CWE-403: a socket or a document would
+stay open in a program that could read it). `open_descriptors` snapshots them
+from `/dev/fd` *in the parent* and the child only calls `close`, because
+between `fork` and `exec` only async-signal-safe functions are allowed and
+`opendir` is not one -- SDL starts threads, and one may have held the malloc
+lock at the fork and never release it in the child. Test 69 counts the
+descriptors a child sees with and without files open here (not an absolute
+number: macOS's `ls` opens two for itself) and fails when the closing is
+removed.
 `String.chr(0)` was an empty String because `chr` built a C string; it uses
 `new_string(1)` now.
 

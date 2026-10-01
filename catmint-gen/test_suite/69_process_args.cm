@@ -8,6 +8,23 @@
 # gives it no input, so it can never wait on a terminal.
 
 class Main from IO
+  # How many descriptors a child sees, as `ls /dev/fd` lists them.
+  def Int descriptors:
+    List ls = new List()
+    ls.append("/bin/ls")
+    ls.append("-1")
+    ls.append("/dev/fd")
+    Process lister = new Process()
+    lister.openArgs(ls)
+    Int count = 0
+    while lister.eof() == 0:
+      lister.readLine()
+      count = count + 1
+    end
+    lister.finish()
+    return count
+  end
+
   def main:
     String marker = "/tmp/catmint_args_test_marker"
     File.remove(marker)
@@ -60,6 +77,20 @@ class Main from IO
     r.openArgs(cat)
     out("cat saw eof: ${r.eof()}\n")
     r.finish()
+
+    # Nothing the parent has open is lent to the child. A file, a socket, a
+    # document: the child would hold it open for as long as it ran, and could
+    # read it. `ls /dev/fd` lists the child's descriptors. How many `ls` opens
+    # for itself is its own business (macOS's walks the directory with two), so
+    # the child is counted with nothing of ours open and again with two files
+    # open, and the two counts must agree.
+    Int before = descriptors()
+    File hosts = new File()
+    hosts.open("/etc/hosts", "r")
+    File passwd = new File()
+    passwd.open("/etc/passwd", "r")
+    Int after = descriptors()
+    out("a child sees the same descriptors with two files open here: ${before == after}\n")
 
     # The argument list is checked before anything is started.
     List empty = new List()

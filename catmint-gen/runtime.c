@@ -23,6 +23,7 @@
  */
 
 #include <ctype.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <math.h>
 #include <setjmp.h>
@@ -2258,11 +2259,63 @@ static char **argv_from_list(struct TList *args) {
   return argv;
 }
 
+/* A program started from here must not be lent what this one has open: a
+ * file, a socket, a document would stay open in the child for as long as it
+ * ran, and it could read it. So the child closes every descriptor above the
+ * three standard ones before it execs.
+ *
+ * The list is taken here, in the parent, because between fork and exec a
+ * child may call only async-signal-safe functions -- opendir is not one, and
+ * another thread (SDL starts several) may have held the malloc lock at the
+ * moment of the fork and never release it in the child. The child only calls
+ * close. /dev/fd lists them on macOS and, through /proc, on Linux; without it
+ * the fallback is every descriptor the process could have, up to the room
+ * there is. A process with more than `cap` open at once keeps the rest open in
+ * the child, which is the one limit of this. */
+static int open_descriptors(int *fds, int cap) {
+  int count = 0;
+  DIR *dir = opendir("/dev/fd");
+
+  if (dir) {
+    struct dirent *entry;
+    int own = dirfd(dir);
+
+    while ((entry = readdir(dir)) != NULL) {
+      char *end;
+      long fd = strtol(entry->d_name, &end, 10);
+
+      if (end != entry->d_name && *end == '\0' && fd > 2 && fd != own &&
+          count < cap) {
+        fds[count++] = (int)fd;
+      }
+    }
+    closedir(dir);
+  } else {
+    int limit = getdtablesize();
+    int fd;
+
+    for (fd = 3; fd < limit && count < cap; fd++) {
+      fds[count++] = fd;
+    }
+  }
+  return count;
+}
+
+static void close_descriptors(const int *fds, int count) {
+  int i;
+
+  for (i = 0; i < count; i++) {
+    close(fds[i]);
+  }
+}
+
 /* Start a program without a shell and give back its process id, or 0 when
  * it could not be started. A program that does not exist starts and exits
  * with 127, as it does under a shell. */
 int M7_Process_startArgs(struct TList *args) {
   char **argv = argv_from_list(args);
+  int held[1024];
+  int holding = open_descriptors(held, 1024);
   pid_t child;
 
   fflush(stdout);
@@ -2272,6 +2325,7 @@ int M7_Process_startArgs(struct TList *args) {
     return 0;
   }
   if (child == 0) {
+    close_descriptors(held, holding);
     execvp(argv[0], argv);
     _exit(127);
   }
@@ -2298,6 +2352,8 @@ int M7_Process_runArgs(struct TList *args) {
 int M7_Process_openArgs(struct TProcess *self, struct TList *args) {
   char **argv;
   int ends[2];
+  int held[1024];
+  int holding;
   pid_t child;
 
   process_close(self);
@@ -2307,6 +2363,7 @@ int M7_Process_openArgs(struct TProcess *self, struct TList *args) {
     return 0;
   }
   fcntl(ends[0], F_SETFD, FD_CLOEXEC);
+  holding = open_descriptors(held, 1024);
   fflush(stdout);
   child = fork();
   if (child < 0) {
@@ -2326,9 +2383,8 @@ int M7_Process_openArgs(struct TProcess *self, struct TList *args) {
     }
     dup2(ends[1], 1);
     dup2(ends[1], 2);
-    if (ends[1] > 2) {
-      close(ends[1]);
-    }
+    /* Including both ends of the pipe, which were taken with the rest. */
+    close_descriptors(held, holding);
     execvp(argv[0], argv);
     _exit(127);
   }

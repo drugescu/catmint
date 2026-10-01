@@ -932,9 +932,12 @@ and each has a test that was seen to fail without it.
   shell. The program and each argument are separate Strings, validated first
   (null, empty, more than 4096, a non-String, a NUL), then `execvp`ed.
   `openArgs` reads standard output and error together and gives the child
-  `/dev/null` for input. A test passes an argument holding every character a
-  shell acts on, and the marker file it would have created is never created.
-  (Tests 69 and 42.)
+  `/dev/null` for input, and closes every descriptor the parent has open
+  before it runs the program (found by reviewing this feature, not in the plan:
+  without it a child holds the parent's files and sockets). A test passes an
+  argument holding every character a shell acts on, and the marker file it
+  would have created is never created; another counts a child's descriptors
+  with and without files open in the parent. (Tests 69 and 42.)
 - **`Entropy.bytes(n)` and `Entropy.int64()`** in `lib/entropy.cmm`, over
   `getentropy`, 256 bytes at a time. Statistical properties are the test
   (every byte value appears in 16 KB, one failure in 10^28; bits balanced

@@ -473,7 +473,10 @@ that puts a file name in it. `Process.runArgs(list)`, `Process.startArgs(list)`
 and `p.openArgs(list)` take the program and each argument as a List of Strings
 and `execvp` it directly, so nothing in an argument is ever parsed. `openArgs`
 reads the program's output, standard error included, and gives it no input
-(`/dev/null`), so it cannot wait on a terminal. An empty list, a non-String
+(`/dev/null`), so it cannot wait on a terminal. Nothing the program has open
+is lent to the child: it closes every descriptor above the three standard
+ones before it runs, so a file or a socket held here is not held there. (The
+shell forms do not do this.) An empty list, a non-String
 item, or a String holding a NUL is a catchable error before anything starts; a
 program that does not exist exits 127, as under a shell.
 → `39_process.cm`, `69_process_args.cm`
