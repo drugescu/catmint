@@ -452,7 +452,8 @@ so no reference count has to be atomic.
   a file read line by line, a hash table, usage and an exit status.
 - `examples/rps-rts/` — a real-time rock-paper-scissors strategy game over
   SDL: an iso board, units, a simulation checked bit for bit against an
-  independent port (`check.sh`), and input tests that drive it with real SDL
-  events (`play.sh`).
+  independent port (`check.sh`), input tests that drive it with real SDL
+  events (`play.sh`), and every change to the battle made by a command, so a
+  recording of those replays a game exactly (`replay.sh`).
 - `bench/` — the same five problems in catmint, C and C++; `bench/run.sh`
   builds, checks they agree, and times them.

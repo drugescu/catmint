@@ -172,8 +172,25 @@ has just built).
   `__maskrune`; on Linux it calls glibc's `stdin`, `stderr` and
   `__ctype_b_loc`. The old claim that one `runtime.ll` served every host held
   only because `build-runtime.sh` quietly recompiled `runtime.c` wherever
-  there was a C compiler. Within one OS the file is architecture-neutral, and
-  `portability.sh` compiles each for both architectures of its OS.
+  there was a C compiler. Within one OS one file runs on both architectures,
+  and `portability.sh` compiles each for both architectures of its OS.
+- **Built for arm64 wherever it is built**, the Linux one. Running on both
+  is not being built the same on both: with the triple and data layout gone,
+  clang's IR still keeps the builder's frame-pointer default and its
+  alignment of large globals, so a file built in the arm64 container could
+  never pass `--check` on x86-64 CI. `build-runtime.sh` therefore compiles
+  for `aarch64-linux-gnu` everywhere, and on x86-64 that reproduces the
+  committed file byte for byte. It needs arm64's C headers there
+  (`libc6-dev-arm64-cross`, `linux-libc-dev-arm64-cross`, or `ARM64_INCLUDE`);
+  without them `--check` stops and says so, and `--out` builds for the host so
+  the suite still tests the source being edited. Building for one target also
+  gives the runtime one set of C semantics on every machine -- `char` is
+  unsigned on arm64 Linux and signed on x86-64. It is safe because
+  `runtime.c` defines no varargs function and uses no `long double`, the two
+  things C lowers per target in the front end (calling `printf` is fine; the
+  back end lowers a call). **Keep it that way**: reading `va_arg` or a `long
+  double` in arm64 IR is wrong on x86-64. The Darwin file is not pinned: it
+  has only been built on arm64.
 - **Stamped.** `runtime.c` defines `__catmint_abi_<CATMINT_ABI>`; the
   generated `main` reads it volatile, so every program needs that exact
   symbol and a runtime from another agreement fails to link. **Bump
@@ -182,8 +199,9 @@ has just built).
   renamed stamp is refused.
 
 `build-runtime.sh` is a developer tool that nothing in `catmintc` calls. It
-strips the triple, data layout, CPU, features and probe-stack, normalises the
-module name, and assembles bitcode; it prefers LLVM 16 (`brew install
+builds the Linux file for arm64, strips the triple, data layout, CPU, features
+and probe-stack, normalises the module name, and assembles bitcode; it
+prefers LLVM 16 (`brew install
 llvm@16`). `tools/linux/run.sh catmint-gen/build-runtime.sh` builds the Linux
 one in a container. **If you change `runtime.c`, rebuild both files and commit
 them**; `build-runtime.sh --check` fails when the committed file is not what
