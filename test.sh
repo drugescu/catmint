@@ -218,9 +218,22 @@ for source in "$ROOT"/examples/*.cm; do
   fi
 done
 
+# On GitHub the job log cannot be read without signing in, but an annotation can, by anyone: so
+# a failure also writes, for each log that has one, the lines that say what failed.
+annotate_failures() {
+  [ -n "$GITHUB_ACTIONS" ] || return 0
+  for log in "$ROOT"/.*.log; do
+    [ -f "$log" ] || continue
+    body=$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -n -A5 -E "FAIL|failed|disagree|does not build|not what it should|missing '|unwanted '" | head -28 | cut -c1-240 | awk '{printf "%s%%0A", $0}')
+    [ -n "$body" ] && echo "::error title=test.sh $(basename "$log")::$body"
+  done
+  return 0
+}
+
 echo "------------------------------------------------------------"
 if [ "$failed" -ne 0 ]; then
   printf "${RED}something failed${NC}\n"
+  annotate_failures
   exit 1
 fi
 printf "${GREEN}everything passed${NC}\n"
