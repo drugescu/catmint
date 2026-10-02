@@ -142,6 +142,8 @@ class Main from IO
 
     out("a name without its folders: [${Files.baseName("a/b/c.txt")}] [${Files.baseName("c.txt")}] [${Files.baseName("/x")}] [${Files.baseName("a/")}] [${Files.baseName("")}]\n")
 
+    out("names in order, ignoring case: ${Files.before("apple", "Banana")} ${Files.before("Banana", "apple")} ${Files.before("a", "ab")} ${Files.before("ab", "a")} ${Files.before("same", "SAME")}\n")
+
     exec("rm -rf ${base}")
     out("cleaned up: ${File.exists(base) == 0}\n")
   end

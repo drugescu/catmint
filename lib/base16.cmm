@@ -172,26 +172,6 @@ class Base16
     return Theme.make(name, dark, pair, b0, b1, b1, b2, b5, b4, b3, bD, bE, bB, b9, b8)
   end
 
-  # 1 if a sorts before b, ignoring case.
-  static def Int before(String a, String b):
-    String x = a.lower()
-    String y = b.lower()
-    Int i = 0
-    while i < x.len() and i < y.len():
-      if x.at(i) != y.at(i):
-        if x.at(i) < y.at(i):
-          return 1
-        end
-        return 0
-      end
-      i = i + 1
-    end
-    if x.len() < y.len():
-      return 1
-    end
-    return 0
-  end
-
   static def Int ends(String s, String suffix):
     if s.len() < suffix.len():
       return 0
@@ -229,7 +209,7 @@ class Base16
       Int at = sorted.len()
       while at > 0:
         Theme before = sorted.get(at - 1)
-        if Base16.before(t.name, before.name) == 1:
+        if Files.before(t.name, before.name) == 1:
           at = at - 1
         else
           break

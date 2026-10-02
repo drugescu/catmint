@@ -36,6 +36,26 @@ class Files from Object
     return p.substr(slash + 1, p.len())
   end
 
+  # 1 if name a sorts before name b, ignoring case; equal names are not before.
+  static def Int before(String a, String b):
+    String x = a.lower()
+    String y = b.lower()
+    Int i = 0
+    while i < x.len() and i < y.len():
+      if x.at(i) != y.at(i):
+        if x.at(i) < y.at(i):
+          return 1
+        end
+        return 0
+      end
+      i = i + 1
+    end
+    if x.len() < y.len():
+      return 1
+    end
+    return 0
+  end
+
   # Run a program and answer how it ended, saying nothing of its own: whatever
   # it prints is read and dropped.
   static def Int quietly(List args):
