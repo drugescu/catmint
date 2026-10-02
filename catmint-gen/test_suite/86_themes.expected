@@ -1,0 +1,38 @@
+13 themes
+Catmint Dark: text 12.2 dim 5.1 keyword 7.9 string 8.3 number 7.9 accent 8.2 error 5.6
+  1e2229 252a33 232830 3a4864 dfe1e6 8993a0 8993a0 e8b04a cca8ef 9ec68a e3ac7b e87880
+Catmint Light: text 13.6 dim 5.1 keyword 7.9 string 7.7 number 7.9 accent 4.3 error 6.1
+  faf8f3 f0ede5 f3f0e9 cedbf3 262a32 626a76 626a76 a86808 67329a 245a1c 7f3a09 b22834
+Dracula: text 13.4 dim 3.0 keyword 6.0 string 12.7 number 5.9 accent 5.9 error 4.5
+  282a36 353747 21222c 44475a f8f8f2 6272a4 6272a4 bd93f9 ff79c6 f1fa8c bd93f9 ff5555
+Nord: text 9.2 dim 2.4 keyword 4.6 string 6.1 number 4.4 accent 6.2 error 3.1
+  2e3440 3b4252 272c36 434c5e d8dee9 616e88 616e88 88c0d0 81a1c1 a3be8c b48ead bf616a
+Solarized Dark: text 4.7 dim 2.8 keyword 4.7 string 4.8 number 3.3 accent 4.1 error 3.2
+  002b36 073642 00222a 1f4751 839496 586e75 586e75 268bd2 859900 2aa198 d33682 dc322f
+Solarized Light: text 4.1 dim 2.5 keyword 3.0 string 2.9 number 4.2 accent 3.4 error 4.3
+  fdf6e3 eee8d5 eee8d5 dcdacb 657b83 93a1a1 93a1a1 268bd2 859900 2aa198 d33682 dc322f
+Gruvbox Dark: text 10.7 dim 4.0 keyword 4.3 string 7.1 number 5.4 accent 8.7 error 4.3
+  282828 3c3836 1d2021 504945 ebdbb2 928374 928374 fabd2f fb4934 b8bb26 d3869b fb4934
+Gruvbox Light: text 10.2 dim 4.3 keyword 7.6 string 4.3 number 5.9 accent 3.3 error 7.6
+  fbf1c7 ebdbb2 f2e5bc d5c4a1 3c3836 7c6f64 928374 b57614 9d0006 79740e 8f3f71 9d0006
+Tokyo Night: text 10.6 dim 2.8 keyword 7.4 string 9.4 number 8.4 accent 6.8 error 6.5
+  1a1b26 292e42 16161e 283457 c0caf5 565f89 565f89 7aa2f7 bb9af7 9ece6a ff9e64 f7768e
+One Dark: text 6.6 dim 2.3 keyword 4.8 string 6.9 number 5.7 accent 5.9 error 4.4
+  282c34 2c313c 21252b 3e4451 abb2bf 5c6370 5c6370 61afef c678dd 98c379 d19a66 e06c75
+Catppuccin Mocha: text 11.3 dim 4.4 keyword 8.1 string 11.0 number 9.3 accent 7.8 error 7.1
+  1e1e2e 262637 181825 45475a cdd6f4 7f849c 7f849c 89b4fa cba6f7 a6e3a1 fab387 f38ba8
+Catppuccin Latte: text 7.1 dim 3.5 keyword 4.8 string 3.0 number 2.6 accent 4.3 error 4.8
+  eff1f5 e6e9ef dce0e8 bcc0cc 4c4f69 7c7f93 7c7f93 1e66f5 8839ef 40a02b fe640b d20f39
+Monokai: text 13.9 dim 3.9 keyword 3.9 string 10.4 number 5.2 accent 9.6 error 3.9
+  272822 3e3d32 1e1f1c 49483e f8f8f2 88846f 88846f a6e22e f92672 e6db74 ae81ff f92672
+readable: 1
+syntax colours and backgrounds tell apart: 1
+toggling goes to the other kind: 1
+names are unique: 1
+each is found by its name: 1
+the list's Catmint pair is the designed one: 1
+a name that is not one finds nothing: 1
+the first is the default: Catmint Dark
+Catmint Dark toggles to Catmint Light
+Dracula toggles to Catmint Light
+Gruvbox Light toggles to Gruvbox Dark

@@ -1,4 +1,6 @@
 # Colours for a program that is mostly text, and the rule they were chosen by.
+# (This is the Catmint pair. The other themes are in lib/themes.cmm, written by
+# tools/make_themes.py from the palettes their authors published.)
 #
 #   using theme
 #   Theme t = Theme.dark()
@@ -18,6 +20,9 @@
 # further than it had to be, so the hues survive.
 
 class Theme from Object
+  # What it is called, and the theme "toggle dark and light" goes to.
+  String name = ""
+  String pair = ""
   Int ground
   Int line
   Int panel
@@ -80,8 +85,63 @@ class Theme from Object
     return Math.abs(dr) + Math.abs(dg) + Math.abs(db)
   end
 
+  static def Int hexDigit(Int c):
+    if c >= 97:
+      return c - 87
+    end
+    if c >= 65:
+      return c - 55
+    end
+    return c - 48
+  end
+
+  # Six hex digits, "1e1e2e", as a colour.
+  static def Int hex(String s):
+    Int r = Theme.hexDigit(s.at(0)) * 16 + Theme.hexDigit(s.at(1))
+    Int g = Theme.hexDigit(s.at(2)) * 16 + Theme.hexDigit(s.at(3))
+    Int b = Theme.hexDigit(s.at(4)) * 16 + Theme.hexDigit(s.at(5))
+    return Theme.rgb(r, g, b)
+  end
+
+  # A colour as six hex digits, the way Theme.hex reads it.
+  static def String hexOf(Int c):
+    String digits = "0123456789abcdef"
+    String out = ""
+    Int shift = 20
+    while shift >= 0:
+      Int d = (c >> shift) & 15
+      out = out + digits.substr(d, d + 1)
+      shift = shift - 4
+    end
+    return out
+  end
+
+  # A theme from its twelve colours, as hex strings, in the order the fields are
+  # declared. lib/themes.cmm is a list of these, written by tools/make_themes.py.
+  static def Theme make(String name, Int dark, String pair, String ground, String line, String panel, String selection, String text, String dim, String comment, String accent, String keyword, String string, String number, String error):
+    Theme t = new Theme()
+    t.name = name
+    t.isDark = dark
+    t.pair = pair
+    t.ground = Theme.hex(ground)
+    t.line = Theme.hex(line)
+    t.panel = Theme.hex(panel)
+    t.selection = Theme.hex(selection)
+    t.text = Theme.hex(text)
+    t.dim = Theme.hex(dim)
+    t.comment = Theme.hex(comment)
+    t.accent = Theme.hex(accent)
+    t.keyword = Theme.hex(keyword)
+    t.string = Theme.hex(string)
+    t.number = Theme.hex(number)
+    t.error = Theme.hex(error)
+    return t
+  end
+
   static def Theme dark:
     Theme t = new Theme()
+    t.name = "Catmint Dark"
+    t.pair = "Catmint Light"
     t.isDark = 1
     t.ground = Theme.rgb(30, 34, 41)
     t.line = Theme.rgb(37, 42, 51)
@@ -100,6 +160,8 @@ class Theme from Object
 
   static def Theme light:
     Theme t = new Theme()
+    t.name = "Catmint Light"
+    t.pair = "Catmint Dark"
     t.isDark = 0
     t.ground = Theme.rgb(250, 248, 243)
     t.line = Theme.rgb(240, 237, 229)

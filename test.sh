@@ -117,6 +117,15 @@ else
   printf "%s\n" "$keywords_out" | sed 's/^/  /'
   failed=1
 fi
+if command -v python3 >/dev/null 2>&1; then
+  if themes_out=$(python3 "$ROOT/tools/make_themes.py" --check 2>&1); then
+    printf "  %s\n" "$themes_out"
+  else
+    printf "  ${RED}failed${NC}\n"
+    printf "%s\n" "$themes_out" | sed 's/^/  /'
+    failed=1
+  fi
+fi
 
 # Callbacks from a C library: every width of argument, a struct, userdata
 # through a handle, an error, and a call from a thread C made, which must be
