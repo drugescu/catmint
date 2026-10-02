@@ -1,9 +1,10 @@
-# Shift F5 during the build stops the compiler: the panel says so, nothing is left
-# running, and the program is not run.
-# files hello.cm=class Main from IO\n  def main:\n    out("hello\\n")\n  end\nend\n
+# Shift F5 during the build stops the compiler: the panel says so, nothing is left running,
+# and the program is not run. The "compiler" is a script that waits half a minute, so the
+# build is certainly still going when it is stopped.
+# files hello.cm=x
+# exec catmintc=#!/bin/sh\nsleep 30\n
 # open hello.cm
-# args --catmintc @ROOT@/catmintc
-# frames 5
+# frames 4
 # expect message build stopped
 # expect panelall [stopped]
 # expect runner 0
