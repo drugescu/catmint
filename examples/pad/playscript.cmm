@@ -1,0 +1,238 @@
+# Driving pad from a script, for tests: `pad file --play script --frames N --shot out.bmp`.
+#
+# A script is lines of `frame command arguments`:
+#
+#   3 key s ctrl           a key, with any of shift ctrl alt
+#   4 text hello world     typed text
+#   5 click 100 200        a click; drag x1 y1 x2 y2; wheel n; clip some text
+#
+# Each frame pushes what is due as the events a person would make, lets pad
+# handle them, and draws; at the end the last frame is saved and the state
+# printed, which is what examples/pad/play.sh checks.
+#
+# Typed text is the one thing not pushed as an SDL event: sdl2-compat, which is SDL2
+# on Homebrew, crashes in SDL_PushEvent given a text-input event (see lib/sdl.cmm).
+# It is handed to pad's own text handler instead, after everything before it
+# has been handled, so the order the script wrote is the order things happen in.
+
+using sdl
+
+# One thing a script does at one frame.
+class Cue from Object
+  Int frame
+  String cmd = ""
+  List words = null
+end
+
+class PlayScript from Object
+  Pad pad = null
+
+  constructor(Pad p):
+    pad = p
+  end
+
+  def Int keyCode(String name):
+    if name == "enter":
+      return SDL2C.SDLK_RETURN()
+    elif name == "esc":
+      return SDL2C.SDLK_ESCAPE()
+    elif name == "tab":
+      return SDL2C.SDLK_TAB()
+    elif name == "backspace":
+      return SDL2C.SDLK_BACKSPACE()
+    elif name == "delete":
+      return SDL2C.SDLK_DELETE()
+    elif name == "left":
+      return SDL2C.SDLK_LEFT()
+    elif name == "right":
+      return SDL2C.SDLK_RIGHT()
+    elif name == "up":
+      return SDL2C.SDLK_UP()
+    elif name == "down":
+      return SDL2C.SDLK_DOWN()
+    elif name == "home":
+      return SDL2C.SDLK_HOME()
+    elif name == "end":
+      return SDL2C.SDLK_END()
+    elif name == "pageup":
+      return SDL2C.SDLK_PAGEUP()
+    elif name == "pagedown":
+      return SDL2C.SDLK_PAGEDOWN()
+    elif name == "f3":
+      return SDL2C.SDLK_F3()
+    elif name == "f5":
+      return SDL2C.SDLK_F5()
+    elif name.len() == 1:
+      return name.at(0)
+    end
+    throw "unknown key '${name}' in the script"
+  end
+
+  def Int number(Cue c, Int index):
+    String w = c.words.get(index)
+    return w.toInt()
+  end
+
+  # Everything after the first n words, as one string.
+  def String rest(Cue c, Int n):
+    String s = ""
+    Int i = n
+    while i < c.words.len():
+      if i > n:
+        s = s + " "
+      end
+      String w = c.words.get(i)
+      s = s + w
+      i = i + 1
+    end
+    return s
+  end
+
+  def Void send(Cue c):
+    if c.cmd == "key":
+      String name = c.words.get(0)
+      Int mods = 0
+      Int i = 1
+      while i < c.words.len():
+        String m = c.words.get(i)
+        if m == "shift":
+          mods = mods | SDL2C.KMOD_LSHIFT()
+        elif m == "ctrl":
+          mods = mods | SDL2C.KMOD_LCTRL()
+        elif m == "alt":
+          mods = mods | SDL2C.KMOD_LALT()
+        end
+        i = i + 1
+      end
+      pad.sdl.pushKeyWith(keyCode(name), mods)
+    elif c.cmd == "text":
+      while pad.sdl.poll() == 1:
+        pad.handle()
+      end
+      pad.onText(rest(c, 0))
+    elif c.cmd == "click":
+      pad.sdl.pushMouse(0, number(c, 0), number(c, 1), 1)
+      pad.sdl.pushMouse(1, number(c, 0), number(c, 1), 1)
+    elif c.cmd == "drag":
+      pad.sdl.pushMouse(0, number(c, 0), number(c, 1), 1)
+      pad.sdl.pushMouse(2, number(c, 2), number(c, 3), 1)
+      pad.sdl.pushMouse(1, number(c, 2), number(c, 3), 1)
+    elif c.cmd == "wheel":
+      pad.sdl.pushWheel(number(c, 0))
+    elif c.cmd == "clip":
+      pad.sdl.setClipboard(rest(c, 0))
+    else
+      throw "unknown command '${c.cmd}' in the script"
+    end
+  end
+
+  def List read(String file):
+    List cues = new List()
+    File f = new File()
+    if f.open(file, "r") == 0:
+      throw "cannot open ${file}"
+    end
+    while f.eof() == 0:
+      String line = f.readLine().trim()
+      if line.len() > 0 and line.at(0) != 35:
+        List words = line.split(" ")
+        Cue c = new Cue()
+        String first = words.get(0)
+        c.frame = first.toInt()
+        c.cmd = words.get(1)
+        c.words = new List()
+        Int i = 2
+        while i < words.len():
+          c.words.append(words.get(i))
+          i = i + 1
+        end
+        cues.append(c)
+      end
+    end
+    f.close()
+    return cues
+  end
+
+  # Run a script: each frame pushes what is due, handles every event, draws.
+  def Void play(String file, Int frames, String shot):
+    List cues = read(file)
+    Int next = 0
+    Int frame = 0
+    pad.sdl.startText()
+    while frame < frames and pad.quitting == 0:
+      while next < cues.len():
+        Cue c = cues.get(next)
+        if c.frame <= frame:
+          send(c)
+          next = next + 1
+        else
+          break
+        end
+      end
+      while pad.sdl.poll() == 1:
+        pad.handle()
+      end
+      pad.draw()
+      frame = frame + 1
+    end
+    if shot.len() > 0:
+      pad.view.saveBMP(shot)
+    end
+    Report r = new Report(pad)
+    r.print()
+  end
+end
+
+# The state a script's test can ask about, one fact to a line.
+class Report from IO
+  Pad pad = null
+
+  constructor(Pad p):
+    pad = p
+  end
+
+  # Backslashes and newlines written out, so a state line is one line.
+  def String escaped(String s):
+    return s.replace("\\", "\\\\").replace("\n", "\\n")
+  end
+
+  def Void print:
+    Editor ed = pad.ed
+    Palette pal = pad.pal
+    out("file ${pad.path}\n")
+    out("text ${escaped(ed.buf.text())}\n")
+    out("cursor ${ed.line()} ${ed.col()}\n")
+    out("selection ${escaped(ed.selected())}\n")
+    out("modified ${ed.buf.modified()}\n")
+    out("message ${pad.message}\n")
+    out("palette ${pal.mode} ${pal.field.buf.text()}\n")
+    String first = "-"
+    if pal.chosen() >= 0:
+      String named = pal.names.get(pal.chosen())
+      first = named
+    end
+    out("results ${pal.results.len()} first ${first}\n")
+    String names = ""
+    Int di = 0
+    while di < pad.docs.len():
+      if di > 0:
+        names = names + "|"
+      end
+      names = names + pad.tabLabel(di)
+      di = di + 1
+    end
+    out("tabs ${pad.docs.len()} ${pad.current}\n")
+    out("tabnames ${names}\n")
+    out("panel ${pad.panelOpen} ${pad.panel.len()}\n")
+    String last = "-"
+    if pad.panel.len() > 0:
+      String tail = pad.panel.get(pad.panel.len() - 1)
+      last = tail
+    end
+    out("panellast ${last}\n")
+    out("top ${ed.top} scrollx ${pad.scrollX}\n")
+    out("scale ${pad.scale}\n")
+    out("quit ${pad.quitting}\n")
+    out("theme ${pad.t.name}\n")
+  end
+end

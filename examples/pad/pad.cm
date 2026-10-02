@@ -42,13 +42,7 @@ using settings
 using palette
 using files
 using buildlog
-
-# One thing a script does at one frame.
-class Cue from Object
-  Int frame
-  String cmd = ""
-  List words = null
-end
+using playscript
 
 # A file being edited, parked while another tab is in front. The one in front
 # lives in Pad's own ed, path and scrollX, so everything that works on "the
@@ -93,7 +87,6 @@ class Pad from IO
   Int lastBlink
   Int dirty = 1
   Int quitting
-  Int scripted
   String armed = ""
   String was = ""
   String needle = ""
@@ -1441,205 +1434,6 @@ class Pad from IO
       end
     end
   end
-
-  # ---- scripted ----------------------------------------------------------------------------------
-
-  def Int keyCode(String name):
-    if name == "enter":
-      return SDL2C.SDLK_RETURN()
-    elif name == "esc":
-      return SDL2C.SDLK_ESCAPE()
-    elif name == "tab":
-      return SDL2C.SDLK_TAB()
-    elif name == "backspace":
-      return SDL2C.SDLK_BACKSPACE()
-    elif name == "delete":
-      return SDL2C.SDLK_DELETE()
-    elif name == "left":
-      return SDL2C.SDLK_LEFT()
-    elif name == "right":
-      return SDL2C.SDLK_RIGHT()
-    elif name == "up":
-      return SDL2C.SDLK_UP()
-    elif name == "down":
-      return SDL2C.SDLK_DOWN()
-    elif name == "home":
-      return SDL2C.SDLK_HOME()
-    elif name == "end":
-      return SDL2C.SDLK_END()
-    elif name == "pageup":
-      return SDL2C.SDLK_PAGEUP()
-    elif name == "pagedown":
-      return SDL2C.SDLK_PAGEDOWN()
-    elif name == "f3":
-      return SDL2C.SDLK_F3()
-    elif name == "f5":
-      return SDL2C.SDLK_F5()
-    elif name.len() == 1:
-      return name.at(0)
-    end
-    throw "unknown key '${name}' in the script"
-  end
-
-  def Int number(Cue c, Int index):
-    String w = c.words.get(index)
-    return w.toInt()
-  end
-
-  # Everything after the first n words, as one string.
-  def String rest(Cue c, Int n):
-    String s = ""
-    Int i = n
-    while i < c.words.len():
-      if i > n:
-        s = s + " "
-      end
-      String w = c.words.get(i)
-      s = s + w
-      i = i + 1
-    end
-    return s
-  end
-
-  def Void send(Cue c):
-    if c.cmd == "key":
-      String name = c.words.get(0)
-      Int mods = 0
-      Int i = 1
-      while i < c.words.len():
-        String m = c.words.get(i)
-        if m == "shift":
-          mods = mods | SDL2C.KMOD_LSHIFT()
-        elif m == "ctrl":
-          mods = mods | SDL2C.KMOD_LCTRL()
-        elif m == "alt":
-          mods = mods | SDL2C.KMOD_LALT()
-        end
-        i = i + 1
-      end
-      sdl.pushKeyWith(keyCode(name), mods)
-    elif c.cmd == "text":
-      # Not an SDL event (see lib/sdl.cmm): what came before is handled first,
-      # so the order the script wrote is the order things happen in.
-      while sdl.poll() == 1:
-        handle()
-      end
-      onText(rest(c, 0))
-    elif c.cmd == "click":
-      sdl.pushMouse(0, number(c, 0), number(c, 1), 1)
-      sdl.pushMouse(1, number(c, 0), number(c, 1), 1)
-    elif c.cmd == "drag":
-      sdl.pushMouse(0, number(c, 0), number(c, 1), 1)
-      sdl.pushMouse(2, number(c, 2), number(c, 3), 1)
-      sdl.pushMouse(1, number(c, 2), number(c, 3), 1)
-    elif c.cmd == "wheel":
-      sdl.pushWheel(number(c, 0))
-    elif c.cmd == "clip":
-      sdl.setClipboard(rest(c, 0))
-    else
-      throw "unknown command '${c.cmd}' in the script"
-    end
-  end
-
-  def List readScript(String file):
-    List cues = new List()
-    File f = new File()
-    if f.open(file, "r") == 0:
-      throw "cannot open ${file}"
-    end
-    while f.eof() == 0:
-      String line = f.readLine().trim()
-      if line.len() > 0 and line.at(0) != 35:
-        List words = line.split(" ")
-        Cue c = new Cue()
-        String first = words.get(0)
-        c.frame = first.toInt()
-        c.cmd = words.get(1)
-        c.words = new List()
-        Int i = 2
-        while i < words.len():
-          c.words.append(words.get(i))
-          i = i + 1
-        end
-        cues.append(c)
-      end
-    end
-    f.close()
-    return cues
-  end
-
-  # Run a script: each frame pushes what is due, handles every event, draws.
-  def Void play(String file, Int frames, String shot):
-    scripted = 1
-    List cues = readScript(file)
-    Int next = 0
-    Int frame = 0
-    sdl.startText()
-    while frame < frames and quitting == 0:
-      while next < cues.len():
-        Cue c = cues.get(next)
-        if c.frame <= frame:
-          send(c)
-          next = next + 1
-        else
-          break
-        end
-      end
-      while sdl.poll() == 1:
-        handle()
-      end
-      draw()
-      frame = frame + 1
-    end
-    if shot.len() > 0:
-      view.saveBMP(shot)
-    end
-    report()
-  end
-
-  # Backslashes and newlines written out, so a state line is one line.
-  def String escaped(String s):
-    return s.replace("\\", "\\\\").replace("\n", "\\n")
-  end
-
-  # What a script's test can ask about.
-  def Void report:
-    out("file ${path}\n")
-    out("text ${escaped(ed.buf.text())}\n")
-    out("cursor ${ed.line()} ${ed.col()}\n")
-    out("selection ${escaped(ed.selected())}\n")
-    out("modified ${ed.buf.modified()}\n")
-    out("message ${message}\n")
-    out("palette ${pal.mode} ${pal.field.buf.text()}\n")
-    String first = "-"
-    if pal.chosen() >= 0:
-      String named = pal.names.get(pal.chosen())
-      first = named
-    end
-    out("results ${pal.results.len()} first ${first}\n")
-    String names = ""
-    Int di = 0
-    while di < docs.len():
-      if di > 0:
-        names = names + "|"
-      end
-      names = names + tabLabel(di)
-      di = di + 1
-    end
-    out("tabs ${docs.len()} ${current}\n")
-    out("tabnames ${names}\n")
-    out("panel ${panelOpen} ${panel.len()}\n")
-    String last = "-"
-    if panel.len() > 0:
-      String tail = panel.get(panel.len() - 1)
-      last = tail
-    end
-    out("panellast ${last}\n")
-    out("top ${ed.top} scrollx ${scrollX}\n")
-    out("scale ${scale}\n")
-    out("quit ${quitting}\n")
-    out("theme ${t.name}\n")
-  end
 end
 
 class Main from IO
@@ -1689,7 +1483,8 @@ class Main from IO
       pad.message = ""
     end
     if script.len() > 0:
-      pad.play(script, frames, shot)
+      PlayScript runner = new PlayScript(pad)
+      runner.play(script, frames, shot)
     else
       pad.run()
     end
