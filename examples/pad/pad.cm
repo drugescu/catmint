@@ -38,6 +38,8 @@ using editor
 using highlight
 using themechooser
 using search
+using commands
+using editkeys
 using palette
 using files
 using buildlog
@@ -85,9 +87,7 @@ class Pad from IO
   Int quitting
   String armed = ""
   String was = ""
-  List commandIds = null
-  List commandNames = null
-  List commandHints = null
+  Commands commands = null
 
   constructor(Sdl s, Window w, Renderer r):
     sdl = s
@@ -106,40 +106,10 @@ class Pad from IO
     builder = new Builder()
     recents = new List()
     output = new OutputPanel()
-    commandIds = new List()
-    commandNames = new List()
-    commandHints = new List()
+    commands = new Commands()
     m.width = w.width()
     m.height = w.height()
-    command("save", "Save", "Ctrl S")
-    command("open", "Open file", "Ctrl O")
-    command("new", "New file", "Ctrl N")
-    command("close", "Close tab", "Ctrl W")
-    command("nexttab", "Next tab", "Ctrl Tab")
-    command("prevtab", "Previous tab", "Ctrl Shift Tab")
-    command("find", "Find", "Ctrl F")
-    command("findnext", "Find next", "F3")
-    command("findprev", "Find previous", "Shift F3")
-    command("replace", "Replace", "Ctrl H")
-    command("line", "Go to line", "Ctrl L")
-    command("build", "Build", "F5")
-    command("theme", "Toggle dark and light", "Ctrl T")
-    command("themes", "Color theme...", "")
-    command("bigger", "Bigger text", "Ctrl =")
-    command("smaller", "Smaller text", "Ctrl -")
-    command("undo", "Undo", "Ctrl Z")
-    command("redo", "Redo", "Ctrl Shift Z")
-    command("all", "Select all", "Ctrl A")
-    command("cut", "Cut", "Ctrl X")
-    command("copy", "Copy", "Ctrl C")
-    command("paste", "Paste", "Ctrl V")
-    command("quit", "Quit", "Ctrl Q")
-  end
-
-  def Void command(String id, String name, String hint):
-    commandIds.append(id)
-    commandNames.append(name)
-    commandHints.append(hint)
+    registerCommands()
   end
 
   # ---- themes -----------------------------------------------------------------
@@ -511,6 +481,48 @@ class Pad from IO
 
   # ---- the palette ---------------------------------------------------------------------
 
+  # The commands, and the keys that run them. The palette lists them in this order.
+  def Void registerCommands:
+    Int tab = SDL2C.SDLK_TAB()
+    commands.command("save", "Save", 1, 0, 115, "")
+    commands.command("open", "Open file", 1, 0, 111, "")
+    commands.command("new", "New file", 1, 0, 110, "")
+    commands.command("close", "Close tab", 1, 0, 119, "")
+    commands.command("nexttab", "Next tab", 1, 0, tab, "Tab")
+    commands.command("prevtab", "Previous tab", 1, 1, tab, "Tab")
+    commands.command("find", "Find", 1, 0, 102, "")
+    commands.command("findnext", "Find next", 0, 0, SDL2C.SDLK_F3(), "F3")
+    commands.command("findprev", "Find previous", 0, 1, SDL2C.SDLK_F3(), "F3")
+    commands.command("replace", "Replace", 1, 0, 104, "")
+    commands.command("line", "Go to line", 1, 0, 108, "")
+    commands.command("build", "Build", 0, 0, SDL2C.SDLK_F5(), "F5")
+    commands.command("theme", "Toggle dark and light", 1, 0, 116, "")
+    commands.command("themes", "Color theme...", 0, 0, 0, "")
+    commands.command("bigger", "Bigger text", 1, 0, 61, "=")
+    commands.alias("bigger", 1, 0, 43)
+    commands.command("smaller", "Smaller text", 1, 0, 45, "-")
+    commands.command("undo", "Undo", 1, 0, 122, "")
+    commands.command("redo", "Redo", 1, 1, 122, "")
+    commands.alias("redo", 1, 0, 121)
+    commands.command("all", "Select all", 1, 0, 97, "")
+    commands.command("cut", "Cut", 1, 0, 120, "")
+    commands.command("copy", "Copy", 1, 0, 99, "")
+    commands.command("paste", "Paste", 1, 0, 118, "")
+    commands.command("quit", "Quit", 1, 0, 113, "")
+    commands.bind("commands", 1, 0, 112)
+    commands.bind("closepanel", 0, 0, SDL2C.SDLK_ESCAPE())
+  end
+
+  # A key pressed with no palette open: a command, or a key that edits the text.
+  def Void editorKey(Int key, Int shift, Int shortcut, Int alt):
+    String id = commands.lookup(shortcut, shift, key)
+    if id.len() > 0:
+      runCommand(id)
+    elif EditKeys.apply(ed, key, shift, shortcut, m.viewRows()) == 1:
+      reveal()
+    end
+  end
+
   # ---- the palette's work ---------------------------------------------------------
 
   def Void openFind:
@@ -554,7 +566,7 @@ class Pad from IO
   end
 
   def Void openCommands:
-    pal.open(Palette.commandMode(), "command", commandNames, commandHints)
+    pal.open(Palette.commandMode(), "command", commands.names, commands.hints)
   end
 
   def Void openFiles:
@@ -591,7 +603,7 @@ class Pad from IO
       Int which = pal.chosen()
       pal.close()
       if which >= 0:
-        String id = commandIds.get(which)
+        String id = commands.ids.get(which)
         runCommand(id)
       end
     elif m == Palette.fileMode():
@@ -709,6 +721,13 @@ class Pad from IO
     elif id == "paste":
       ed.paste(sdl.clipboard())
       reveal()
+    elif id == "commands":
+      openCommands()
+    elif id == "closepanel":
+      if output.open == 1:
+        output.hide()
+        reveal()
+      end
     elif id == "quit":
       if mayDiscard("quit") == 1:
         quitting = 1
@@ -766,115 +785,6 @@ class Pad from IO
     elif shortcut == 1 and key == 118:
       pal.typeText(sdl.clipboard())
       afterFieldEdit()
-    end
-  end
-
-  def Void editorKey(Int key, Int shift, Int shortcut, Int alt):
-    if shortcut == 1:
-      if key == 112:
-        openCommands()
-      elif key == 111:
-        runCommand("open")
-      elif key == 110:
-        runCommand("new")
-      elif key == 119:
-        runCommand("close")
-      elif key == SDL2C.SDLK_TAB() and shift == 1:
-        runCommand("prevtab")
-      elif key == SDL2C.SDLK_TAB():
-        runCommand("nexttab")
-      elif key == 115:
-        save()
-      elif key == 102:
-        runCommand("find")
-      elif key == 104:
-        runCommand("replace")
-      elif key == 108:
-        runCommand("line")
-      elif key == 116:
-        runCommand("theme")
-      elif key == 61 or key == 43:
-        runCommand("bigger")
-      elif key == 45:
-        runCommand("smaller")
-      elif key == 113:
-        runCommand("quit")
-      elif key == 97:
-        runCommand("all")
-      elif key == 99:
-        runCommand("copy")
-      elif key == 120:
-        runCommand("cut")
-      elif key == 118:
-        runCommand("paste")
-      elif key == 122 and shift == 1:
-        runCommand("redo")
-      elif key == 122:
-        runCommand("undo")
-      elif key == 121:
-        runCommand("redo")
-      elif key == SDL2C.SDLK_LEFT():
-        ed.wordLeft(shift)
-        reveal()
-      elif key == SDL2C.SDLK_RIGHT():
-        ed.wordRight(shift)
-        reveal()
-      elif key == SDL2C.SDLK_HOME():
-        ed.docStart(shift)
-        reveal()
-      elif key == SDL2C.SDLK_END():
-        ed.docEnd(shift)
-        reveal()
-      end
-    elif key == SDL2C.SDLK_ESCAPE():
-      if output.open == 1:
-        output.hide()
-        reveal()
-      end
-    elif key == SDL2C.SDLK_F5():
-      build()
-    elif key == SDL2C.SDLK_F3():
-      findAgain(1 - shift)
-    elif key == SDL2C.SDLK_LEFT():
-      ed.left(shift)
-      reveal()
-    elif key == SDL2C.SDLK_RIGHT():
-      ed.right(shift)
-      reveal()
-    elif key == SDL2C.SDLK_UP():
-      ed.up(shift)
-      reveal()
-    elif key == SDL2C.SDLK_DOWN():
-      ed.down(shift)
-      reveal()
-    elif key == SDL2C.SDLK_HOME():
-      ed.home(shift)
-      reveal()
-    elif key == SDL2C.SDLK_END():
-      ed.endOfLine(shift)
-      reveal()
-    elif key == SDL2C.SDLK_PAGEUP():
-      ed.vertical(0 - m.viewRows(), shift)
-      reveal()
-    elif key == SDL2C.SDLK_PAGEDOWN():
-      ed.vertical(m.viewRows(), shift)
-      reveal()
-    elif key == SDL2C.SDLK_RETURN():
-      ed.newline()
-      reveal()
-    elif key == SDL2C.SDLK_BACKSPACE():
-      ed.backspace()
-      reveal()
-    elif key == SDL2C.SDLK_DELETE():
-      ed.deleteForward()
-      reveal()
-    elif key == SDL2C.SDLK_TAB():
-      if shift == 1:
-        ed.untab()
-      else
-        ed.tab()
-      end
-      reveal()
     end
   end
 
