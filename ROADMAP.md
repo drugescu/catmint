@@ -1105,9 +1105,9 @@ window was not timed, though only the rows on screen are drawn.
 **What building it found:** an FFI miscompile (a narrow unsigned argument
 reached C with the register's other bits set: the whole window came out cyan);
 that sdl2-compat cannot take a pushed text event and misreads a pushed wheel
-event; that a string literal cannot end in an escaped backslash (the lexer, not
-fixed); and that `Font` counted bytes where an editor needs characters. The
-first and fourth are fixed and tested.
+event; that a string literal could not end in an escaped backslash (the lexer);
+and that `Font` counted bytes where an editor needs characters. The first,
+third and fourth are fixed and tested.
 
 **The application is an editor for catmint programs**, `examples/pad`:
 open, edit, save, run. Chosen because it is the canonical GUI program, so it

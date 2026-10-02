@@ -1,0 +1,27 @@
+# A string literal can end in an escaped backslash. The lexer's rule took the
+# last two characters, `\"`, for an escaped quote -- a backslash and a quote --
+# without asking whether that backslash was itself escaped, so "\\" did not end
+# where it looked like it did: it ran on to the next quote anywhere after it,
+# on the same line or not, and the program either failed to parse or silently
+# joined two strings. A backslash escapes whatever follows it, left to right,
+# and a quote is a quote only when no backslash is escaping it.
+class Main from IO
+  def main:
+    String one = "\\"
+    out("one [${one}] ${one.len()}\n")
+    String joined = "x\\" + "y"
+    out("joined [${joined}] ${joined.len()}\n")
+    String twice = "\\\\"
+    out("twice [${twice}] ${twice.len()}\n")
+    String comment = "q\\" # a "quoted" word in a comment
+    out("comment [${comment}] ${comment.len()}\n")
+    String mixed = "\"\\"
+    out("mixed [${mixed}] ${mixed.len()}\n")
+    String raw = 'c\\'
+    out("single-quoted is raw [${raw}] ${raw.len()}\n")
+    String after = 'z'
+    out("and the next one is its own [${after}] ${after.len()}\n")
+    out("chain " + "A\\" + "B\\" + "C\n")
+    out("inside [\\] and at the end [\\" + "]\n")
+  end
+end

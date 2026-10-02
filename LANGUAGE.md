@@ -203,7 +203,15 @@ general value to a more specific variable inserts a checked conversion.
 `trim`, `upper`, `lower`, `split`, `replace`, and the statics `String.chr` (so
 `String.chr(0)` is a one-character String holding a NUL) and `String.fromC`
 (under "Calling C").
-→ `28_strings.cm`, `23_escapes.cm`
+
+In a double-quoted string a backslash takes the character after it, left to
+right: `\n`, `\t`, `\r`, `\0` are the control characters, `\\` a backslash, `\"` a
+quote, `\'` an apostrophe, `\$` a dollar sign that does not start an
+interpolation; any other pair is kept as written. A quote ends the string unless
+a backslash is claiming it, so a string can end in a backslash: `"C:\\"`. A
+single-quoted string is raw -- nothing in it is decoded and nothing is
+interpolated -- though a backslash still keeps the quote after it inside.
+→ `28_strings.cm`, `23_escapes.cm`, `85_string_end_backslash.cm`
 
 ## String interpolation
 

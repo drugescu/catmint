@@ -1171,11 +1171,9 @@ class Pad from IO
     report()
   end
 
-  # Backslashes and newlines written out, so a state line is one line. (A string
-  # cannot end in an escaped backslash in this lexer, hence chr(92).)
+  # Backslashes and newlines written out, so a state line is one line.
   def String escaped(String s):
-    String bs = String.chr(92)
-    return s.replace(bs, bs + bs).replace("\n", bs + "n")
+    return s.replace("\\", "\\\\").replace("\n", "\\n")
   end
 
   # What a script's test can ask about.

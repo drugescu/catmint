@@ -1205,12 +1205,17 @@ Each of these produced a crash or a silent miscompile during development.
   gives typed text to the program's own handler (`Pad.send`). A pushed wheel
   event arrives with `y` 0 and the amount in `preciseY`, which `Sdl.wheel`
   reads. Real SDL2 (Linux) has neither problem.
-- **A string literal cannot end in an escaped backslash.** The lexer's rule is
-  `["]([^"]|(\\\"))*["]`, which takes `\"` as an escaped quote after a
-  backslash, so `"\\"` swallows the quote that should close it and the string
-  runs to the next one in the file. Write `String.chr(92)`. Not fixed; the
-  highlighter colours such a string the way it was meant (a backslash keeps the
-  next character) and so disagrees with the lexer on it.
+- ~~**A string literal cannot end in an escaped backslash.**~~ **Fixed.** The
+  lexer's rule was `["]([^"]|(\\\"))*["]`, which took `\"` for an escaped
+  quote without asking whether that backslash was itself escaped, so `"\\"` ran
+  on to the next quote anywhere after it: a parse error, or two strings
+  silently joined. It is now `["]([^"\\]|\\(.|\n))*["]` (and the same for
+  single quotes): a backslash takes the character after it, left to right, and
+  a quote ends the string unless a backslash is claiming it. `85_string_end_backslash`
+  fails to parse without either half of the fix (the single-quote rule needs a
+  later single quote in the file to show, so the test has one), and the parser
+  suite has `string_end_backslash.cm`. The editor's highlighter always read
+  strings this way, and now agrees with the lexer.
 - **`type`, `copy`, `abort`, `retain`, `release` and `refs` are `Object`'s.** A
   method of that name on your class is an override and must match the
   signature: "doesn't match that of overriden method". `Texture.copy` became

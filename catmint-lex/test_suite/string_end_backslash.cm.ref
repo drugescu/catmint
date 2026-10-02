@@ -1,0 +1,116 @@
+{
+    "NodeType": "Program",
+    "NodeID": 0,
+    "LineNumber": 1,
+    "Classes": [
+        {
+            "NodeType": "Class",
+            "NodeID": 1,
+            "LineNumber": 1,
+            "Name": "Main",
+            "Parent": "IO",
+            "SourceFile": "./test_suite/string_end_backslash.cm",
+            "Features": [
+                {
+                    "NodeType": "Method",
+                    "NodeID": 2,
+                    "LineNumber": 2,
+                    "Name": "main",
+                    "ReturnType": "auto",
+                    "Body": {
+                        "NodeType": "Block",
+                        "NodeID": 3,
+                        "LineNumber": 1,
+                        "Expressions": [
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 4,
+                                "LineNumber": 1
+                            },
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 5,
+                                "LineNumber": 3,
+                                "Expressions": [
+                                    {
+                                        "NodeType": "Dispatch",
+                                        "NodeID": 6,
+                                        "LineNumber": 3,
+                                        "Name": "out",
+                                        "Arguments": [
+                                            {
+                                                "NodeType": "StringConstant",
+                                                "NodeID": 7,
+                                                "LineNumber": 3,
+                                                "Value": "\\"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "NodeType": "Dispatch",
+                                        "NodeID": 8,
+                                        "LineNumber": 4,
+                                        "Name": "out",
+                                        "Arguments": [
+                                            {
+                                                "NodeType": "BinaryOperator",
+                                                "NodeID": 9,
+                                                "LineNumber": 4,
+                                                "OperatorKind": "+",
+                                                "LeftHandSide": {
+                                                    "NodeType": "StringConstant",
+                                                    "NodeID": 10,
+                                                    "LineNumber": 4,
+                                                    "Value": "a\\"
+                                                },
+                                                "RightHandSide": {
+                                                    "NodeType": "StringConstant",
+                                                    "NodeID": 11,
+                                                    "LineNumber": 4,
+                                                    "Value": "b"
+                                                }
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "NodeType": "Dispatch",
+                                        "NodeID": 12,
+                                        "LineNumber": 5,
+                                        "Name": "out",
+                                        "Arguments": [
+                                            {
+                                                "NodeType": "StringConstant",
+                                                "NodeID": 13,
+                                                "LineNumber": 5,
+                                                "Value": "c\\\\"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "NodeType": "Dispatch",
+                                        "NodeID": 14,
+                                        "LineNumber": 6,
+                                        "Name": "out",
+                                        "Arguments": [
+                                            {
+                                                "NodeType": "StringConstant",
+                                                "NodeID": 15,
+                                                "LineNumber": 6,
+                                                "Value": "d"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "NodeType": "Block",
+                                "NodeID": 16,
+                                "LineNumber": 1
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ]
+}

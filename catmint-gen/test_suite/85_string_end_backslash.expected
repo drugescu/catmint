@@ -1,0 +1,9 @@
+one [\] 1
+joined [x\y] 3
+twice [\\] 2
+comment [q\] 2
+mixed ["\] 2
+single-quoted is raw [c\\] 3
+and the next one is its own [z] 1
+chain A\B\C
+inside [\] and at the end [\]
