@@ -12,6 +12,7 @@
 #
 #   # frames 10
 #   # files notes.txt=hello   (files made in the working directory first)
+#   # exec catmintc=#!/bin/sh\necho hi   (a file made executable)
 #   # open notes.txt          (start with this file)
 #   # args --catmintc @ROOT@/catmintc   (more arguments; @ROOT@ is the repository)
 #   # expect cursor 1 6
@@ -52,6 +53,16 @@ for play in "$HERE"/tests/*.play; do
   done <<FILES
 $(sed -n 's/^# files //p' "$play")
 FILES
+  # "# exec name=text": the same, made executable (a stand-in for a program).
+  while IFS= read -r spec; do
+    [ -z "$spec" ] && continue
+    fname=${spec%%=*}
+    mkdir -p "$dir/$(dirname "$fname")"
+    printf '%b' "${spec#*=}" > "$dir/$fname"
+    chmod +x "$dir/$fname"
+  done <<EXECS
+$(sed -n 's/^# exec //p' "$play")
+EXECS
   open=$(sed -n 's/^# open \(.*\)$/\1/p' "$play")
   # "# args ...": more arguments for pad; @ROOT@ is this repository.
   extra=$(sed -n 's/^# args \(.*\)$/\1/p' "$play" | sed "s|@ROOT@|$ROOT|g")

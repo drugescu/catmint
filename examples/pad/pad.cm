@@ -2,6 +2,9 @@
 #
 #   pad [file] [--catmintc path] [-I dir] ...
 #
+# F5 needs catmintc: started in the repository it is ./catmintc, run as
+# examples/pad/pad it is found from there, else it is looked for on the PATH.
+#
 # Text is the interface. There is no menu bar, no dialog, no tab strip and
 # nothing to configure: one command palette (Ctrl P, or Cmd on a Mac) does what
 # those do -- it runs commands, opens files by a fragment of their path, finds,
@@ -56,7 +59,7 @@ class Pad from IO
   Palette pal = null
   String path = ""
   String message = ""
-  String catmintc = "catmintc"
+  String catmintc = ""
   List includes = null
   List recents = null
   List panel = null
@@ -457,6 +460,44 @@ class Pad from IO
     message = "unsaved changes - Ctrl S saves, or do that again to discard them"
     armed = action
     return 0
+  end
+
+  # Where the compiler is, when --catmintc did not say. Started from the
+  # repository, it is ./catmintc; started as examples/pad/pad from anywhere, it
+  # is two folders up from this program; otherwise whatever is on the PATH. The
+  # library folder beside a compiler found by path is passed with it, so a
+  # program that says `using sdl` builds without being told where sdl is.
+  def Void locateCompiler(String argv0):
+    String found = ""
+    if File.exists("catmintc") == 1 and Files.isDirectory("catmintc") == 0:
+      found = "./catmintc"
+    else
+      Int slash = 0 - 1
+      Int i = 0
+      while i < argv0.len():
+        if argv0.at(i) == 47:
+          slash = i
+        end
+        i = i + 1
+      end
+      if slash >= 0:
+        String near = argv0.substr(0, slash) + "/../../catmintc"
+        if File.exists(near) == 1:
+          found = near
+        end
+      end
+    end
+    if found.len() == 0:
+      found = "catmintc"
+    end
+    catmintc = found
+    if includes.len() == 0:
+      if found.len() > 8 and File.exists(found.substr(0, found.len() - 8) + "lib/sdl.cmm") == 1:
+        includes.append(found.substr(0, found.len() - 8) + "lib")
+      elif File.exists("lib/sdl.cmm") == 1:
+        includes.append("lib")
+      end
+    end
   end
 
   # A path with its extension taken off: where a build is put.
@@ -1192,6 +1233,12 @@ class Pad from IO
     end
     out("results ${pal.results.len()} first ${first}\n")
     out("panel ${panelOpen} ${panel.len()}\n")
+    String last = "-"
+    if panel.len() > 0:
+      String tail = panel.get(panel.len() - 1)
+      last = tail
+    end
+    out("panellast ${last}\n")
     out("top ${ed.top} scrollx ${scrollX}\n")
     out("scale ${scale}\n")
     out("quit ${quitting}\n")
@@ -1237,6 +1284,9 @@ class Main from IO
         first = a
       end
       i = i + 1
+    end
+    if pad.catmintc.len() == 0:
+      pad.locateCompiler(arg(0))
     end
     if first.len() > 0:
       pad.openPath(first)

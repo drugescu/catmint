@@ -1,0 +1,12 @@
+# Started in a folder that has a catmintc in it, pad uses that one: no --catmintc,
+# nothing on the PATH. The stand-in here prints the arguments it was given, so
+# the panel shows that it was run, and how: the file, then -o and where the
+# program goes. (It has no lib folder beside it, so there is no -I.)
+# files t.cm=x
+# exec catmintc=#!/bin/sh\necho "fake compiler got: $*"\n
+# open t.cm
+# frames 4
+# expect message built t
+# expect panel 1 1
+# expect panellast fake compiler got: t.cm -o t
+1 key f5
