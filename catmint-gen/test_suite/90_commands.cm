@@ -1,0 +1,72 @@
+# The list of commands an editor offers, and the keys that run them, in one table:
+# the palette's names, the hint shown beside each (the key that does the same), and
+# the lookup from a key press to a command all come from the same lines, so they
+# cannot disagree about what Ctrl S does. What is expected:
+#   - a command with a key is found by it, and its hint is how that key is
+#     written: "Ctrl S", "Ctrl Shift Z", "Shift F3", "F5"; a key that is not a
+#     letter says its name ("Tab", "="), given when the command is added;
+#   - a key with no binding finds nothing; a command with no key has no hint and
+#     is still in the palette;
+#   - Shift: a key press matches the binding made for exactly that Shift; if there
+#     is none, the one made without Shift (Ctrl Shift S saves when only Ctrl S is
+#     bound), but never the other way round;
+#   - Ctrl: a binding without Ctrl is a key on its own (F5), and does not answer to
+#     Ctrl F5, nor Ctrl S to a plain S;
+#   - an alias is another key for a command: it finds it, and the hint stays the
+#     first key's; an entry with no name is a key only, and is not in the palette;
+#   - the first binding of a key wins.
+
+using commands
+
+class Main from IO
+  def look(Commands c, Int ctrl, Int shift, Int key):
+    String id = c.lookup(ctrl, shift, key)
+    out("  ctrl ${ctrl} shift ${shift} key ${key} -> [${id}]\n")
+  end
+
+  def main:
+    Commands c = new Commands()
+    c.command("save", "Save", 1, 0, 115, "")
+    c.command("undo", "Undo", 1, 0, 122, "")
+    c.command("redo", "Redo", 1, 1, 122, "")
+    c.command("tab", "Next tab", 1, 0, 9, "Tab")
+    c.command("findprev", "Find previous", 0, 1, 1000, "F3")
+    c.command("find", "Find", 0, 0, 1000, "F3")
+    c.command("build", "Build", 0, 0, 1001, "F5")
+    c.command("bigger", "Bigger text", 1, 0, 61, "=")
+    c.command("themes", "Color theme...", 0, 0, 0, "")
+    c.alias("bigger", 1, 0, 43)
+    c.alias("redo", 1, 0, 121)
+    c.bind("commands", 1, 0, 112)
+    c.command("first", "First wins", 1, 0, 113, "")
+    c.command("second", "Second loses", 1, 0, 113, "")
+
+    out("the palette's names and hints:\n")
+    Int i = 0
+    while i < c.names.len():
+      out("  ${c.ids.get(i)} | ${c.names.get(i)} | [${c.hints.get(i)}]\n")
+      i = i + 1
+    end
+
+    out("keys:\n")
+    look(c, 1, 0, 115)
+    look(c, 1, 1, 115)
+    look(c, 0, 0, 115)
+    look(c, 1, 0, 122)
+    look(c, 1, 1, 122)
+    look(c, 1, 0, 121)
+    look(c, 1, 0, 9)
+    look(c, 1, 1, 9)
+    look(c, 0, 0, 1000)
+    look(c, 0, 1, 1000)
+    look(c, 1, 0, 1000)
+    look(c, 0, 0, 1001)
+    look(c, 1, 0, 1001)
+    look(c, 1, 0, 61)
+    look(c, 1, 0, 43)
+    look(c, 1, 0, 112)
+    look(c, 1, 0, 113)
+    look(c, 1, 0, 999)
+    look(c, 0, 0, 0)
+  end
+end
