@@ -1,0 +1,78 @@
+# The editor's settings file: a few `key=value` lines that survive a restart,
+# kept in a folder of its own. What is expected of it:
+#   - nothing there is not an error: a missing file or key gives the fallback;
+#   - putting a key makes the folder (and its parents) and the file, and getting
+#     it back gives what was put, including a value with `=` in it;
+#   - putting a second key keeps the first; putting a key again changes it in
+#     place and keeps the order;
+#   - a value is one line (a newline in it becomes a space), a key is a plain
+#     word (one with `=` or a newline in it is refused and nothing is written);
+#   - lines it does not understand are left alone and not lost on the next put;
+#   - where the folder is: PAD_CONFIG if set, else $HOME/.config/catmint-pad, else
+#     nowhere (empty), in which case putting does nothing and says so.
+
+using settings
+
+extern class Libc
+  def Int setenv(String name, String value, Int overwrite)
+  def Int unsetenv(String name)
+end
+
+class Main from IO
+  def set(String name, String value):
+    unsafe:
+      Libc.setenv(name, value, 1)
+    end
+  end
+
+  def unset(String name):
+    unsafe:
+      Libc.unsetenv(name)
+    end
+  end
+
+  def main:
+    String base = "/tmp/catmint_settings_test_${Process.pid()}"
+    Process.runArgs(("rm -rf " + base).split(" "))
+    String dir = base + "/deep/er/config"
+
+    out("a missing folder gives the fallback: ${Settings.get(dir, "theme", "plain")}\n")
+    out("put makes the folders and the file: ${Settings.put(dir, "theme", "Nord")}\n")
+    out("and it reads back: ${Settings.get(dir, "theme", "plain")}\n")
+    out("a key that is not there: ${Settings.get(dir, "size", "14")}\n")
+    Settings.put(dir, "font", "Menlo")
+    out("a second key keeps the first: ${Settings.get(dir, "theme", "plain")} ${Settings.get(dir, "font", "none")}\n")
+    Settings.put(dir, "theme", "Dracula")
+    out("a key put again changes in place: ${Settings.get(dir, "theme", "plain")} ${Settings.get(dir, "font", "none")}\n")
+    String text = Files.read(dir + "/settings", 1000)
+    out("the file, in order: ${text.replace("\n", "|")}\n")
+    Settings.put(dir, "path", "a=b=c")
+    out("a value with = in it: ${Settings.get(dir, "path", "")}\n")
+    Settings.put(dir, "note", "one\ntwo")
+    out("a newline in a value becomes a space: ${Settings.get(dir, "note", "")}\n")
+    out("a key with = is refused: ${Settings.put(dir, "a=b", "x")}\n")
+    out("a key with a newline is refused: ${Settings.put(dir, "a\nb", "x")}\n")
+    out("and wrote nothing: ${Settings.get(dir, "a", "no")}\n")
+    out("an empty key is refused: ${Settings.put(dir, "", "x")}\n")
+
+    # Lines it does not understand survive a put.
+    Files.save(dir + "/settings", "# written by hand\ntheme=Nord\nthis is not a setting\nsize=16\n")
+    Settings.put(dir, "font", "Hack")
+    text = Files.read(dir + "/settings", 1000)
+    out("lines it does not understand stay: ${text.replace("\n", "|")}\n")
+    out("and the rest still reads: ${Settings.get(dir, "theme", "plain")} ${Settings.get(dir, "size", "0")} ${Settings.get(dir, "font", "none")}\n")
+
+    set("PAD_CONFIG", "/somewhere/else")
+    out("PAD_CONFIG is the folder: ${Settings.dir()}\n")
+    unset("PAD_CONFIG")
+    set("HOME", "/home/someone")
+    out("else under HOME: ${Settings.dir()}\n")
+    unset("HOME")
+    out("else nowhere: [${Settings.dir()}]\n")
+    out("and putting there does nothing: ${Settings.put(Settings.dir(), "theme", "x")}\n")
+    out("and nothing turned up at the root (it would, as root, if the guard went): ${File.exists("/settings") == 0}\n")
+
+    Process.runArgs(("rm -rf " + base).split(" "))
+    out("cleaned up: ${File.exists(base) == 0}\n")
+  end
+end
