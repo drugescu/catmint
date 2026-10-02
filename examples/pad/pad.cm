@@ -1,6 +1,6 @@
 # pad: a small editor for catmint programs.
 #
-#   pad [file] [--catmintc path] [-I dir] ...
+#   pad [file] [--catmintc path] [-I dir] [--themes dir] ...
 #
 # F5 needs catmintc: started in the repository it is ./catmintc, run as
 # examples/pad/pad it is found from there, else it is looked for on the PATH.
@@ -36,6 +36,9 @@ using font
 using theme
 using editor
 using highlight
+using themes
+using base16
+using settings
 using palette
 using files
 using buildlog
@@ -61,9 +64,11 @@ class Pad from IO
   Window win = null
   Renderer view = null
   Font font = null
-  Theme dark = null
-  Theme light = null
   Theme t = null
+  List themeList = null
+  Theme themeBefore = null
+  String configDir = ""
+  String themeDir = ""
   Editor ed = null
   List docs = null
   Int current
@@ -102,9 +107,11 @@ class Pad from IO
     win = w
     view = r
     font = new Font(r)
-    dark = Theme.dark()
-    light = Theme.light()
-    t = dark
+    t = Theme.dark()
+    configDir = Settings.dir()
+    if configDir.len() > 0:
+      themeDir = configDir + "/themes"
+    end
     ed = new Editor()
     Doc first = new Doc()
     first.ed = ed
@@ -132,6 +139,7 @@ class Pad from IO
     command("line", "Go to line", "Ctrl L")
     command("build", "Build", "F5")
     command("theme", "Toggle dark and light", "Ctrl T")
+    command("themes", "Color theme...", "")
     command("bigger", "Bigger text", "Ctrl =")
     command("smaller", "Smaller text", "Ctrl -")
     command("undo", "Undo", "Ctrl Z")
@@ -147,6 +155,90 @@ class Pad from IO
     commandIds.append(id)
     commandNames.append(name)
     commandHints.append(hint)
+  end
+
+  # ---- themes -----------------------------------------------------------------
+
+  # The theme the settings name, if it can still be found: built in, or in the
+  # themes folder. Anything else is the default, not an error.
+  def Void restoreTheme:
+    String wanted = Settings.get(configDir, "theme", "")
+    if wanted.len() > 0:
+      Theme found = Themes.named(wanted)
+      if found == null and themeDir.len() > 0:
+        List all = Base16.withFolder(themeDir)
+        Int i = 0
+        while i < all.len():
+          Theme candidate = all.get(i)
+          if candidate.name.equals(wanted):
+            found = candidate
+          end
+          i = i + 1
+        end
+      end
+      if found != null:
+        t = found
+      end
+    end
+  end
+
+  def Void rememberTheme:
+    Settings.put(configDir, "theme", t.name)
+  end
+
+  # The list of themes: the built-in ones, then any in the themes folder, with
+  # the one in use highlighted.
+  def Void openThemes:
+    themeBefore = t
+    if themeDir.len() > 0:
+      themeList = Base16.withFolder(themeDir)
+    else
+      themeList = Themes.all()
+    end
+    List names = new List()
+    List kinds = new List()
+    Int i = 0
+    while i < themeList.len():
+      Theme each = themeList.get(i)
+      names.append(each.name)
+      if each.isDark == 1:
+        kinds.append("dark")
+      else
+        kinds.append("light")
+      end
+      i = i + 1
+    end
+    pal.open(Palette.themeMode(), "theme", names, kinds)
+    pal.rows = 12
+    pal.refresh()
+    i = 0
+    while i < pal.results.len():
+      Int which = pal.results.get(i)
+      String name = names.get(which)
+      if name.equals(t.name):
+        pal.selected = i
+      end
+      i = i + 1
+    end
+  end
+
+  # While the list is open, the highlighted theme is the one on screen.
+  def Void previewTheme:
+    if pal.mode == Palette.themeMode():
+      Int which = pal.chosen()
+      if which >= 0:
+        Theme shown = themeList.get(which)
+        t = shown
+      end
+    end
+  end
+
+  # Close the palette. A list of themes that is dismissed puts back what it found.
+  def Void closePalette:
+    if pal.mode == Palette.themeMode():
+      t = themeBefore
+    end
+    pal.close()
   end
 
   # ---- measures ---------------------------------------------------------------
@@ -853,6 +945,9 @@ class Pad from IO
   end
 
   def Void afterFieldEdit:
+    if pal.mode == Palette.themeMode():
+      previewTheme()
+    end
     if pal.mode == Palette.findMode():
       needle = pal.field.buf.text()
       ed.moveTo(findOrigin, 0)
@@ -922,6 +1017,12 @@ class Pad from IO
         ed.goToLine(n)
         reveal()
       end
+    elif m == Palette.themeMode():
+      if pal.chosen() < 0:
+        t = themeBefore
+      end
+      pal.close()
+      rememberTheme()
     elif m == Palette.saveMode():
       String target = pal.field.buf.text()
       pal.close()
@@ -963,11 +1064,10 @@ class Pad from IO
     elif id == "build":
       build()
     elif id == "theme":
-      if t == dark:
-        t = light
-      else
-        t = dark
-      end
+      t = Themes.pairOf(t)
+      rememberTheme()
+    elif id == "themes":
+      openThemes()
     elif id == "bigger":
       if scale < 4:
         scale = scale + 1
@@ -1021,13 +1121,15 @@ class Pad from IO
 
   def Void paletteKey(Int key, Int shift, Int shortcut):
     if key == SDL2C.SDLK_ESCAPE():
-      pal.close()
+      closePalette()
     elif key == SDL2C.SDLK_RETURN():
       acceptPalette(shift, shortcut)
     elif key == SDL2C.SDLK_UP():
       pal.up()
+      previewTheme()
     elif key == SDL2C.SDLK_DOWN():
       pal.down()
+      previewTheme()
     elif key == SDL2C.SDLK_BACKSPACE():
       pal.backspace()
       afterFieldEdit()
@@ -1205,7 +1307,7 @@ class Pad from IO
         pal.selected = row
         acceptPalette(0, 0)
       elif y >= rowHeight() * (2 + pal.results.len()) or x < left or x >= left + w:
-        pal.close()
+        closePalette()
       end
     elif y < tabsHeight():
       Int tab = tabAt(x)
@@ -1536,11 +1638,7 @@ class Pad from IO
     out("top ${ed.top} scrollx ${scrollX}\n")
     out("scale ${scale}\n")
     out("quit ${quitting}\n")
-    if t == dark:
-      out("theme dark\n")
-    else
-      out("theme light\n")
-    end
+    out("theme ${t.name}\n")
   end
 end
 
@@ -1561,6 +1659,9 @@ class Main from IO
       if a == "--catmintc":
         i = i + 1
         pad.catmintc = arg(i)
+      elif a == "--themes":
+        i = i + 1
+        pad.themeDir = arg(i)
       elif a == "-I":
         i = i + 1
         pad.includes.append(arg(i))
@@ -1579,6 +1680,7 @@ class Main from IO
       end
       i = i + 1
     end
+    pad.restoreTheme()
     if pad.catmintc.len() == 0:
       pad.locateCompiler(arg(0))
     end

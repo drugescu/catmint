@@ -1,0 +1,6 @@
+# A theme the settings name but that is not there (a deleted file) is not an
+# error: pad starts with the default.
+# config-files settings=theme=No Such Theme\n
+# frames 3
+# expect theme Catmint Dark
+1 key down

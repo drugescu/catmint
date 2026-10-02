@@ -2,7 +2,7 @@
 # first; its row is the one below the field, y = 44 to 66, and a click there
 # toggles the theme and closes the box.
 # frames 5
-# expect theme light
+# expect theme Catmint Light
 # expect palette 0
 1 key p ctrl
 2 text dark

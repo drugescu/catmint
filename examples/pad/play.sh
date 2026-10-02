@@ -13,6 +13,8 @@
 #   # frames 10
 #   # files notes.txt=hello   (files made in the working directory first)
 #   # exec catmintc=#!/bin/sh\necho hi   (a file made executable)
+#   # config-files settings=theme=Nord\n   (in the settings folder, first)
+#   # config-file settings=theme=Nord\n    (and what it holds afterwards)
 #   # open notes.txt          (start with this file)
 #   # args --catmintc @ROOT@/catmintc   (more arguments; @ROOT@ is the repository)
 #   # expect cursor 1 6
@@ -63,6 +65,19 @@ FILES
   done <<EXECS
 $(sed -n 's/^# exec //p' "$play")
 EXECS
+  # Each test has a settings folder of its own, so none reads a real one:
+  # "# config-files name=text" puts a file there first (themes/x.yaml, settings).
+  PAD_CONFIG="$TMP/config-$name"
+  export PAD_CONFIG
+  mkdir -p "$PAD_CONFIG"
+  while IFS= read -r spec; do
+    [ -z "$spec" ] && continue
+    fname=${spec%%=*}
+    mkdir -p "$PAD_CONFIG/$(dirname "$fname")"
+    printf '%b' "${spec#*=}" > "$PAD_CONFIG/$fname"
+  done <<CONFIGS
+$(sed -n 's/^# config-files //p' "$play")
+CONFIGS
   open=$(sed -n 's/^# open \(.*\)$/\1/p' "$play")
   # "# args ...": more arguments for pad; @ROOT@ is this repository.
   extra=$(sed -n 's/^# args \(.*\)$/\1/p' "$play" | sed "s|@ROOT@|$ROOT|g")
@@ -92,6 +107,15 @@ ABSENT
   done <<FILECHECK
 $(sed -n 's/^# file //p' "$play")
 FILECHECK
+  # "# config-file name=text": a file in the settings folder, afterwards.
+  while IFS= read -r spec; do
+    [ -z "$spec" ] && continue
+    fname=${spec%%=*}
+    printf '%b' "${spec#*=}" > "$TMP/want"
+    cmp -s "$TMP/want" "$PAD_CONFIG/$fname" || problems="$problems${problems:+; }config file $fname is not what it should be"
+  done <<CONFIGCHECK
+$(sed -n 's/^# config-file //p' "$play")
+CONFIGCHECK
   while IFS= read -r spec; do
     [ -z "$spec" ] && continue
     want=${spec##* }

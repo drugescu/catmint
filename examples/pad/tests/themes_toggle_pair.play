@@ -1,0 +1,7 @@
+# "Toggle dark and light" goes to the theme's partner: Gruvbox Dark to Gruvbox
+# Light, not to some other light theme, and the choice is kept.
+# config-files settings=theme=Gruvbox Dark\n
+# frames 4
+# expect theme Gruvbox Light
+# config-file settings=theme=Gruvbox Light\n
+1 key t ctrl

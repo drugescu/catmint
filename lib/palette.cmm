@@ -60,6 +60,11 @@ class Palette from Object
     return 6
   end
 
+  # Choosing a colour theme: a list, with the highlighted one shown as it moves.
+  static def Int themeMode:
+    return 7
+  end
+
   constructor():
     field = new Editor()
     names = new List()
@@ -80,6 +85,7 @@ class Palette from Object
     names = choices
     hints = beside
     field = new Editor()
+    rows = 8
     refresh()
   end
 
