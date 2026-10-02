@@ -1080,8 +1080,11 @@ wheel and the page keys scroll. Only the commands in `TerminalKeys.global` run f
 terminal; Escape gives the keyboard back to the text, and again closes the panel. Ctrl C is a
 SIGINT to what the shell started. A program started from a script's background job (`cmd &`)
 has SIGINT *ignored*, and so would everything it starts -- which broke the terminal's Ctrl C
-and the tests of it under `test.sh` run that way -- so `Job.start` starts the program with
-SIGINT at its default and puts back what the process had.
+and the tests of it under `test.sh` run that way. GitHub's runner ignores SIGPIPE, so under it
+`yes | head` made `yes` print "Broken pipe" and `92_job` counted one line too many (the CI log
+cannot be read without signing in; `test.sh` now writes its failures as annotations, which can).
+So `Job.start` starts the program with SIGINT and SIGPIPE at their defaults and puts back what
+the process had. To run the suite as the runner does: `perl -e '$SIG{PIPE}="IGNORE"; $SIG{INT}="IGNORE"; exec @ARGV' ./test.sh --thorough`.
 A pipe opened for reading by a program that has not started yet blocks that program
 for ever if the writer closes first: `Job` therefore waits for the launcher's `ready`
 file before closing the input (a hang found by the test, not by thought).

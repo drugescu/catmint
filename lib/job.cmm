@@ -270,15 +270,20 @@ class Job from Object
       i = i + 1
     end
     # A program started from a script's background job has SIGINT ignored, and so would
-    # everything started here, and ^C (interrupt()) could stop nothing: the program is
-    # started with it at its default, and this process gets back what it had.
-    Ptr before = null
+    # everything started here, and ^C (interrupt()) could stop nothing; and a process started
+    # by a CI runner has SIGPIPE ignored, so `yes | head` makes `yes` print "Broken pipe"
+    # instead of quietly stopping, which put an extra line in the output. The program is
+    # started with both at their default, and this process gets back what it had.
+    Ptr beforeInt = null
+    Ptr beforePipe = null
     unsafe:
-      before = JobC.signal(2, null)
+      beforeInt = JobC.signal(2, null)
+      beforePipe = JobC.signal(13, null)
     end
     pid = Process.startArgs(launch)
     unsafe:
-      JobC.signal(2, before)
+      JobC.signal(2, beforeInt)
+      JobC.signal(13, beforePipe)
     end
     if pid <= 0:
       tidy()
