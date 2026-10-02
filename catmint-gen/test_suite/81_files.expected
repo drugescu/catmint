@@ -38,4 +38,5 @@ depth 1 has a.txt: 1
 depth 1 has no sub/b.txt: 1
 a limit of 2 gives 2
 a directory that is not there: 0
+a name without its folders: [c.txt] [c.txt] [x] [] []
 cleaned up: 1

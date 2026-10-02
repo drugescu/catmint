@@ -42,6 +42,8 @@ using settings
 using palette
 using files
 using buildlog
+using outputpanel
+using builder
 using metrics
 using painter
 using playscript
@@ -73,11 +75,9 @@ class Pad from IO
   Palette pal = null
   String path = ""
   String message = ""
-  String catmintc = ""
-  List includes = null
+  Builder builder = null
   List recents = null
-  List panel = null
-  Int panelOpen
+  OutputPanel output = null
   Int scrollX
   Int dragging
   Int lastClick
@@ -112,9 +112,9 @@ class Pad from IO
     docs = new List()
     docs.append(first)
     pal = new Palette()
-    includes = new List()
+    builder = new Builder()
     recents = new List()
-    panel = new List()
+    output = new OutputPanel()
     commandIds = new List()
     commandNames = new List()
     commandHints = new List()
@@ -448,7 +448,7 @@ class Pad from IO
       m.tabRows = 1
     end
     m.panelRows = 0
-    if panelOpen == 1:
+    if output.open == 1:
       m.panelRows = 8
     end
   end
@@ -491,8 +491,8 @@ class Pad from IO
       ensureTabVisible()
       painter.tabs(tabLabels(), current, firstTab)
     end
-    if panelOpen == 1:
-      painter.panel(panel)
+    if output.open == 1:
+      painter.panel(output.lines)
     end
     painter.status(statusName(), message, ed.line(), ed.col())
     if pal.isOpen() == 1:
@@ -578,52 +578,7 @@ class Pad from IO
     return 0
   end
 
-  # Where the compiler is, when --catmintc did not say. Started from the
-  # repository, it is ./catmintc; started as examples/pad/pad from anywhere, it
-  # is two folders up from this program; otherwise whatever is on the PATH. The
-  # library folder beside a compiler found by path is passed with it, so a
-  # program that says `using sdl` builds without being told where sdl is.
-  def Void locateCompiler(String argv0):
-    String found = ""
-    if File.exists("catmintc") == 1 and Files.isDirectory("catmintc") == 0:
-      found = "./catmintc"
-    else
-      Int slash = 0 - 1
-      Int i = 0
-      while i < argv0.len():
-        if argv0.at(i) == 47:
-          slash = i
-        end
-        i = i + 1
-      end
-      if slash >= 0:
-        String near = argv0.substr(0, slash) + "/../../catmintc"
-        if File.exists(near) == 1:
-          found = near
-        end
-      end
-    end
-    if found.len() == 0:
-      found = "catmintc"
-    end
-    catmintc = found
-    if includes.len() == 0:
-      if found.len() > 8 and File.exists(found.substr(0, found.len() - 8) + "lib/sdl.cmm") == 1:
-        includes.append(found.substr(0, found.len() - 8) + "lib")
-      elif File.exists("lib/sdl.cmm") == 1:
-        includes.append("lib")
-      end
-    end
-  end
-
-  # A path with its extension taken off: where a build is put.
-  def String builtName:
-    if path.len() > 3 and path.substr(path.len() - 3, path.len()).equals(".cm"):
-      return path.substr(0, path.len() - 3)
-    end
-    return path + ".out"
-  end
-
+  # Save what needs saving, build the file, and show what the compiler said.
   def Void build:
     if path.len() == 0:
       message = "save the file first"
@@ -634,36 +589,13 @@ class Pad from IO
       end
       message = "building..."
       draw()
-      List args = new List()
-      args.append(catmintc)
-      Int i = 0
-      while i < includes.len():
-        args.append("-I")
-        args.append(includes.get(i))
-        i = i + 1
-      end
-      args.append(path)
-      args.append("-o")
-      args.append(builtName())
-      panel = new List()
-      Process p = new Process()
-      p.openArgs(args)
-      while p.eof() == 0:
-        String line = p.readLine()
-        if panel.len() < 200:
-          panel.append(line)
-        end
-      end
-      Int code = p.finish()
-      if code == 127:
-        panel.append("could not run ${catmintc}")
-      end
+      Int code = builder.build(path, output)
       if code == 0:
-        message = "built ${builtName()}"
+        message = "built ${builder.outputFor(path)}"
       else
         message = "build failed"
       end
-      panelOpen = 1
+      output.show()
       dirty = 1
     end
   end
@@ -984,8 +916,8 @@ class Pad from IO
         reveal()
       end
     elif key == SDL2C.SDLK_ESCAPE():
-      if panelOpen == 1:
-        panelOpen = 0
+      if output.open == 1:
+        output.hide()
         reveal()
       end
     elif key == SDL2C.SDLK_F5():
@@ -1070,10 +1002,10 @@ class Pad from IO
           switchTo(tab)
         end
       end
-    elif panelOpen == 1 and y >= m.tabsHeight() + m.viewHeight() + 1 and y < m.height - m.rowHeight():
+    elif output.open == 1 and y >= m.tabsHeight() + m.viewHeight() + 1 and y < m.height - m.rowHeight():
       Int i = (y - m.tabsHeight() - m.viewHeight() - 1) / m.rowHeight()
-      if i < panel.len():
-        jumpTo(panel.get(i))
+      if i < output.size():
+        jumpTo(output.lineAt(i))
       end
     elif y < m.tabsHeight() + m.viewHeight():
       Int row = m.rowAt(y, ed.top)
@@ -1210,13 +1142,13 @@ class Main from IO
       String a = arg(i)
       if a == "--catmintc":
         i = i + 1
-        pad.catmintc = arg(i)
+        pad.builder.compiler = arg(i)
       elif a == "--themes":
         i = i + 1
         pad.themeDir = arg(i)
       elif a == "-I":
         i = i + 1
-        pad.includes.append(arg(i))
+        pad.builder.includes.append(arg(i))
       elif a == "--play":
         i = i + 1
         script = arg(i)
@@ -1233,8 +1165,8 @@ class Main from IO
       i = i + 1
     end
     pad.restoreTheme()
-    if pad.catmintc.len() == 0:
-      pad.locateCompiler(arg(0))
+    if pad.builder.compiler.len() == 0:
+      pad.builder.locate(arg(0))
     end
     if first.len() > 0:
       pad.openPath(first)

@@ -23,6 +23,19 @@ extern class FilesC
 end
 
 class Files from Object
+  # The last part of a path: "a/b/c.txt" is "c.txt", and "a/" is "".
+  static def String baseName(String p):
+    Int slash = 0 - 1
+    Int i = 0
+    while i < p.len():
+      if p.at(i) == 47:
+        slash = i
+      end
+      i = i + 1
+    end
+    return p.substr(slash + 1, p.len())
+  end
+
   # Run a program and answer how it ended, saying nothing of its own: whatever
   # it prints is read and dropped.
   static def Int quietly(List args):

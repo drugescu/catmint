@@ -223,10 +223,10 @@ class Report from IO
     end
     out("tabs ${pad.docs.len()} ${pad.current}\n")
     out("tabnames ${names}\n")
-    out("panel ${pad.panelOpen} ${pad.panel.len()}\n")
+    out("panel ${pad.output.open} ${pad.output.size()}\n")
     String last = "-"
-    if pad.panel.len() > 0:
-      String tail = pad.panel.get(pad.panel.len() - 1)
+    if pad.output.size() > 0:
+      String tail = pad.output.lineAt(pad.output.size() - 1)
       last = tail
     end
     out("panellast ${last}\n")

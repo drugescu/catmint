@@ -140,6 +140,8 @@ class Main from IO
     out("a limit of 2 gives ${Files.list(base, 5, 2).len()}\n")
     out("a directory that is not there: ${Files.list("${base}/nope", 5, 100).len()}\n")
 
+    out("a name without its folders: [${Files.baseName("a/b/c.txt")}] [${Files.baseName("c.txt")}] [${Files.baseName("/x")}] [${Files.baseName("a/")}] [${Files.baseName("")}]\n")
+
     exec("rm -rf ${base}")
     out("cleaned up: ${File.exists(base) == 0}\n")
   end

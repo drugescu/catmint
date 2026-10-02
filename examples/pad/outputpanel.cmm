@@ -1,0 +1,39 @@
+# The panel at the bottom: what the compiler said, a line to a row, and whether it
+# is showing. A line that names a place can be clicked (lib/buildlog.cmm says which).
+# It holds the last two hundred lines it is given, and no more.
+
+class OutputPanel from Object
+  List lines = null
+  Int open
+  Int limit = 200
+
+  constructor():
+    lines = new List()
+  end
+
+  def Void clear:
+    lines = new List()
+  end
+
+  def Void add(String line):
+    if lines.len() < limit:
+      lines.append(line)
+    end
+  end
+
+  def Int size:
+    return lines.len()
+  end
+
+  def String lineAt(Int i):
+    return lines.get(i)
+  end
+
+  def Void show:
+    open = 1
+  end
+
+  def Void hide:
+    open = 0
+  end
+end
