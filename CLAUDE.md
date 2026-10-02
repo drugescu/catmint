@@ -968,35 +968,47 @@ earlier attempt, not built and not included by anything.
 ## The editor
 
 `examples/pad` is a small editor for catmint programs, built to find what the
-language and its libraries lacked (it found four things; see the traps). It is
-`pad.cm` -- drawing, and turning events into calls -- over modules in `lib/`
-that have no window in them and are tested without one:
+language and its libraries lacked (it found seven things; see the traps). Its
+`pad.cm` is the controller -- the window, the event loop, events to commands and
+commands to calls -- and is kept small on purpose: it was one 1,700-line class,
+and was split into the modules below, one at a time with the suite green after each.
+
+| module | what it knows |
+|---|---|
+| `workspace.cmm` | the open files (`Doc`: text, path, sideways scroll), which is in front, the tab strip's model |
+| `metrics.cmm` | where things are: cell, row, gutter, tab strip, panel, palette -- no state but the size and scale |
+| `painter.cmm` | drawing, from what it is handed (an `Editor`, a theme, `Metrics`); never asks a question of the program |
+| `builder.cmm`, `outputpanel.cmm` | finding and running `catmintc`; the lines it printed |
+| `themechooser.cmm` | which theme, the list that previews it, keeping the choice |
+| `search.cmm`, `recents.cmm`, `clicks.cmm`, `editkeys.cmm`, `options.cmm` | find state; files opened; double clicks; the text-editing keys; the command line |
+| `playscript.cmm` | `--play`: scripted input, and the state report the tests read |
+
+and, with no window in them, in `lib/`, each with a test in `catmint-gen/test_suite`:
 
 | module | what | test |
 |---|---|---|
 | `textbuffer` | gap buffer, line index, undo that joins typed runs | `76_textbuffer` (against a model, 4000 steps) |
-| `theme` | dark and light colours, WCAG contrast computed | `77_theme` (7:1 body, 4.5:1 dim, in both) |
+| `theme`, `themes` | twelve colours; thirteen published palettes from `tools/make_themes.py` | `77_theme` (the Catmint pair held to 7:1), `86_themes` (every colour, and WCAG figures checked against an independent calculation) |
+| `base16` | any Base16 scheme file (tinted-theming/schemes, 352 of them) as a theme | `87_base16` (real files, the old format, the refusals) |
+| `settings` | `key=value` in `$PAD_CONFIG` or `~/.config/catmint-pad` | `88_settings` |
 | `highlight`, `keywords` | colour a line; keywords read out of `catmint.l` | `78_highlight`; `test.sh` runs `tools/make_keywords.py --check` |
 | `editor` | cursor, selection, movement, edits, find/replace, scroll | `79_editor` (scripted, and 3000 random operations) |
 | `fuzzy`, `palette` | ranking, and the one-field list over it | `80_fuzzy`, `82_palette` |
-| `files` | capped read, safe save, tree listing | `81_files` (permissions, links, failures) |
+| `commands` | the commands, their keys and their hints in one table | `90_commands` |
+| `files` | capped read, safe save, tree listing, base name | `81_files` (permissions, links, failures) |
 | `buildlog` | the place in a compiler message | `83_buildlog` |
 
 `font` and `Texture` (in `sdl`) draw text and sprites; `tools/sdl_test` checks
-them pixel for pixel. The pad itself is tested by `examples/pad/play.sh` (54
-scripted runs: input in, printed state and pixel counts out, expectations
-written by hand) and `examples/pad/idle.py` (the CPU an idle pad uses, measured
-with `wait4`; a busy loop costs 1.0 s in 5, the real one 0.09). `test.sh
---thorough` runs both. Every one of these was checked by breaking the code it
-tests and watching the test fail; several first passed against a break, and
-were strengthened (`find_previous` needs three matches to tell next from
-previous, `page_down_once` is needed because the end of the text hides a page
-that is one row short).
+them pixel for pixel. The pad itself is tested by `examples/pad/play.sh` (one
+scripted run per behaviour: input in, printed state and pixel counts out,
+expectations written by hand) and `examples/pad/idle.py` (the CPU an idle pad
+uses, measured with `wait4`; a busy loop costs 1.0 s in 5, the real one 0.09).
+`test.sh --thorough` runs both. Every one of these was checked by breaking the
+code it tests and watching the test fail; several first passed against a break,
+and were strengthened.
 
-Not done, on purpose: running the built program from the editor (reading a
-child's output without blocking needs a poll the language does not have, so F5
-builds and shows what the compiler said), more than one file open, Windows,
-multi-line selections indented as a block, a tab drawn as anything but `?`.
+Not done, on purpose: running the built program from the editor, a terminal,
+choosing the font, Windows, and indenting a block of lines.
 
 ## Building on Linux
 

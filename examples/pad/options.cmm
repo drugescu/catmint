@@ -1,0 +1,50 @@
+# What was said on the command line.
+#
+#   pad [file] [--catmintc path] [-I dir] [--themes dir]
+#       [--play script --frames N --shot out.bmp]
+#
+# The last three drive pad from a script for testing (see playscript.cmm).
+
+class Options from IO
+  String file = ""
+  String compiler = ""
+  List includes = null
+  String themes = ""
+  String script = ""
+  String shot = ""
+  Int frames = 1
+
+  constructor():
+    includes = new List()
+  end
+
+  def Void parse:
+    Int i = 1
+    while i < args():
+      String a = arg(i)
+      if a == "--catmintc":
+        i = i + 1
+        compiler = arg(i)
+      elif a == "--themes":
+        i = i + 1
+        themes = arg(i)
+      elif a == "-I":
+        i = i + 1
+        includes.append(arg(i))
+      elif a == "--play":
+        i = i + 1
+        script = arg(i)
+      elif a == "--frames":
+        i = i + 1
+        String n = arg(i)
+        frames = n.toInt()
+      elif a == "--shot":
+        i = i + 1
+        shot = arg(i)
+      else
+        file = a
+      end
+      i = i + 1
+    end
+  end
+end

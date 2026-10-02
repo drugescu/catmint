@@ -1,35 +1,39 @@
 # pad: a small editor for catmint programs.
 #
-#   pad [file] [--catmintc path] [-I dir] [--themes dir] ...
+#   pad [file] [--catmintc path] [-I dir] [--themes dir]
+#
+# Text is the interface. There is no menu bar and no dialog: one command palette
+# (Ctrl P, or Cmd on a Mac) does what those do -- it runs commands, opens files by a
+# fragment of their path, finds, replaces, goes to a line and picks a colour theme
+# -- and one line at the bottom says where you are. Files open in tabs, which
+# appear with the second. F5 saves and builds with catmintc and shows what it said
+# in a panel; a click on a line that names a place goes there. The commands, and
+# the keys that run them, are listed in registerCommands below.
 #
 # F5 needs catmintc: started in the repository it is ./catmintc, run as
-# examples/pad/pad it is found from there, else it is looked for on the PATH.
+# examples/pad/pad it is found from there, else it is looked for on the PATH. A
+# tab character is drawn as ?, and a string that runs over a newline is coloured on
+# its first line only. Open lists the files below the directory pad was started in
+# (six levels, five thousand files, nothing hidden), so start it in a project, not
+# in a home directory.
 #
-# Text is the interface. There is no menu bar, no dialog, no tab strip and
-# nothing to configure: one command palette (Ctrl P, or Cmd on a Mac) does what
-# those do -- it runs commands, opens files by a fragment of their path, finds,
-# replaces and goes to a line -- and one line at the bottom says where you are.
-# F5 saves and builds with catmintc and shows what it said in a panel; a click
-# on a line that names a place goes there.
+# This file is the controller: it owns the window and the event loop, turns events
+# into commands and commands into calls. What each piece knows is in its own module:
 #
-#   Ctrl P  commands        Ctrl O  open a file      Ctrl S  save
-#   Ctrl F  find            Ctrl H  replace          Ctrl L  go to a line
-#   F3      next match      F5      build            Ctrl T  dark / light
-#   Ctrl =  bigger text     Ctrl -  smaller text     Ctrl Q  quit
+#   workspace    the open files and which is in front        metrics    where things are
+#   painter      drawing, from state it is handed            builder    finding and running catmintc
+#   outputpanel  what the compiler said                      search     find, and where it began
+#   themechooser which theme, and keeping the choice         recents    files opened, and the open list
+#   editkeys     the keys that edit the text                 clicks     double clicks
+#   options      the command line                            playscript driving pad from a script
 #
-# One file at a time. A tab character is drawn as ?, and a string that runs
-# over a newline is coloured on its first line only. Open lists the files
-# below the directory pad was started in (six levels, five thousand files,
-# nothing hidden), so start it in a project, not in a home directory.
+# and the parts with no window in them are in lib/: textbuffer and editor (the text
+# and what is done to it), palette and fuzzy, commands (the commands and their keys),
+# theme, themes and base16, settings, files, highlight and buildlog.
 #
-# Built on the library, not on this file: the text is lib/textbuffer.cmm, what
-# is done to it lib/editor.cmm, the palette lib/palette.cmm over lib/fuzzy.cmm,
-# the colours lib/theme.cmm, files lib/files.cmm. What is here is drawing and
-# turning events into those.
-#
-# Testing without a person: `--play script --frames N --shot out.bmp` feeds
-# scripted input to the same code, draws N frames, saves the last, and prints
-# the state; see examples/pad/play.sh.
+# Testing without a person: `--play script --frames N --shot out.bmp` feeds scripted
+# input to the same code, draws N frames, saves the last, and prints the state; see
+# examples/pad/play.sh.
 
 using sdl
 using font
@@ -48,6 +52,9 @@ using builder
 using metrics
 using painter
 using workspace
+using options
+using recents
+using clicks
 using playscript
 
 class Pad from IO
@@ -62,12 +69,10 @@ class Pad from IO
   Palette pal = null
   String message = ""
   Builder builder = null
-  List recents = null
+  Recents recents = null
+  Clicks clicks = null
   OutputPanel output = null
   Int dragging
-  Int lastClick
-  Int clickedRow = 0 - 1
-  Int clickedCol = 0 - 1
   Int caretOn = 1
   Int lastBlink
   Int dirty = 1
@@ -87,7 +92,8 @@ class Pad from IO
     ws = new Workspace()
     pal = new Palette()
     builder = new Builder()
-    recents = new List()
+    recents = new Recents()
+    clicks = new Clicks()
     output = new OutputPanel()
     commands = new Commands()
     m.width = w.width()
@@ -217,20 +223,6 @@ class Pad from IO
 
   # ---- files ------------------------------------------------------------------------
 
-  def Void remember(String p):
-    List kept = new List()
-    kept.append(p)
-    Int i = 0
-    while i < recents.len():
-      String r = recents.get(i)
-      if r != p:
-        kept.append(r)
-      end
-      i = i + 1
-    end
-    recents = kept
-  end
-
   # Open a file in a tab of its own, or go to its tab if it is open already. The
   # one empty tab with no name that a new pad starts with is used, not left
   # beside it.
@@ -238,7 +230,7 @@ class Pad from IO
     Int open = ws.indexOfPath(p)
     if open >= 0:
       switchTo(open)
-      remember(p)
+      recents.remember(p)
     else
       String text = Files.read(p, 64 * 1024 * 1024)
       if text == null and File.exists(p) == 1:
@@ -256,7 +248,7 @@ class Pad from IO
         end
         d.path = p
         d.scrollX = 0
-        remember(p)
+        recents.remember(p)
         ws.ensureVisible(m)
         win.title("pad - ${p}")
       end
@@ -400,36 +392,12 @@ class Pad from IO
     pal.close()
   end
 
-  def Void openCommands:
-    pal.open(Palette.commandMode(), "command", commands.names, commands.hints)
+  def Void openFiles:
+    pal.open(Palette.fileMode(), "open", recents.candidates(), new List())
   end
 
-  def Void openFiles:
-    List found = Files.list(".", 6, 5000)
-    List names = new List()
-    Int i = 0
-    while i < recents.len():
-      names.append(recents.get(i))
-      i = i + 1
-    end
-    i = 0
-    while i < found.len():
-      String name = found.get(i)
-      Int seen = 0
-      Int j = 0
-      while j < recents.len():
-        String r = recents.get(j)
-        if r.equals(name):
-          seen = 1
-        end
-        j = j + 1
-      end
-      if seen == 0:
-        names.append(name)
-      end
-      i = i + 1
-    end
-    pal.open(Palette.fileMode(), "open", names, new List())
+  def Void openCommands:
+    pal.open(Palette.commandMode(), "command", commands.names, commands.hints)
   end
 
   def Void acceptPalette(Int shift, Int shortcut):
@@ -666,16 +634,10 @@ class Pad from IO
     elif y < m.tabsHeight() + m.viewHeight():
       Int row = m.rowAt(y, ed().top)
       Int col = m.colAt(x, ed().buf.lines(), ws.active().scrollX)
-      Int now = sdl.ticks()
-      if row == clickedRow and col == clickedCol and now - lastClick < 400:
-        ed().placeAt(row, col, 0)
+      ed().placeAt(row, col, 0)
+      if clicks.press(row, col, sdl.ticks()) == 1:
         ed().selectWord(ed().cursor)
-        clickedRow = 0 - 1
       else
-        ed().placeAt(row, col, 0)
-        clickedRow = row
-        clickedCol = col
-        lastClick = now
         dragging = 1
       end
       reveal()
@@ -784,53 +746,29 @@ end
 
 class Main from IO
   def main:
+    Options o = new Options()
+    o.parse()
     Sdl sdl = new Sdl()
     Window win = new Window(sdl, "pad", 960, 640)
     win.resizable()
     Renderer view = new Renderer(win)
     Pad pad = new Pad(sdl, win, view)
-    String script = ""
-    String shot = ""
-    Int frames = 1
-    String first = ""
-    Int i = 1
-    while i < args():
-      String a = arg(i)
-      if a == "--catmintc":
-        i = i + 1
-        pad.builder.compiler = arg(i)
-      elif a == "--themes":
-        i = i + 1
-        pad.themes.themeDir = arg(i)
-      elif a == "-I":
-        i = i + 1
-        pad.builder.includes.append(arg(i))
-      elif a == "--play":
-        i = i + 1
-        script = arg(i)
-      elif a == "--frames":
-        i = i + 1
-        String n = arg(i)
-        frames = n.toInt()
-      elif a == "--shot":
-        i = i + 1
-        shot = arg(i)
-      else
-        first = a
-      end
-      i = i + 1
+    pad.builder.compiler = o.compiler
+    pad.builder.includes = o.includes
+    if o.themes.len() > 0:
+      pad.themes.themeDir = o.themes
     end
     pad.themes.restore()
     if pad.builder.compiler.len() == 0:
       pad.builder.locate(arg(0))
     end
-    if first.len() > 0:
-      pad.openPath(first)
+    if o.file.len() > 0:
+      pad.openPath(o.file)
       pad.message = ""
     end
-    if script.len() > 0:
+    if o.script.len() > 0:
       PlayScript runner = new PlayScript(pad)
-      runner.play(script, frames, shot)
+      runner.play(o.script, o.frames, o.shot)
     else
       pad.run()
     end
