@@ -42,6 +42,8 @@ using settings
 using palette
 using files
 using buildlog
+using metrics
+using painter
 using playscript
 
 # A file being edited, parked while another tab is in front. The one in front
@@ -57,7 +59,8 @@ class Pad from IO
   Sdl sdl = null
   Window win = null
   Renderer view = null
-  Font font = null
+  Painter painter = null
+  Metrics m = null
   Theme t = null
   List themeList = null
   Theme themeBefore = null
@@ -75,14 +78,11 @@ class Pad from IO
   List recents = null
   List panel = null
   Int panelOpen
-  Int scale = 1
   Int scrollX
   Int dragging
   Int lastClick
   Int clickedRow = 0 - 1
   Int clickedCol = 0 - 1
-  Int width
-  Int height
   Int caretOn = 1
   Int lastBlink
   Int dirty = 1
@@ -99,7 +99,8 @@ class Pad from IO
     sdl = s
     win = w
     view = r
-    font = new Font(r)
+    painter = new Painter(r)
+    m = new Metrics()
     t = Theme.dark()
     configDir = Settings.dir()
     if configDir.len() > 0:
@@ -117,8 +118,8 @@ class Pad from IO
     commandIds = new List()
     commandNames = new List()
     commandHints = new List()
-    width = w.width()
-    height = w.height()
+    m.width = w.width()
+    m.height = w.height()
     command("save", "Save", "Ctrl S")
     command("open", "Open file", "Ctrl O")
     command("new", "New file", "Ctrl N")
@@ -236,74 +237,11 @@ class Pad from IO
 
   # ---- measures ---------------------------------------------------------------
 
-  def Int cell:
-    return 8 * scale
-  end
-
-  # A line is 1.4 times the height of a glyph.
-  def Int rowHeight:
-    return 16 * scale * 7 / 5
-  end
-
-  def Int inset:
-    return (rowHeight() - 16 * scale) / 2
-  end
-
-  def Int digits:
-    Int n = ed.buf.lines()
-    Int d = 3
-    while n >= 1000:
-      n = n / 10
-      d = d + 1
-    end
-    return d
-  end
-
-  # Two cells of margin, the line number, two cells more.
-  def Int textLeft:
-    return (4 + digits()) * cell()
-  end
-
-  def Int panelHeight:
-    if panelOpen == 1:
-      return 8 * rowHeight() + 1
-    end
-    return 0
-  end
-
-  # The strip of tabs is there when there is more than one file.
-  def Int tabsHeight:
-    if docs.len() >= 2:
-      return rowHeight()
-    end
-    return 0
-  end
-
-  def Int viewHeight:
-    return height - tabsHeight() - rowHeight() - panelHeight()
-  end
-
-  def Int viewRows:
-    Int rows = viewHeight() / rowHeight()
-    if rows < 1:
-      rows = 1
-    end
-    return rows
-  end
-
-  def Int visibleCols:
-    Int cols = (width - textLeft()) / cell()
-    if cols < 4:
-      cols = 4
-    end
-    return cols
-  end
-
   # Scroll just far enough that the cursor can be seen.
   def Void reveal:
-    ed.reveal(viewRows())
+    ed.reveal(m.viewRows())
     Int c = ed.column(ed.cursor)
-    Int cols = visibleCols() - 2
+    Int cols = m.visibleCols(ed.buf.lines()) - 2
     if c < scrollX:
       scrollX = c
     elif c >= scrollX + cols:
@@ -319,95 +257,6 @@ class Pad from IO
   end
 
   # ---- drawing ----------------------------------------------------------------
-
-  def Void color(Int c):
-    view.setColor(Theme.red(c), Theme.green(c), Theme.blue(c))
-  end
-
-  def Void ink(String s, Int x, Int y, Int c):
-    font.draw(s, x, y + inset(), scale, Theme.red(c), Theme.green(c), Theme.blue(c))
-  end
-
-  def Void hairline(Int x, Int y, Int w, Int c):
-    color(c)
-    view.fillRect(x, y, w, 1)
-  end
-
-  # One line of code, a run at a time, each in the colour of what it is.
-  def Void drawCode(String text, Int x, Int y):
-    Bytes kinds = Highlight.kinds(text)
-    Int n = text.len()
-    Int i = 0
-    Int cells = 0
-    while i < n:
-      Int kind = kinds.get(i)
-      Int j = i
-      while j < n and kinds.get(j) == kind:
-        j = j + 1
-      end
-      String run = text.substr(i, j)
-      Int w = Font.cells(run)
-      Int px = x + cells * cell()
-      if px < width:
-        ink(run, px, y, Highlight.colour(t, kind))
-      end
-      cells = cells + w
-      i = j
-    end
-  end
-
-  def Void drawText:
-    Int rows = viewRows()
-    Int left = textLeft()
-    Int cursorRow = ed.buf.lineOf(ed.cursor)
-    Int a = ed.selStart()
-    Int b = ed.selEnd()
-    Int i = 0
-    while i < rows:
-      Int row = ed.top + i
-      if row < ed.buf.lines():
-        Int y = tabsHeight() + i * rowHeight()
-        if row == cursorRow:
-          color(t.line)
-          view.fillRect(0, y, width, rowHeight())
-        end
-        # The selection on this row, and the newline if it goes on past it.
-        Int ls = ed.buf.lineStart(row)
-        Int le = ed.textEnd(row)
-        if b > ls and a <= le and a != b:
-          Int from0 = a
-          if from0 < ls:
-            from0 = ls
-          end
-          Int to0 = b
-          if to0 > le:
-            to0 = le
-          end
-          Int startCol = ed.column(from0)
-          Int cols = ed.column(to0) - startCol
-          if b > le:
-            cols = cols + 1
-          end
-          color(t.selection)
-          view.fillRect(left + (startCol - scrollX) * cell(), y, cols * cell(), rowHeight())
-        end
-        String number = "${row + 1}"
-        Int numberColor = t.dim
-        if row == cursorRow:
-          numberColor = t.text
-        end
-        ink(number, (2 + digits() - number.len()) * cell(), y, numberColor)
-        view.clip(left, y, width - left, rowHeight())
-        drawCode(ed.buf.lineText(row), left - scrollX * cell(), y)
-        view.unclip()
-      end
-      i = i + 1
-    end
-    if caretOn == 1 and pal.isOpen() == 0 and cursorRow >= ed.top and cursorRow < ed.top + rows:
-      color(t.accent)
-      view.fillRect(left + (ed.column(ed.cursor) - scrollX) * cell(), tabsHeight() + (cursorRow - ed.top) * rowHeight(), 2 * scale, rowHeight())
-    end
-  end
 
   # ---- tabs ---------------------------------------------------------------------
 
@@ -443,11 +292,6 @@ class Pad from IO
     return name
   end
 
-  # Two cells of margin, the name, two cells, the closing x, a cell.
-  def Int tabWidth(Int i):
-    return (Font.cells(tabLabel(i)) + 6) * cell()
-  end
-
   # Scroll the strip just far enough that the tab in front is all there.
   def Void ensureTabVisible:
     if current < firstTab:
@@ -459,33 +303,9 @@ class Pad from IO
       used = used + tabWidth(i)
       i = i + 1
     end
-    while used > width and firstTab < current:
+    while used > m.width and firstTab < current:
       used = used - tabWidth(firstTab)
       firstTab = firstTab + 1
-    end
-  end
-
-  def Void drawTabs:
-    Int h = rowHeight()
-    color(t.panel)
-    view.fillRect(0, 0, width, h)
-    Int x = 0
-    Int i = firstTab
-    while i < docs.len() and x < width:
-      Int w = tabWidth(i)
-      view.clip(x, 0, w, h)
-      if i == current:
-        color(t.ground)
-        view.fillRect(x, 0, w, h - 1)
-        hairline(x, h - 1, w, t.accent)
-        ink(tabLabel(i), x + 2 * cell(), 0, t.text)
-      else
-        ink(tabLabel(i), x + 2 * cell(), 0, t.dim)
-      end
-      ink("x", x + w - 2 * cell(), 0, t.dim)
-      view.unclip()
-      x = x + w
-      i = i + 1
     end
   end
 
@@ -511,7 +331,7 @@ class Pad from IO
       x = x + tabWidth(i)
       i = i + 1
     end
-    if px >= x + tabWidth(index) - 2 * cell() and px < x + tabWidth(index) - cell():
+    if px >= x + tabWidth(index) - 2 * m.cell() and px < x + tabWidth(index) - m.cell():
       return 1
     end
     return 0
@@ -620,29 +440,34 @@ class Pad from IO
     end
   end
 
-  def Void drawPanel:
-    Int top = tabsHeight() + viewHeight()
-    color(t.panel)
-    view.fillRect(0, top, width, panelHeight())
-    hairline(0, top, width, t.dim)
-    Int i = 0
-    while i < 8 and i < panel.len():
-      String line = panel.get(i)
-      Int c = t.text
-      if BuildLog.line(line) > 0:
-        c = t.error
-      end
-      view.clip(0, top + 1, width, panelHeight() - 1)
-      ink(line, cell(), top + 1 + i * rowHeight(), c)
-      view.unclip()
-      i = i + 1
+  # Tell the measures what the window now holds: a strip of tabs when there are
+  # two files or more, the output panel when it is open.
+  def Void layout:
+    m.tabRows = 0
+    if docs.len() >= 2:
+      m.tabRows = 1
+    end
+    m.panelRows = 0
+    if panelOpen == 1:
+      m.panelRows = 8
     end
   end
 
-  def Void drawStatus:
-    Int y = height - rowHeight()
-    color(t.panel)
-    view.fillRect(0, y, width, rowHeight())
+  def Int tabWidth(Int i):
+    return m.tabWidth(tabLabel(i))
+  end
+
+  def List tabLabels:
+    List labels = new List()
+    Int i = 0
+    while i < docs.len():
+      labels.append(tabLabel(i))
+      i = i + 1
+    end
+    return labels
+  end
+
+  def String statusName:
     String name = path
     if name.len() == 0:
       name = "(no name)"
@@ -650,81 +475,30 @@ class Pad from IO
     if ed.buf.modified() == 1:
       name = name + " *"
     end
-    ink(name, cell(), y, t.text)
-    if message.len() > 0:
-      ink(message, cell() * (3 + Font.cells(name)), y, t.dim)
-    end
-    String where = "${ed.line()}:${ed.col()}"
-    ink(where, width - cell() * (1 + where.len()), y, t.dim)
-  end
-
-  def Int paletteWidth:
-    Int w = 64 * cell()
-    if w > width - 2 * cell():
-      w = width - 2 * cell()
-    end
-    return w
-  end
-
-  def Void drawPalette:
-    Int w = paletteWidth()
-    Int x = (width - w) / 2
-    Int y = rowHeight()
-    Int shown = pal.results.len()
-    Int h = (1 + shown) * rowHeight() + 1
-    color(t.panel)
-    view.fillRect(x, y, w, h)
-    hairline(x, y, w, t.dim)
-    hairline(x, y + h, w, t.dim)
-    color(t.dim)
-    view.fillRect(x, y, 1, h)
-    view.fillRect(x + w, y, 1, h + 1)
-    ink(pal.prompt, x + cell(), y, t.dim)
-    Int fieldX = x + cell() * (2 + Font.cells(pal.prompt))
-    view.clip(x, y, w, rowHeight())
-    ink(pal.field.buf.text(), fieldX, y, t.text)
-    if caretOn == 1:
-      color(t.accent)
-      view.fillRect(fieldX + pal.field.column(pal.field.cursor) * cell(), y + 1, 2 * scale, rowHeight() - 2)
-    end
-    view.unclip()
-    hairline(x, y + rowHeight() - 1, w, t.accent)
-    Int i = 0
-    while i < shown:
-      Int index = pal.results.get(i)
-      Int ry = y + (1 + i) * rowHeight()
-      if i == pal.selected:
-        color(t.selection)
-        view.fillRect(x + 1, ry, w - 1, rowHeight())
-      end
-      String name = pal.names.get(index)
-      view.clip(x, ry, w, rowHeight())
-      ink(name, x + cell(), ry, t.text)
-      if index < pal.hints.len():
-        String hint = pal.hints.get(index)
-        ink(hint, x + w - cell() * (1 + Font.cells(hint)), ry, t.dim)
-      end
-      view.unclip()
-      i = i + 1
-    end
+    return name
   end
 
   def Void draw:
-    color(t.ground)
-    view.fillRect(0, 0, width, height)
-    drawText()
+    layout()
+    painter.begin(t, m)
+    painter.clear()
+    Int caret = 0
+    if caretOn == 1 and pal.isOpen() == 0:
+      caret = 1
+    end
+    painter.text(ed, scrollX, caret)
     if docs.len() >= 2:
       ensureTabVisible()
-      drawTabs()
+      painter.tabs(tabLabels(), current, firstTab)
     end
     if panelOpen == 1:
-      drawPanel()
+      painter.panel(panel)
     end
-    drawStatus()
+    painter.status(statusName(), message, ed.line(), ed.col())
     if pal.isOpen() == 1:
-      drawPalette()
+      painter.palette(pal, caretOn)
     end
-    view.present()
+    painter.present()
     dirty = 0
   end
 
@@ -1062,13 +836,13 @@ class Pad from IO
     elif id == "themes":
       openThemes()
     elif id == "bigger":
-      if scale < 4:
-        scale = scale + 1
+      if m.scale < 4:
+        m.scale = m.scale + 1
       end
       reveal()
     elif id == "smaller":
-      if scale > 1:
-        scale = scale - 1
+      if m.scale > 1:
+        m.scale = m.scale - 1
       end
       reveal()
     elif id == "undo":
@@ -1237,10 +1011,10 @@ class Pad from IO
       ed.endOfLine(shift)
       reveal()
     elif key == SDL2C.SDLK_PAGEUP():
-      ed.vertical(0 - viewRows(), shift)
+      ed.vertical(0 - m.viewRows(), shift)
       reveal()
     elif key == SDL2C.SDLK_PAGEDOWN():
-      ed.vertical(viewRows(), shift)
+      ed.vertical(m.viewRows(), shift)
       reveal()
     elif key == SDL2C.SDLK_RETURN():
       ed.newline()
@@ -1273,36 +1047,20 @@ class Pad from IO
     wake()
   end
 
-  # The line and column of the text under a pixel.
-  def Int rowAt(Int y):
-    return ed.top + (y - tabsHeight()) / rowHeight()
-  end
-
-  def Int colAt(Int x):
-    Int c = (x - textLeft() + scrollX * cell() + cell() / 2) / cell()
-    if x < textLeft():
-      c = 0 - 1
-    end
-    if c < 0:
-      c = 0
-    end
-    return c
-  end
-
   def Void onMouseDown(Int x, Int y):
     wake()
     message = ""
     if pal.isOpen() == 1:
-      Int w = paletteWidth()
-      Int left = (width - w) / 2
-      Int row = y / rowHeight() - 2
+      Int w = m.paletteWidth()
+      Int left = (m.width - w) / 2
+      Int row = y / m.rowHeight() - 2
       if x >= left and x < left + w and row >= 0 and row < pal.results.len():
         pal.selected = row
         acceptPalette(0, 0)
-      elif y >= rowHeight() * (2 + pal.results.len()) or x < left or x >= left + w:
+      elif y >= m.rowHeight() * (2 + pal.results.len()) or x < left or x >= left + w:
         closePalette()
       end
-    elif y < tabsHeight():
+    elif y < m.tabsHeight():
       Int tab = tabAt(x)
       if tab >= 0:
         if onTabClose(x, tab) == 1:
@@ -1312,14 +1070,14 @@ class Pad from IO
           switchTo(tab)
         end
       end
-    elif panelOpen == 1 and y >= tabsHeight() + viewHeight() + 1 and y < height - rowHeight():
-      Int i = (y - tabsHeight() - viewHeight() - 1) / rowHeight()
+    elif panelOpen == 1 and y >= m.tabsHeight() + m.viewHeight() + 1 and y < m.height - m.rowHeight():
+      Int i = (y - m.tabsHeight() - m.viewHeight() - 1) / m.rowHeight()
       if i < panel.len():
         jumpTo(panel.get(i))
       end
-    elif y < tabsHeight() + viewHeight():
-      Int row = rowAt(y)
-      Int col = colAt(x)
+    elif y < m.tabsHeight() + m.viewHeight():
+      Int row = m.rowAt(y, ed.top)
+      Int col = m.colAt(x, ed.buf.lines(), scrollX)
       Int now = sdl.ticks()
       if row == clickedRow and col == clickedCol and now - lastClick < 400:
         ed.placeAt(row, col, 0)
@@ -1338,7 +1096,7 @@ class Pad from IO
 
   def Void onMouseMove(Int x, Int y):
     if dragging == 1:
-      ed.placeAt(rowAt(y), colAt(x), 1)
+      ed.placeAt(m.rowAt(y, ed.top), m.colAt(x, ed.buf.lines(), scrollX), 1)
       reveal()
     end
   end
@@ -1379,8 +1137,8 @@ class Pad from IO
       armed = ""
       runCommand("quit")
     elif sdl.isResize() == 1:
-      width = win.width()
-      height = win.height()
+      m.width = win.width()
+      m.height = win.height()
       reveal()
     elif sdl.isKeyDown() == 1:
       onKey(sdl.key(), sdl.shift(), sdl.shortcut(), sdl.alt())
