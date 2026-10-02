@@ -42,3 +42,30 @@ fi
 grep -q "width 72" "$work/texture.out" || { echo "Font.width is wrong:"; cat "$work/texture.out"; exit 1; }
 grep -q "cells 16" "$work/texture.out" || { echo "Font.width counts bytes, not characters:"; cat "$work/texture.out"; exit 1; }
 python3 "$HERE/check_texture.py" "$work/texture.bmp" "$ROOT/lib/fontdata.cmm"
+
+# TrueType text (SDL_ttf), when SDL2_ttf is installed: the cell is the font's, glyphs stay in
+# their cells, a descender reaches the bottom of its cell, a missing font is an error.
+TTF_PREFIX=$(command -v brew >/dev/null 2>&1 && brew --prefix sdl2_ttf 2>/dev/null || true)
+TTF_LIBS="$LIBS"
+[ -n "$TTF_PREFIX" ] && [ -d "$TTF_PREFIX/lib" ] && TTF_LIBS="$LIBS -L $TTF_PREFIX/lib"
+# shellcheck disable=SC2086
+if ! "$ROOT/catmintc" -I "$ROOT/lib" $TTF_LIBS "$HERE/ttf.cm" -o "$work/ttf" > "$work/ttf.log" 2>&1; then
+  if grep -q "cannot find -lSDL2_ttf\|library not found\|unable to find library" "$work/ttf.log"; then
+    echo "TrueType text skipped: SDL2_ttf is not installed"
+    exit 0
+  fi
+  cat "$work/ttf.log"; exit 1
+fi
+FONT="$ROOT/examples/pad/fonts/JetBrainsMono-Regular.ttf"
+if ! SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software SDL_AUDIODRIVER=dummy \
+      "$work/ttf" "$work/ttf.bmp" "$FONT" > "$work/ttf.out" 2>&1; then
+  cat "$work/ttf.out"; exit 1
+fi
+grep -q "^monospaced 1$" "$work/ttf.out" || { echo "the bundled font is not seen as monospaced:"; cat "$work/ttf.out"; exit 1; }
+grep -q "^missing file monospaced 0$" "$work/ttf.out" || { echo "a missing font is monospaced:"; cat "$work/ttf.out"; exit 1; }
+grep -q "^bigger is bigger 1$" "$work/ttf.out" || { echo "a bigger size is not a bigger cell:"; cat "$work/ttf.out"; exit 1; }
+grep -q "^width .* is 4 cells 1$" "$work/ttf.out" || { echo "text is not as wide as its cells:"; cat "$work/ttf.out"; exit 1; }
+grep -q "^missing: could not open the font" "$work/ttf.out" || { echo "a missing font did not throw:"; cat "$work/ttf.out"; exit 1; }
+cell=$(sed -n 's/^cell \([0-9]*\) \([0-9]*\)$/\1 \2/p' "$work/ttf.out")
+# shellcheck disable=SC2086
+python3 "$HERE/check_ttf.py" "$work/ttf.bmp" $cell

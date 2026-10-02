@@ -14,7 +14,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       clang-16 llvm-16 \
       llvm-18 llvm-18-dev clang-18 lld-18 \
       flex bison cmake make g++ zlib1g-dev libzstd-dev libc6-dev \
-      python3 ca-certificates libsdl2-dev \
+      python3 ca-certificates libsdl2-dev libsdl2-ttf-dev \
       libclang-rt-18-dev \
       procps \
  && rm -rf /var/lib/apt/lists/*

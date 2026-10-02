@@ -65,6 +65,11 @@ class Palette from Object
     return 7
   end
 
+  # Choosing a font: a list, with the highlighted one shown as it moves.
+  static def Int fontMode:
+    return 8
+  end
+
   constructor():
     field = new Editor()
     names = new List()

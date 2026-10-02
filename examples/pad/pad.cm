@@ -1,6 +1,6 @@
 # pad: a small editor for catmint programs.
 #
-#   pad [file] [--catmintc path] [-I dir] [--themes dir]
+#   pad [file] [--catmintc path] [-I dir] [--themes dir] [--font pixel|name|path]
 #
 # Text is the interface. There is no menu bar and no dialog: one command palette
 # (Ctrl P, or Cmd on a Mac) does what those do -- it runs commands, opens files by a
@@ -9,8 +9,10 @@
 # appear with the second, and Ctrl B shows the files below the folder pad was
 # started in down the left, to click open. F5 saves, builds with catmintc and runs
 # what it built; F7 only builds; Shift F5 stops. What the compiler said, and then what
-# the program printed, is in a panel; a click on a line that names a place goes there. The commands, and
-# the keys that run them, are listed in registerCommands below.
+# the program printed, is in a panel; a click on a line that names a place goes there. Ctrl `
+# swaps that panel for a terminal. Text is JetBrains Mono (fonts/, needs SDL2_ttf), and
+# "Choose font..." picks another. The commands, and the keys that run them, are listed in
+# registerCommands below.
 #
 # F5 needs catmintc: started in the repository it is ./catmintc, run as
 # examples/pad/pad it is found from there, else it is looked for on the PATH. A
@@ -44,6 +46,7 @@ using editor
 using highlight
 using settings
 using themechooser
+using fontchooser
 using search
 using commands
 using editkeys
@@ -71,6 +74,7 @@ class Pad from IO
   Painter painter = null
   Metrics m = null
   ThemeChooser themes = null
+  FontChooser fonts = null
   Search search = null
   Workspace ws = null
   Palette pal = null
@@ -106,6 +110,7 @@ class Pad from IO
     painter = new Painter(r)
     m = new Metrics()
     themes = new ThemeChooser()
+    fonts = new FontChooser(r)
     search = new Search()
     ws = new Workspace()
     pal = new Palette()
@@ -161,6 +166,9 @@ class Pad from IO
     if output.open == 1:
       m.panelRows = output.rows
     end
+    m.fixedW = fonts.cellW()
+    m.fixedH = fonts.cellH()
+    painter.face = fonts.face
     m.sidebarCells = 0
     if sidebarOn == 1:
       m.sidebarCells = 28
@@ -424,6 +432,7 @@ class Pad from IO
     commands.command("terminal", "Toggle terminal", 1, 0, 96, "")
     commands.command("theme", "Toggle dark and light", 1, 0, 116, "")
     commands.command("themes", "Color theme...", 0, 0, 0, "")
+    commands.command("fonts", "Choose font...", 0, 0, 0, "")
     commands.command("bigger", "Bigger text", 1, 0, 61, "=")
     commands.alias("bigger", 1, 0, 43)
     commands.command("smaller", "Smaller text", 1, 0, 45, "-")
@@ -523,10 +532,21 @@ class Pad from IO
     end
   end
 
+  # While the font list is open the highlighted font is the one drawn, and the cursor must
+  # stay in view in its cells.
+  def Void previewFont:
+    if pal.mode == Palette.fontMode():
+      fonts.preview(pal)
+      layout()
+      reveal()
+    end
+  end
+
   # Something was typed into the palette's field: the list narrows by itself; a
   # theme list shows the one it now highlights, and a find looks as you type.
   def Void afterFieldEdit:
     themes.preview(pal)
+    previewFont()
     if pal.mode == Palette.findMode():
       if search.typed(ed(), pal.field.buf.text()) == 0:
         message = "not found"
@@ -539,6 +559,12 @@ class Pad from IO
   def Void closePalette:
     if pal.mode == Palette.themeMode():
       themes.cancel()
+    end
+    if pal.mode == Palette.fontMode():
+      fonts.cancel()
+      pal.close()
+      layout()
+      reveal()
     end
     pal.close()
   end
@@ -600,6 +626,11 @@ class Pad from IO
     elif m == Palette.themeMode():
       themes.accept(pal)
       pal.close()
+    elif m == Palette.fontMode():
+      fonts.accept(pal)
+      pal.close()
+      layout()
+      reveal()
     elif m == Palette.saveMode():
       String target = pal.field.buf.text()
       pal.close()
@@ -654,15 +685,19 @@ class Pad from IO
       themes.toggle()
     elif id == "themes":
       themes.open(pal)
+    elif id == "fonts":
+      fonts.open(pal)
     elif id == "bigger":
-      if m.scale < 4:
+      if fonts.step(1) == 0 and m.scale < 4:
         m.scale = m.scale + 1
       end
+      layout()
       reveal()
     elif id == "smaller":
-      if m.scale > 1:
+      if fonts.step(0 - 1) == 0 and m.scale > 1:
         m.scale = m.scale - 1
       end
+      layout()
       reveal()
     elif id == "undo":
       ed().undo()
@@ -723,9 +758,11 @@ class Pad from IO
     elif key == SDL2C.SDLK_UP():
       pal.up()
       themes.preview(pal)
+      previewFont()
     elif key == SDL2C.SDLK_DOWN():
       pal.down()
       themes.preview(pal)
+      previewFont()
     elif key == SDL2C.SDLK_BACKSPACE():
       pal.backspace()
       afterFieldEdit()
@@ -975,6 +1012,11 @@ class Main from IO
       pad.themes.themeDir = o.themes
     end
     pad.themes.restore()
+    pad.fonts.locate(arg(0))
+    pad.fonts.restore()
+    if o.font.len() > 0:
+      pad.fonts.choose(o.font)
+    end
     pad.restoreSidebar()
     if pad.builder.compiler.len() == 0:
       pad.builder.locate(arg(0))

@@ -1097,8 +1097,8 @@ against 1.0 for a loop that polls), the palette's ranking for typed fragments
 (`80_fuzzy`), the pixels of the syntax colours, the palette and the panel
 (`examples/pad/tests`).
 
-**What it does not do, and why.** A choice of font (the one font is Unscii, a bitmap;
-TrueType would be SDL_ttf, a new dependency). A terminal exists (Ctrl `) but without a
+**What it does not do, and why.** Text outside printable ASCII (drawn as `?`; fonts are
+JetBrains Mono through SDL_ttf, with the bitmap Unscii kept as a choice). A terminal exists (Ctrl `) but without a
 pseudo-terminal, so it is for commands and not for programs that draw on a screen.
 *Running*
 was missing for want of a read that does not wait; `lib/job.cmm` has one, by

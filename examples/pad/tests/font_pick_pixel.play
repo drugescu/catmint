@@ -1,0 +1,14 @@
+# Choosing the bitmap font from the list uses it, at once, and remembers it.
+# font default
+# files t.txt=abc
+# open t.txt
+# frames 7
+# expect font Pixel (Unscii) | pixel
+# expect cell 8 22
+# expect palette 0
+# config-file settings=font=pixel\nfontsize=16\n
+1 key p ctrl
+2 text Choose font
+3 key enter
+4 text Pixel
+5 key enter

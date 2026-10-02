@@ -1,0 +1,12 @@
+# "Choose font..." opens a list of the fonts there are: the one that ships, then the bitmap
+# font last.
+# font default
+# files t.txt=abc
+# open t.txt
+# frames 4
+# expect palette 8 
+# expect fonts JetBrainsMono-Regular
+# expect |Pixel (Unscii)
+1 key p ctrl
+2 text Choose font
+3 key enter

@@ -1,7 +1,8 @@
 # Where things are in the window: the sizes and positions every other part of pad
 # agrees on, in one place and with no state of its own to get out of step.
 #
-# A cell is one character: 8 x 16 pixels, times `scale`. A row is 1.4 cells high.
+# A cell is one character: 8 x 16 pixels, times `scale`, or a TrueType font's own size
+# (`fixedW` x `fixedH`). A row is 1.4 cells high, or an eighth more than a TrueType cell.
 # From the top, a window is: the strip of tabs (when there is more than one file),
 # the text, the output panel (when it is open), and the status line. Down the left,
 # when it is showing, is the file explorer (`sidebarCells` wide) and all of that sits
@@ -20,19 +21,46 @@ class Metrics from Object
   Int panelRows
   # The file explorer down the left, in cells: 0 when it is not showing.
   Int sidebarCells
+  # The size of a cell of a TrueType font, in pixels; 0 for the bitmap font, whose cell is
+  # 8 x 16 times `scale`.
+  Int fixedW
+  Int fixedH
 
   def Int cell:
+    if fixedW > 0:
+      return fixedW
+    end
     return 8 * scale
   end
 
-  # A line is 1.4 times the height of a glyph.
+  # The height of a glyph's cell.
+  def Int glyphHeight:
+    if fixedH > 0:
+      return fixedH
+    end
+    return 16 * scale
+  end
+
+  # A line is 1.4 times the height of a bitmap glyph; a TrueType font's cell is its own line
+  # height already, and a line is an eighth more.
   def Int rowHeight:
+    if fixedH > 0:
+      return fixedH * 9 / 8
+    end
     return 16 * scale * 7 / 5
   end
 
   # How far a glyph sits down in its row.
   def Int inset:
-    return (rowHeight() - 16 * scale) / 2
+    return (rowHeight() - glyphHeight()) / 2
+  end
+
+  # How wide the caret is.
+  def Int caretWidth:
+    if fixedW > 0:
+      return 2
+    end
+    return 2 * scale
   end
 
   # How many digits the line numbers are given room for, at least three.

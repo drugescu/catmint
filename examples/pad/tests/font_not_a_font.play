@@ -1,0 +1,8 @@
+# A file that is not a font, given with --font, is refused and the default stays.
+# font default
+# args --font /etc/hosts
+# files t.txt=abc
+# open t.txt
+# frames 2
+# expect font JetBrainsMono-Regular | 
+1 key a

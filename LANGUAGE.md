@@ -524,7 +524,9 @@ C. Needs SDL2 installed; on Homebrew build with `-L /opt/homebrew/lib`.
 `sdl` also has `Texture` (from a `Bytes` of pixels; draw a part of it, tint,
 opacity), text input, the clipboard, the wheel and modifier keys. `font` draws
 text from Unscii's printable ASCII, built into a texture when the `Font` is
-made: a fixed 8 x 16 cell, anything else one `?`, no font file.
+made: a fixed 8 x 16 cell, anything else one `?`, no font file. `ttf` does the same
+from a TrueType font through SDL_ttf (anti-aliased, cells the size of the font's advance and
+line height) and is the one module that needs that library.
 
 For a program that edits text, also in `lib/`, each testable without a window:
 `textbuffer` (a gap buffer with a line index and undo), `editor` (cursor,

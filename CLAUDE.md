@@ -980,6 +980,7 @@ and was split into the modules below, one at a time with the suite green after e
 | `painter.cmm` | drawing, from what it is handed (an `Editor`, a `FileTree`, a theme, `Metrics`); never asks a question of the program |
 | `builder.cmm`, `runner.cmm` | finding `catmintc` and what to run to build or run a file; the build and the program as `Job`s, polled once a frame (F5 runs, F7 builds, Shift F5 stops) |
 | `themechooser.cmm` | which theme, the list that previews it, keeping the choice |
+| `fontchooser.cmm` | which font: the list (bundled, yours, the system's, the bitmap one), the size ladder, keeping the choice |
 | `terminalkeys.cmm` | the keys of the terminal panel when it has the keyboard, and which editor commands still work from it |
 | `search.cmm`, `recents.cmm`, `clicks.cmm`, `editkeys.cmm`, `options.cmm` | find state; files opened; double clicks; the text-editing keys; the command line |
 | `playscript.cmm` | `--play`: scripted input, and the state report the tests read |
@@ -999,6 +1000,7 @@ and, with no window in them, in `lib/`, each with a test in `catmint-gen/test_su
 | `files` | capped read, safe save, tree listing, base name | `81_files` (permissions, links, failures) |
 | `job` | a program in the background: output to a private file, polled without waiting, stop (the process family, then kill), a cap on what it may print | `92_job`, `95_job_input` (sixty mutations; four survive: `ps -x` for `-A`, `O_RDWR` for `O_RDONLY`, and two guards against a recycled process number and a write between a read and a reap, which no test can aim at) |
 | `outputpanel` | what a compiler or program printed: keep the first 200 or follow the last 2000, the wheel; takes colour escapes, carriage returns and tabs out of a line | `93_outputpanel` |
+| `ttf` | TrueType text through SDL_ttf: an atlas of the ASCII glyphs in a monospaced font, drawn cell by cell, anti-aliased | `tools/sdl_test/ttf.cm` + `check_ttf.py` (cells, ink inside them, descenders) |
 | `terminal` | a shell in the background (a `Job` with input), its scrollback, the line being typed and its history, ^C and ^D | `96_terminal` |
 | `filetree` | a folder's files as rows to fold and open: folders first, case-blind order, reveal a path | `91_filetree` |
 | `buildlog` | the place in a compiler message | `83_buildlog` |
@@ -1042,6 +1044,20 @@ and `exec`s the program, so the program is the process `Job.pid` names, and a mi
 program is 127 whatever the shell would have said (macOS's `sh` says 126 for a path
 with a slash).
 
+**Fonts.** The editor draws with JetBrains Mono (OFL, in `examples/pad/fonts/` with its
+licence) unless the settings or `--font` say otherwise; "Choose font..." in the palette lists
+the monospaced TrueType fonts it can find -- `fonts/` beside the program, `fonts/` in the
+settings folder, a few the system has -- and the bitmap Unscii, which is also what is used
+if no TrueType font will load. The highlighted font is shown as the list moves, as the theme
+list does. Bigger and Smaller step a TrueType font through 11 to 32 pixels and the bitmap one
+through whole-number scales; `font` and `fontsize` are in the settings. `Metrics` takes its
+cell from the face (`fixedW`, `fixedH`), so everything that was laid out in 8 x 16 cells is laid
+out in the font's. It needs **SDL2_ttf** (`brew install sdl2_ttf`, `libsdl2-ttf-dev`), a new
+dependency; `lib/ttf.cmm` is the only module that links it, so nothing else needs it. The play
+tests are given `--font pixel` (`# font default` in a test leaves pad to choose), because
+every pixel position in them is worked out for 8 x 16 cells; a TrueType font's exact cell
+depends on FreeType, so the tests of it check relations, not numbers.
+
 **The terminal** (Ctrl `, "Toggle terminal") is the bottom panel showing a shell instead
 of the compiler's output; F5 or F7 shows the output again and Ctrl ` brings the terminal
 back. There is no pseudo-terminal: `sh` reads what is typed as a script from a named
@@ -1054,16 +1070,17 @@ A command typed after the shell has ended starts a new one. In the terminal: Ent
 line, Up and Down walk the last 100 commands, Ctrl C interrupts, Ctrl D (on an empty line)
 ends the input, Ctrl L clears, Ctrl A, E and U are the readline ones, Ctrl V pastes, the
 wheel and the page keys scroll. Only the commands in `TerminalKeys.global` run from the
-terminal; Escape gives the keyboard back to the text, and again closes the panel. Ctrl C
-is a SIGINT to what the shell started, so it does nothing to a program that inherited
-SIGINT as *ignored* -- which anything started from a script's background job (`cmd &`)
-does, and which cost an afternoon in the mutation harness (`signal.signal(SIGINT,
-SIG_DFL)` in the child fixes it there).
+terminal; Escape gives the keyboard back to the text, and again closes the panel. Ctrl C is a
+SIGINT to what the shell started. A program started from a script's background job (`cmd &`)
+has SIGINT *ignored*, and so would everything it starts -- which broke the terminal's Ctrl C
+and the tests of it under `test.sh` run that way -- so `Job.start` starts the program with
+SIGINT at its default and puts back what the process had.
 A pipe opened for reading by a program that has not started yet blocks that program
 for ever if the writer closes first: `Job` therefore waits for the launcher's `ready`
 file before closing the input (a hang found by the test, not by thought).
 
-Not done, on purpose: choosing the font, Windows, and indenting a block of lines.
+Not done, on purpose: Windows, indenting a block of lines, and any character outside printable
+ASCII in a TrueType font (it is drawn as `?`, as in the bitmap one).
 
 ## Other editors
 

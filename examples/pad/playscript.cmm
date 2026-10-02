@@ -397,6 +397,18 @@ class Report from IO
     out("panellast ${last}\n")
     out("top ${ed.top} scrollx ${pad.ws.active().scrollX}\n")
     out("scale ${pad.m.scale}\n")
+    out("font ${pad.fonts.name} | ${pad.fonts.id} | ${pad.fonts.size}\n")
+    out("cell ${pad.m.cell()} ${pad.m.rowHeight()}\n")
+    String fl = ""
+    Int fi = 0
+    while fi < pad.fonts.names.len():
+      if fi > 0:
+        fl = fl + "|"
+      end
+      fl = fl + pad.fonts.names.get(fi)
+      fi = fi + 1
+    end
+    out("fonts ${fl}\n")
     out("quit ${pad.quitting}\n")
     out("theme ${pad.themes.t.name}\n")
   end

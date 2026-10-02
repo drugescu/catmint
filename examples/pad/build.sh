@@ -13,8 +13,10 @@ ROOT=$(cd "$HERE/../.." && pwd)
 
 LIBS=""
 if command -v brew >/dev/null 2>&1; then
-  SDL_PREFIX=$(brew --prefix sdl2 2>/dev/null || true)
-  [ -n "$SDL_PREFIX" ] && [ -d "$SDL_PREFIX/lib" ] && LIBS="-L $SDL_PREFIX/lib"
+  for formula in sdl2 sdl2_ttf; do
+    PREFIX=$(brew --prefix "$formula" 2>/dev/null || true)
+    [ -n "$PREFIX" ] && [ -d "$PREFIX/lib" ] && LIBS="$LIBS -L $PREFIX/lib"
+  done
 fi
 
 # shellcheck disable=SC2086

@@ -16,10 +16,13 @@ using buildlog
 using metrics
 using filetree
 using terminal
+using ttf
 
 class Painter from Object
   Renderer view = null
   Font font = null
+  # The TrueType font in use, or null for the bitmap one.
+  TrueType face = null
   Theme t = null
   Metrics m = null
 
@@ -38,7 +41,11 @@ class Painter from Object
   end
 
   def Void ink(String s, Int x, Int y, Int c):
-    font.draw(s, x, y + m.inset(), m.scale, Theme.red(c), Theme.green(c), Theme.blue(c))
+    if face != null:
+      face.draw(s, x, y + m.inset(), Theme.red(c), Theme.green(c), Theme.blue(c))
+    else
+      font.draw(s, x, y + m.inset(), m.scale, Theme.red(c), Theme.green(c), Theme.blue(c))
+    end
   end
 
   def Void hairline(Int x, Int y, Int w, Int c):
@@ -129,7 +136,7 @@ class Painter from Object
     end
     if caret == 1 and cursorRow >= ed.top and cursorRow < ed.top + rows:
       color(t.accent)
-      view.fillRect(left + (ed.column(ed.cursor) - scrollX) * m.cell(), m.tabsHeight() + (cursorRow - ed.top) * m.rowHeight(), 2 * m.scale, m.rowHeight())
+      view.fillRect(left + (ed.column(ed.cursor) - scrollX) * m.cell(), m.tabsHeight() + (cursorRow - ed.top) * m.rowHeight(), m.caretWidth(), m.rowHeight())
     end
   end
 
@@ -237,7 +244,7 @@ class Painter from Object
     ink(term.line.buf.text(), fieldX, y, t.text)
     if caret == 1:
       color(t.accent)
-      view.fillRect(fieldX + term.line.column(term.line.cursor) * m.cell(), y + 1, 2 * m.scale, m.rowHeight() - 2)
+      view.fillRect(fieldX + term.line.column(term.line.cursor) * m.cell(), y + 1, m.caretWidth(), m.rowHeight() - 2)
     end
     view.unclip()
   end
@@ -275,7 +282,7 @@ class Painter from Object
     ink(pal.field.buf.text(), fieldX, y, t.text)
     if caret == 1:
       color(t.accent)
-      view.fillRect(fieldX + pal.field.column(pal.field.cursor) * m.cell(), y + 1, 2 * m.scale, m.rowHeight() - 2)
+      view.fillRect(fieldX + pal.field.column(pal.field.cursor) * m.cell(), y + 1, m.caretWidth(), m.rowHeight() - 2)
     end
     view.unclip()
     hairline(x, y + m.rowHeight() - 1, w, t.accent)

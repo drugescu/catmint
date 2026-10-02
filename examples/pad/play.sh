@@ -20,6 +20,7 @@
 #   # config-file settings=theme=Nord\n    (and what it holds afterwards)
 #   # open notes.txt          (start with this file)
 #   # args --catmintc @ROOT@/catmintc   (more arguments; @ROOT@ is the repository)
+#   # font default             (--font pixel is given unless this says otherwise)
 #   # env TMPDIR=@DIR@/tmp     (variables pad runs with; @DIR@ is the test's own folder)
 #   # gone pid.txt             (no process has the number that file holds, afterwards)
 #   # expect cursor 1 6
@@ -94,10 +95,15 @@ CONFIGS
   open=$(sed -n 's/^# open \(.*\)$/\1/p' "$play" | sed "s|@DIR@|$dir|g")
   # "# args ...": more arguments for pad; @ROOT@ is this repository.
   extra=$(sed -n 's/^# args \(.*\)$/\1/p' "$play" | sed "s|@ROOT@|$ROOT|g")
+  # "# font NAME": the font pad is given (--font); none given means the bitmap font, the one
+  # every pixel position in these tests is worked out for. "# font default" leaves pad to choose.
+  font=$(sed -n 's/^# font \(.*\)$/\1/p' "$play")
+  [ -z "$font" ] && font=pixel
+  [ "$font" = default ] && font=""
   # "# env NAME=value ...": variables pad runs with; @DIR@ is the test's own folder.
   envs=$(sed -n 's/^# env \(.*\)$/\1/p' "$play" | sed "s|@DIR@|$dir|g" | tr '\n' ' ')
   # shellcheck disable=SC2086
-  (cd "$dir" && env $envs perl -e 'alarm shift; exec @ARGV' "${PLAY_TIMEOUT:-90}" "$PAD" $open $extra --play "$play" --frames "$frames" --shot "$shot") > "$TMP/out" 2>&1
+  (cd "$dir" && env $envs perl -e 'alarm shift; exec @ARGV' "${PLAY_TIMEOUT:-90}" "$PAD" $open $extra ${font:+--font "$font"} --play "$play" --frames "$frames" --shot "$shot") > "$TMP/out" 2>&1
   status=$?
   problems=""
   [ "$status" -eq 0 ] || problems="exit status $status"
