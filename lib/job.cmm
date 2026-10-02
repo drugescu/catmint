@@ -68,6 +68,7 @@ extern class JobC
   def Int waitpid(Int pid, Bytes status, Int options)
   def Int kill(Int pid, Int signal)
   def String getenv(String name)
+  def Ptr signal(Int number, Ptr handler)
 end
 
 class Job from Object
@@ -268,7 +269,17 @@ class Job from Object
       launch.append(argv.get(i))
       i = i + 1
     end
+    # A program started from a script's background job has SIGINT ignored, and so would
+    # everything started here, and ^C (interrupt()) could stop nothing: the program is
+    # started with it at its default, and this process gets back what it had.
+    Ptr before = null
+    unsafe:
+      before = JobC.signal(2, null)
+    end
     pid = Process.startArgs(launch)
+    unsafe:
+      JobC.signal(2, before)
+    end
     if pid <= 0:
       tidy()
       return 0
