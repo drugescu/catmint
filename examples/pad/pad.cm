@@ -47,16 +47,8 @@ using outputpanel
 using builder
 using metrics
 using painter
+using workspace
 using playscript
-
-# A file being edited, parked while another tab is in front. The one in front
-# lives in Pad's own ed, path and scrollX, so everything that works on "the
-# document" works on it without asking which; switching swaps them with these.
-class Doc from Object
-  Editor ed = null
-  String path = ""
-  Int scrollX
-end
 
 class Pad from IO
   Sdl sdl = null
@@ -66,17 +58,12 @@ class Pad from IO
   Metrics m = null
   ThemeChooser themes = null
   Search search = null
-  Editor ed = null
-  List docs = null
-  Int current
-  Int firstTab
+  Workspace ws = null
   Palette pal = null
-  String path = ""
   String message = ""
   Builder builder = null
   List recents = null
   OutputPanel output = null
-  Int scrollX
   Int dragging
   Int lastClick
   Int clickedRow = 0 - 1
@@ -97,11 +84,7 @@ class Pad from IO
     m = new Metrics()
     themes = new ThemeChooser()
     search = new Search()
-    ed = new Editor()
-    Doc first = new Doc()
-    first.ed = ed
-    docs = new List()
-    docs.append(first)
+    ws = new Workspace()
     pal = new Palette()
     builder = new Builder()
     recents = new List()
@@ -118,13 +101,13 @@ class Pad from IO
 
   # Scroll just far enough that the cursor can be seen.
   def Void reveal:
-    ed.reveal(m.viewRows())
-    Int c = ed.column(ed.cursor)
-    Int cols = m.visibleCols(ed.buf.lines()) - 2
-    if c < scrollX:
-      scrollX = c
-    elif c >= scrollX + cols:
-      scrollX = c - cols + 1
+    ed().reveal(m.viewRows())
+    Int c = ed().column(ed().cursor)
+    Int cols = m.visibleCols(ed().buf.lines()) - 2
+    if c < ws.active().scrollX:
+      ws.active().scrollX = c
+    elif c >= ws.active().scrollX + cols:
+      ws.active().scrollX = c - cols + 1
     end
     dirty = 1
   end
@@ -139,191 +122,11 @@ class Pad from IO
 
   # ---- tabs ---------------------------------------------------------------------
 
-  def String baseName(String p):
-    Int slash = 0 - 1
-    Int i = 0
-    while i < p.len():
-      if p.at(i) == 47:
-        slash = i
-      end
-      i = i + 1
-    end
-    return p.substr(slash + 1, p.len())
-  end
-
-  # What a tab says: the file's name, and " *" if it has changes.
-  def String tabLabel(Int i):
-    String name = path
-    Int changed = ed.buf.modified()
-    if i != current:
-      Doc d = docs.get(i)
-      name = d.path
-      changed = d.ed.buf.modified()
-    end
-    if name.len() == 0:
-      name = "(no name)"
-    else
-      name = baseName(name)
-    end
-    if changed == 1:
-      name = name + " *"
-    end
-    return name
-  end
-
-  # Scroll the strip just far enough that the tab in front is all there.
-  def Void ensureTabVisible:
-    if current < firstTab:
-      firstTab = current
-    end
-    Int used = 0
-    Int i = firstTab
-    while i <= current:
-      used = used + tabWidth(i)
-      i = i + 1
-    end
-    while used > m.width and firstTab < current:
-      used = used - tabWidth(firstTab)
-      firstTab = firstTab + 1
-    end
-  end
-
-  # The tab under a pixel of the strip, or -1; and whether it is on the x.
-  def Int tabAt(Int px):
-    Int x = 0
-    Int i = firstTab
-    while i < docs.len():
-      Int w = tabWidth(i)
-      if px >= x and px < x + w:
-        return i
-      end
-      x = x + w
-      i = i + 1
-    end
-    return 0 - 1
-  end
-
-  def Int onTabClose(Int px, Int index):
-    Int x = 0
-    Int i = firstTab
-    while i < index:
-      x = x + tabWidth(i)
-      i = i + 1
-    end
-    if px >= x + tabWidth(index) - 2 * m.cell() and px < x + tabWidth(index) - m.cell():
-      return 1
-    end
-    return 0
-  end
-
-  # Put the tab in front into its slot, and take another out of its.
-  def Void park:
-    Doc d = docs.get(current)
-    d.ed = ed
-    d.path = path
-    d.scrollX = scrollX
-  end
-
-  def Void unpark(Int i):
-    Doc d = docs.get(i)
-    current = i
-    ed = d.ed
-    path = d.path
-    scrollX = d.scrollX
-    dragging = 0
-    ensureTabVisible()
-    if path.len() == 0:
-      win.title("pad")
-    else
-      win.title("pad - ${path}")
-    end
-  end
-
-  def Void switchTo(Int i):
-    if i >= 0 and i < docs.len() and i != current:
-      park()
-      unpark(i)
-      reveal()
-    end
-  end
-
-  # A tab of its own, in front.
-  def Void newDoc:
-    park()
-    Doc d = new Doc()
-    d.ed = new Editor()
-    docs.append(d)
-    unpark(docs.len() - 1)
-    reveal()
-  end
-
-  # 1 if any tab has changes that are not saved.
-  def Int anyModified:
-    if ed.buf.modified() == 1:
-      return 1
-    end
-    Int i = 0
-    while i < docs.len():
-      if i != current:
-        Doc d = docs.get(i)
-        if d.ed.buf.modified() == 1:
-          return 1
-        end
-      end
-      i = i + 1
-    end
-    return 0
-  end
-
-  # The tab, if the file is open already; else -1.
-  def Int docWithPath(String p):
-    if path.equals(p):
-      return current
-    end
-    Int i = 0
-    while i < docs.len():
-      Doc d = docs.get(i)
-      if i != current and d.path.equals(p):
-        return i
-      end
-      i = i + 1
-    end
-    return 0 - 1
-  end
-
-  # Close the tab in front and go to the one before it. With changes it says so
-  # first, and the same again discards them.
-  def Void closeCurrent:
-    if mayDiscard("close") == 1:
-      List kept = new List()
-      Int i = 0
-      while i < docs.len():
-        if i != current:
-          kept.append(docs.get(i))
-        end
-        i = i + 1
-      end
-      Int next = current - 1
-      if kept.len() == 0:
-        Doc blank = new Doc()
-        blank.ed = new Editor()
-        kept.append(blank)
-      end
-      if next < 0:
-        next = 0
-      end
-      docs = kept
-      firstTab = 0
-      unpark(next)
-      reveal()
-    end
-  end
-
   # Tell the measures what the window now holds: a strip of tabs when there are
   # two files or more, the output panel when it is open.
   def Void layout:
     m.tabRows = 0
-    if docs.len() >= 2:
+    if ws.count() >= 2:
       m.tabRows = 1
     end
     m.panelRows = 0
@@ -332,26 +135,12 @@ class Pad from IO
     end
   end
 
-  def Int tabWidth(Int i):
-    return m.tabWidth(tabLabel(i))
-  end
-
-  def List tabLabels:
-    List labels = new List()
-    Int i = 0
-    while i < docs.len():
-      labels.append(tabLabel(i))
-      i = i + 1
-    end
-    return labels
-  end
-
   def String statusName:
-    String name = path
+    String name = path()
     if name.len() == 0:
       name = "(no name)"
     end
-    if ed.buf.modified() == 1:
+    if ed().buf.modified() == 1:
       name = name + " *"
     end
     return name
@@ -365,20 +154,65 @@ class Pad from IO
     if caretOn == 1 and pal.isOpen() == 0:
       caret = 1
     end
-    painter.text(ed, scrollX, caret)
-    if docs.len() >= 2:
-      ensureTabVisible()
-      painter.tabs(tabLabels(), current, firstTab)
+    painter.text(ed(), ws.active().scrollX, caret)
+    if ws.count() >= 2:
+      ws.ensureVisible(m)
+      painter.tabs(ws.labels(), ws.current, ws.firstTab)
     end
     if output.open == 1:
       painter.panel(output.lines)
     end
-    painter.status(statusName(), message, ed.line(), ed.col())
+    painter.status(statusName(), message, ed().line(), ed().col())
     if pal.isOpen() == 1:
       painter.palette(pal, caretOn)
     end
     painter.present()
     dirty = 0
+  end
+
+  # ---- the files that are open ---------------------------------------------------
+
+  # The file in front: its text, its path.
+  def Editor ed:
+    return ws.active().ed
+  end
+
+  def String path:
+    return ws.active().path
+  end
+
+  # A different file is in front: its name in the title, its tab in view, its
+  # cursor on screen.
+  def Void shown:
+    dragging = 0
+    ws.ensureVisible(m)
+    if path().len() == 0:
+      win.title("pad")
+    else
+      win.title("pad - ${path()}")
+    end
+    reveal()
+  end
+
+  def Void switchTo(Int i):
+    if i >= 0 and i < ws.count() and i != ws.current:
+      ws.switchTo(i)
+      shown()
+    end
+  end
+
+  def Void newDoc:
+    ws.add()
+    shown()
+  end
+
+  # Close the file in front. With changes it says so first, and the same again
+  # discards them.
+  def Void closeCurrent:
+    if mayDiscard("close") == 1:
+      ws.closeActive()
+      shown()
+    end
   end
 
   # ---- files ------------------------------------------------------------------------
@@ -401,7 +235,7 @@ class Pad from IO
   # one empty tab with no name that a new pad starts with is used, not left
   # beside it.
   def Void openPath(String p):
-    Int open = docWithPath(p)
+    Int open = ws.indexOfPath(p)
     if open >= 0:
       switchTo(open)
       remember(p)
@@ -410,34 +244,35 @@ class Pad from IO
       if text == null and File.exists(p) == 1:
         message = "cannot read ${p}: a directory, or over 64 MB"
       else
-        if path.len() > 0 or ed.buf.modified() == 1 or ed.buf.length() > 0:
+        if ws.active().isBlank() == 0:
           newDoc()
         end
+        Doc d = ws.active()
         if text == null:
-          ed.load("")
+          d.ed.load("")
           message = "new file"
         else
-          ed.load(text)
+          d.ed.load(text)
         end
-        path = p
-        scrollX = 0
+        d.path = p
+        d.scrollX = 0
         remember(p)
-        ensureTabVisible()
-        win.title("pad - ${path}")
+        ws.ensureVisible(m)
+        win.title("pad - ${p}")
       end
     end
     reveal()
   end
 
   def Void save:
-    if path.len() == 0:
+    if path().len() == 0:
       pal.open(Palette.saveMode(), "save as", new List(), new List())
     else
-      if Files.save(path, ed.buf.text()) == 1:
-        ed.buf.markSaved()
+      if Files.save(path(), ed().buf.text()) == 1:
+        ed().buf.markSaved()
         message = "saved"
       else
-        message = "could not save ${path}"
+        message = "could not save ${path()}"
       end
     end
   end
@@ -445,9 +280,9 @@ class Pad from IO
   # With unsaved changes, the first attempt says so and the same action again
   # goes ahead. 1 if it may.
   def Int mayDiscard(String action):
-    Int changed = ed.buf.modified()
+    Int changed = ed().buf.modified()
     if action.equals("quit"):
-      changed = anyModified()
+      changed = ws.anyModified()
     end
     if changed == 0 or was.equals(action):
       return 1
@@ -459,18 +294,18 @@ class Pad from IO
 
   # Save what needs saving, build the file, and show what the compiler said.
   def Void build:
-    if path.len() == 0:
+    if path().len() == 0:
       message = "save the file first"
       save()
     else
-      if ed.buf.modified() == 1:
+      if ed().buf.modified() == 1:
         save()
       end
       message = "building..."
       draw()
-      Int code = builder.build(path, output)
+      Int code = builder.build(path(), output)
       if code == 0:
-        message = "built ${builder.outputFor(path)}"
+        message = "built ${builder.outputFor(path())}"
       else
         message = "build failed"
       end
@@ -518,7 +353,7 @@ class Pad from IO
     String id = commands.lookup(shortcut, shift, key)
     if id.len() > 0:
       runCommand(id)
-    elif EditKeys.apply(ed, key, shift, shortcut, m.viewRows()) == 1:
+    elif EditKeys.apply(ed(), key, shift, shortcut, m.viewRows()) == 1:
       reveal()
     end
   end
@@ -526,7 +361,7 @@ class Pad from IO
   # ---- the palette's work ---------------------------------------------------------
 
   def Void openFind:
-    search.begin(ed)
+    search.begin(ed())
     pal.open(Palette.findMode(), "find", new List(), new List())
     if search.has() == 1:
       pal.typeText(search.needle)
@@ -538,7 +373,7 @@ class Pad from IO
     if search.has() == 0:
       openFind()
     else
-      if search.again(ed, forward) == 0:
+      if search.again(ed(), forward) == 0:
         message = "not found"
       end
       reveal()
@@ -550,7 +385,7 @@ class Pad from IO
   def Void afterFieldEdit:
     themes.preview(pal)
     if pal.mode == Palette.findMode():
-      if search.typed(ed, pal.field.buf.text()) == 0:
+      if search.typed(ed(), pal.field.buf.text()) == 0:
         message = "not found"
       end
       reveal()
@@ -628,10 +463,10 @@ class Pad from IO
     elif m == Palette.replaceMode():
       String replacement = pal.field.buf.text()
       if shortcut == 1:
-        message = "replaced ${ed.replaceAll(search.needle, replacement)}"
+        message = "replaced ${ed().replaceAll(search.needle, replacement)}"
         pal.close()
       else
-        if ed.replaceNext(search.needle, replacement) == 0:
+        if ed().replaceNext(search.needle, replacement) == 0:
           message = "no more"
         end
       end
@@ -640,7 +475,7 @@ class Pad from IO
       Int n = pal.number()
       pal.close()
       if n >= 1:
-        ed.goToLine(n)
+        ed().goToLine(n)
         reveal()
       end
     elif m == Palette.themeMode():
@@ -650,8 +485,8 @@ class Pad from IO
       String target = pal.field.buf.text()
       pal.close()
       if target.len() > 0:
-        path = target
-        win.title("pad - ${path}")
+        ws.active().path = target
+        win.title("pad - ${path()}")
         save()
       end
     end
@@ -667,9 +502,9 @@ class Pad from IO
     elif id == "close":
       closeCurrent()
     elif id == "nexttab":
-      switchTo((current + 1) % docs.len())
+      switchTo((ws.current + 1) % ws.count())
     elif id == "prevtab":
-      switchTo((current + docs.len() - 1) % docs.len())
+      switchTo((ws.current + ws.count() - 1) % ws.count())
     elif id == "find":
       openFind()
     elif id == "findnext":
@@ -701,25 +536,25 @@ class Pad from IO
       end
       reveal()
     elif id == "undo":
-      ed.undo()
+      ed().undo()
       reveal()
     elif id == "redo":
-      ed.redo()
+      ed().redo()
       reveal()
     elif id == "all":
-      ed.selectAll()
+      ed().selectAll()
     elif id == "cut":
-      String s = ed.cut()
+      String s = ed().cut()
       if s.len() > 0:
         sdl.setClipboard(s)
       end
       reveal()
     elif id == "copy":
-      if ed.hasSelection() == 1:
-        sdl.setClipboard(ed.copyText())
+      if ed().hasSelection() == 1:
+        sdl.setClipboard(ed().copyText())
       end
     elif id == "paste":
-      ed.paste(sdl.clipboard())
+      ed().paste(sdl.clipboard())
       reveal()
     elif id == "commands":
       openCommands()
@@ -742,7 +577,7 @@ class Pad from IO
       pal.typeText(s)
       afterFieldEdit()
     else
-      ed.typeText(s)
+      ed().typeText(s)
       reveal()
     end
     wake()
@@ -814,9 +649,9 @@ class Pad from IO
         closePalette()
       end
     elif y < m.tabsHeight():
-      Int tab = tabAt(x)
+      Int tab = ws.tabAt(x, m)
       if tab >= 0:
-        if onTabClose(x, tab) == 1:
+        if ws.onClose(x, tab, m) == 1:
           switchTo(tab)
           closeCurrent()
         else
@@ -829,15 +664,15 @@ class Pad from IO
         jumpTo(output.lineAt(i))
       end
     elif y < m.tabsHeight() + m.viewHeight():
-      Int row = m.rowAt(y, ed.top)
-      Int col = m.colAt(x, ed.buf.lines(), scrollX)
+      Int row = m.rowAt(y, ed().top)
+      Int col = m.colAt(x, ed().buf.lines(), ws.active().scrollX)
       Int now = sdl.ticks()
       if row == clickedRow and col == clickedCol and now - lastClick < 400:
-        ed.placeAt(row, col, 0)
-        ed.selectWord(ed.cursor)
+        ed().placeAt(row, col, 0)
+        ed().selectWord(ed().cursor)
         clickedRow = 0 - 1
       else
-        ed.placeAt(row, col, 0)
+        ed().placeAt(row, col, 0)
         clickedRow = row
         clickedCol = col
         lastClick = now
@@ -849,7 +684,7 @@ class Pad from IO
 
   def Void onMouseMove(Int x, Int y):
     if dragging == 1:
-      ed.placeAt(m.rowAt(y, ed.top), m.colAt(x, ed.buf.lines(), scrollX), 1)
+      ed().placeAt(m.rowAt(y, ed().top), m.colAt(x, ed().buf.lines(), ws.active().scrollX), 1)
       reveal()
     end
   end
@@ -861,7 +696,7 @@ class Pad from IO
       message = "that line names no place"
     else
       String file = BuildLog.file(line)
-      String mine = path
+      String mine = path()
       Int slash = 0 - 1
       Int i = 0
       while i < mine.len():
@@ -871,13 +706,13 @@ class Pad from IO
         i = i + 1
       end
       mine = mine.substr(slash + 1, mine.len())
-      if file.len() > 0 and file.equals(mine) == 0 and file.equals(path) == 0:
+      if file.len() > 0 and file.equals(mine) == 0 and file.equals(path()) == 0:
         message = "that is in ${file}"
       else
-        ed.goToLine(n)
+        ed().goToLine(n)
         Int c = BuildLog.column(line)
         if c > 1:
-          ed.placeAt(n - 1, c - 1, 0)
+          ed().placeAt(n - 1, c - 1, 0)
         end
         reveal()
       end
@@ -906,7 +741,7 @@ class Pad from IO
     elif sdl.isMouseMove() == 1:
       onMouseMove(sdl.mouseX(), sdl.mouseY())
     elif sdl.isWheel() == 1:
-      ed.scrollBy(0 - sdl.wheel() * 3)
+      ed().scrollBy(0 - sdl.wheel() * 3)
       dirty = 1
     end
   end

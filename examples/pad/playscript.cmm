@@ -197,9 +197,9 @@ class Report from IO
   end
 
   def Void print:
-    Editor ed = pad.ed
+    Editor ed = pad.ed()
     Palette pal = pad.pal
-    out("file ${pad.path}\n")
+    out("file ${pad.path()}\n")
     out("text ${escaped(ed.buf.text())}\n")
     out("cursor ${ed.line()} ${ed.col()}\n")
     out("selection ${escaped(ed.selected())}\n")
@@ -214,14 +214,14 @@ class Report from IO
     out("results ${pal.results.len()} first ${first}\n")
     String names = ""
     Int di = 0
-    while di < pad.docs.len():
+    while di < pad.ws.count():
       if di > 0:
         names = names + "|"
       end
-      names = names + pad.tabLabel(di)
+      names = names + pad.ws.at(di).label()
       di = di + 1
     end
-    out("tabs ${pad.docs.len()} ${pad.current}\n")
+    out("tabs ${pad.ws.count()} ${pad.ws.current}\n")
     out("tabnames ${names}\n")
     out("panel ${pad.output.open} ${pad.output.size()}\n")
     String last = "-"
@@ -230,7 +230,7 @@ class Report from IO
       last = tail
     end
     out("panellast ${last}\n")
-    out("top ${ed.top} scrollx ${pad.scrollX}\n")
+    out("top ${ed.top} scrollx ${pad.ws.active().scrollX}\n")
     out("scale ${pad.m.scale}\n")
     out("quit ${pad.quitting}\n")
     out("theme ${pad.themes.t.name}\n")

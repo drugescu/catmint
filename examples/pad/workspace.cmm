@@ -1,0 +1,198 @@
+# The files that are open, and which one is in front: what the strip of tabs shows.
+#
+# Each file is a Doc: its text (an Editor), its path and how far it is scrolled
+# sideways. The Workspace owns them and says which is `active`; nothing else keeps
+# a copy of that, so there is one answer to "which file". It does not draw or ask
+# questions: closing a file with changes is for the caller to confirm first, and
+# the width of a tab is Metrics' (it depends on the size of the text).
+#
+# A tab says the file's name and " *" when it has changes. The strip scrolls just
+# far enough to keep the active tab in view, and `firstTab` is where it begins.
+
+using editor
+using files
+using metrics
+
+class Doc from Object
+  Editor ed = null
+  String path = ""
+  Int scrollX
+
+  constructor():
+    ed = new Editor()
+  end
+
+  # What a tab says: the file's name, and " *" if it has changes.
+  def String label:
+    String name = "(no name)"
+    if path.len() > 0:
+      name = Files.baseName(path)
+    end
+    if ed.buf.modified() == 1:
+      name = name + " *"
+    end
+    return name
+  end
+
+  # A new, empty document that nothing has been done to.
+  def Int isBlank:
+    if path.len() == 0 and ed.buf.modified() == 0 and ed.buf.length() == 0:
+      return 1
+    end
+    return 0
+  end
+end
+
+class Workspace from Object
+  List docs = null
+  Int current
+  Int firstTab
+
+  constructor():
+    docs = new List()
+    docs.append(new Doc())
+  end
+
+  def Doc active:
+    return docs.get(current)
+  end
+
+  def Doc at(Int i):
+    return docs.get(i)
+  end
+
+  def Int count:
+    return docs.len()
+  end
+
+  # The tab, if the file is open already; else -1.
+  def Int indexOfPath(String p):
+    Int i = 0
+    while i < docs.len():
+      Doc d = docs.get(i)
+      if d.path.equals(p):
+        return i
+      end
+      i = i + 1
+    end
+    return 0 - 1
+  end
+
+  # 1 if any file has changes that are not saved.
+  def Int anyModified:
+    Int i = 0
+    while i < docs.len():
+      Doc d = docs.get(i)
+      if d.ed.buf.modified() == 1:
+        return 1
+      end
+      i = i + 1
+    end
+    return 0
+  end
+
+  # A new, empty file, in front.
+  def Doc add:
+    Doc d = new Doc()
+    docs.append(d)
+    current = docs.len() - 1
+    return d
+  end
+
+  def Void switchTo(Int i):
+    if i >= 0 and i < docs.len():
+      current = i
+    end
+  end
+
+  # The next tab (delta 1) or the one before (-1), going round the ends.
+  def Void step(Int delta):
+    current = (current + docs.len() + delta) % docs.len()
+  end
+
+  # Close the file in front and go to the one before it. There is always one
+  # open: closing the last leaves a new, empty one.
+  def Void closeActive:
+    List kept = new List()
+    Int i = 0
+    while i < docs.len():
+      if i != current:
+        kept.append(docs.get(i))
+      end
+      i = i + 1
+    end
+    Int next = current - 1
+    if kept.len() == 0:
+      kept.append(new Doc())
+    end
+    if next < 0:
+      next = 0
+    end
+    docs = kept
+    firstTab = 0
+    current = next
+  end
+
+  def List labels:
+    List result = new List()
+    Int i = 0
+    while i < docs.len():
+      Doc d = docs.get(i)
+      result.append(d.label())
+      i = i + 1
+    end
+    return result
+  end
+
+  # Scroll the strip just far enough that the tab in front is all there.
+  def Void ensureVisible(Metrics m):
+    if current < firstTab:
+      firstTab = current
+    end
+    Int used = 0
+    Int i = firstTab
+    while i <= current:
+      Doc d = docs.get(i)
+      used = used + m.tabWidth(d.label())
+      i = i + 1
+    end
+    while used > m.width and firstTab < current:
+      Doc first = docs.get(firstTab)
+      used = used - m.tabWidth(first.label())
+      firstTab = firstTab + 1
+    end
+  end
+
+  # The tab under a pixel of the strip, or -1.
+  def Int tabAt(Int px, Metrics m):
+    Int x = 0
+    Int i = firstTab
+    while i < docs.len():
+      Doc d = docs.get(i)
+      Int w = m.tabWidth(d.label())
+      if px >= x and px < x + w:
+        return i
+      end
+      x = x + w
+      i = i + 1
+    end
+    return 0 - 1
+  end
+
+  # 1 if the pixel is on the closing x of the tab with this index.
+  def Int onClose(Int px, Int index, Metrics m):
+    Int x = 0
+    Int i = firstTab
+    while i < index:
+      Doc d = docs.get(i)
+      x = x + m.tabWidth(d.label())
+      i = i + 1
+    end
+    Doc target = docs.get(index)
+    Int w = m.tabWidth(target.label())
+    if px >= x + w - 2 * m.cell() and px < x + w - m.cell():
+      return 1
+    end
+    return 0
+  end
+end
