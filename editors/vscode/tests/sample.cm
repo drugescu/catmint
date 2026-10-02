@@ -1,0 +1,15 @@
+using sdl
+# a comment, with "quotes" and class
+class Counter from Object
+  Int count = 0
+  def Int bump(Int by):
+    String s = "total ${count + 1}\n"
+    if count >= 10 and by != 0:
+      return 'x'
+    end
+    return null
+  end
+  def static String name:
+    return self.label()
+  end
+end

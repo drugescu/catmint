@@ -125,6 +125,14 @@ if command -v python3 >/dev/null 2>&1; then
     printf "%s\n" "$themes_out" | sed 's/^/  /'
     failed=1
   fi
+  # VS Code's grammar is generated from the lexer too, and checked against a sample.
+  if vscode_out=$(python3 "$ROOT/tools/make_vscode.py" --check 2>&1 && python3 "$ROOT/tools/vscode_test.py" 2>&1); then
+    printf "  %s\n" "$vscode_out"
+  else
+    printf "  ${RED}failed${NC}\n"
+    printf "%s\n" "$vscode_out" | sed 's/^/  /'
+    failed=1
+  fi
 fi
 
 # Callbacks from a C library: every width of argument, a struct, userdata
