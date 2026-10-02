@@ -1,0 +1,332 @@
+# A Job that takes input: a shell run in the background that a window types into, for a
+# terminal panel. With `interactive = 1` the program's input is a named pipe in the job's
+# own folder, and send() queues text for it. What is expected:
+#   - send() never waits: the text is queued, and handed to the pipe a piece at a time
+#     (no more than 512 bytes, which a pipe takes whole) as poll() finds room, so a shell
+#     that is not reading holds up nothing but its own input;
+#   - what is sent is what the program reads, in order: a shell keeps its variables and
+#     its folder from one line to the next, and the program that is running reads the
+#     lines sent after its own command, as in a terminal;
+#   - closeInput() is the end of the input (^D): the shell ends, 0;
+#   - interrupt() is ^C: what the shell started is signalled and the shell is not, so it
+#     goes on to the next command;
+#   - send() says 0 for a job that is not running, not interactive, or with more than a
+#     megabyte already waiting;
+#   - the pipe, its descriptor and its folder go when the job ends, and 80 shells in a row
+#     start with room for only 50 descriptors.
+
+using job
+using files
+
+extern class Limits
+  def Int getrlimit(Int resource, Bytes limits)
+  def Int setrlimit(Int resource, Bytes limits)
+end
+
+class Main from IO
+  Job sh = null
+  List queue = null
+  Int next
+
+  def String yn(Int b):
+    if b == 1:
+      return "yes"
+    end
+    return "no"
+  end
+
+  def List of(String a):
+    List l = new List()
+    l.append(a)
+    return l
+  end
+
+  # A shell, with its input to be typed into.
+  def Void fresh:
+    sh = new Job()
+    sh.interactive = 1
+    sh.start(of("sh"), "")
+    queue = new List()
+    next = 0
+  end
+
+  # Take what has arrived into the queue.
+  def Int gather:
+    List lines = sh.poll()
+    Int i = 0
+    while i < lines.len():
+      queue.append(lines.get(i))
+      i = i + 1
+    end
+    return lines.len()
+  end
+
+  # 1 if a line equal to `want` comes within five seconds; the lines before it are used up.
+  def Int await(String want):
+    return awaitFor(want, 5000)
+  end
+
+  def Int awaitFor(String want, Int ms):
+    Int began = ticks()
+    while ticks() - began < ms:
+      while next < queue.len():
+        String line = queue.get(next)
+        next = next + 1
+        if line.equals(want):
+          return 1
+        end
+      end
+      if gather() == 0:
+        sleep(5)
+      end
+    end
+    return 0
+  end
+
+  # Until the job is over.
+  def Void drain:
+    while sh.running() == 1:
+      if gather() == 0:
+        sleep(5)
+      end
+    end
+  end
+
+  # A string of n copies of "x".
+  def String xs(Int n):
+    String s = "x"
+    while s.len() < n:
+      s = s + s
+    end
+    return s.substr(0, n)
+  end
+
+  # 1 if the file or pipe at `path` has exactly the mode 0700.
+  def Int private(String path):
+    List ask = of("find")
+    ask.append(path)
+    ask.append("-maxdepth")
+    ask.append("0")
+    ask.append("-perm")
+    ask.append("0700")
+    ask.append("-print")
+    Process q = new Process()
+    q.openArgs(ask)
+    String found = ""
+    if q.eof() == 0:
+      found = q.readLine()
+    end
+    while q.eof() == 0:
+      String more = q.readLine()
+    end
+    q.finish()
+    return found.equals(path)
+  end
+
+  def main:
+    # Some descriptors in use already, so that the job's are not 3 and 4 by luck.
+    List held = new List()
+    Int h = 0
+    while h < 6:
+      File f = new File()
+      f.open("/dev/null", "r")
+      held.append(f)
+      h = h + 1
+    end
+
+    fresh()
+    out("started: running ${sh.running()}\n")
+    out("sent: ${sh.send("echo hello\n")}\n")
+    out("hello: ${yn(await("hello"))}\n")
+
+    # One line after another, in the one shell.
+    sh.send("X=5\ncd /\necho $X\npwd\n")
+    Int five = await("5")
+    Int root = await("/")
+    out("state kept: ${yn(five)} ${yn(root)}\n")
+    sh.send("echo oops 1>&2\n")
+    out("errors too: ${yn(await("oops"))}\n")
+
+    # The end of the input.
+    sh.closeInput()
+    drain()
+    out("end of input: code ${sh.code()}\n")
+
+    fresh()
+    sh.send("exit 3\n")
+    drain()
+    out("exit: code ${sh.code()}\n")
+
+    # What the shell started reads the lines sent after it.
+    fresh()
+    sh.send("cat\n")
+    sh.send("typed\n")
+    Int typed = await("typed")
+    sh.send("more\n")
+    Int more = await("more")
+    sh.closeInput()
+    drain()
+    out("cat: ${yn(typed)} ${yn(more)}, code ${sh.code()}\n")
+
+    # ^C stops what the shell started and not the shell.
+    fresh()
+    sh.send("echo started; sleep 30; echo status $?\n")
+    await("started")
+    # The shell starts sleep a moment after saying so: signal until it takes. SIGINT
+    # leaves status 130 behind it, SIGTERM would leave 143.
+    Int woke = 0
+    Int tries = 0
+    while woke == 0 and tries < 50:
+      sh.interrupt()
+      woke = awaitFor("status 130", 200)
+      tries = tries + 1
+    end
+    sh.send("echo alive\n")
+    Int alive = await("alive")
+    out("interrupt: stopped by SIGINT ${yn(woke)}, alive ${yn(alive)}, running ${sh.running()}\n")
+    sh.closeInput()
+    drain()
+
+    # Sending does not wait, however much there is and whether or not the shell reads:
+    # 100,000 characters on one line queue up behind a command that takes a second.
+    # A comment of a hundred bytes goes in first, so that the room left in the pipe is not
+    # a whole number of the pieces it is filled with.
+    fresh()
+    sh.send("sleep 1\n")
+    sleep(100)
+    sh.send("#" + xs(99) + "\n")
+    String big = "echo " + xs(100000) + "\n"
+    Int began = ticks()
+    Int accepted = sh.send(big)
+    Int took = ticks() - began
+    out("big: accepted ${accepted}, quick ${yn(took < 300)}\n")
+    sh.send("echo end\n")
+    sh.closeInput()
+    Int chars = 0
+    Int sawEnd = 0
+    while sh.running() == 1:
+      List lines = sh.poll()
+      Int i = 0
+      while i < lines.len():
+        String line = lines.get(i)
+        chars = chars + line.len()
+        if line.equals("end"):
+          sawEnd = 1
+        end
+        i = i + 1
+      end
+      if lines.len() == 0:
+        sleep(5)
+      end
+    end
+    out("big: ${chars} characters came back, end ${yn(sawEnd)}, code ${sh.code()}\n")
+
+    # No more than a megabyte waits, counting what is waiting already.
+    fresh()
+    sh.send("sleep 2\n")
+    sleep(100)
+    Int first = sh.send(xs(700000))
+    Int second = sh.send(xs(700000))
+    out("megabyte: ${first} then ${second}\n")
+    sh.stop()
+    drain()
+
+    # After closeInput() nothing more is taken, even before the end has gone in.
+    fresh()
+    sh.closeInput()
+    out("send after closeInput: ${sh.send("echo late\n")}\n")
+    drain()
+
+    # A Job used again starts with its input open.
+    sh.start(of("sh"), "")
+    queue = new List()
+    next = 0
+    out("reused: send ${sh.send("echo second\n")}, saw ${yn(await("second"))}\n")
+    sh.closeInput()
+    drain()
+
+    # Refused.
+    fresh()
+    out("two megabytes: ${sh.send(xs(2097152))}\n")
+    sh.closeInput()
+    drain()
+    out("after the end: ${sh.send("echo late\n")}\n")
+    Job plain = new Job()
+    out("never started: ${plain.send("x")}\n")
+    plain.start(of("cat"), "")
+    out("not interactive: ${plain.send("x")}\n")
+    plain.stop()
+    while plain.running() == 1:
+      plain.poll()
+      sleep(5)
+    end
+
+    # The folder goes with the job.
+    fresh()
+    String folder = sh.dir
+    String pipe = sh.input
+    Int there = File.exists(pipe)
+    Int mine = private(pipe)
+    sh.closeInput()
+    drain()
+
+    out("files: pipe was there ${yn(there)}, private ${yn(mine)}, folder after ${yn(Files.isDirectory(folder))}, pipe after ${yn(File.exists(pipe))}\n")
+
+    # The descriptor is closed once: the number it had is somebody else's by then.
+    fresh()
+    sh.closeInput()
+    while sh.inFd >= 0:
+      sh.poll()
+      sleep(2)
+    end
+    String probePath = sh.tempBase() + "/catmint-probe-${Process.pid()}"
+    File probe = new File()
+    probe.open(probePath, "w")
+    drain()
+    probe.write("alive")
+    probe.close()
+    String back = Files.read(probePath, 100)
+    File.remove(probePath)
+    out("not closed twice: ${yn(back != null and back.equals("alive"))}\n")
+
+    # Descriptors come back: with room for 50, 80 shells in a row start and end.
+    Process u = new Process()
+    List which = of("uname")
+    which.append("-s")
+    u.openArgs(which)
+    String system = u.readLine()
+    while u.eof() == 0:
+      String rest = u.readLine()
+    end
+    u.finish()
+    Int resource = 7
+    if system.equals("Darwin"):
+      resource = 8
+    end
+    Bytes room = new Bytes(16)
+    unsafe:
+      Limits.getrlimit(resource, room)
+      room.set(0, 50)
+      room.set(1, 0)
+      room.set(2, 0)
+      room.set(3, 0)
+      Limits.setrlimit(resource, room)
+    end
+    Int shells = 0
+    Int ended = 0
+    Int n = 0
+    while n < 80:
+      fresh()
+      if sh.running() == 1:
+        shells = shells + 1
+        sh.send("exit 0\n")
+        drain()
+        if sh.code() == 0:
+          ended = ended + 1
+        end
+      end
+      n = n + 1
+    end
+    out("80 shells: started ${shells}, ended well ${ended}\n")
+  end
+end

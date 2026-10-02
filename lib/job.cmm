@@ -34,6 +34,20 @@
 # A program that has hit the limit and ignores being asked is killed about a second
 # (sixty polls) later.
 #
+# With `interactive = 1` set before start(), the program's input is a named pipe in the
+# same folder instead of nothing, and the window can type into it:
+#
+#   j.send("ls\n")        # queue text for the program; 0 if it cannot be taken
+#   j.interrupt()         # ^C: signal what the program started, not the program
+#   j.closeInput()        # ^D: the end of the input, once what was sent has gone in
+#
+# send() never waits. The text is queued, and poll() writes as much of it as the pipe
+# will take, which is not waiting because the pipe is opened non-blocking, so a program
+# that is not reading holds up nothing but its own input. At most a megabyte
+# may be waiting. The pipe is opened for reading and writing here, so the program
+# can open it for reading at once and never sees the end of its input until
+# closeInput().
+#
 # The status is what the shell would report: 128 and the signal if a signal ended
 # it (143 for stop(), 137 for the second), 127 if there is no such program, and 1
 # if the folder is not there. -1 until it is known.
@@ -48,6 +62,8 @@ extern class JobC
   def Int rmdir(String path)
   def Int open_read = open(String path, Int flags, ... Int mode)
   def Int64 read(Int fd, Bytes buffer, UInt64 count)
+  def Int64 write(Int fd, Bytes buffer, UInt64 count)
+  def Int mkfifo(String path, Int mode)
   def Int close(Int fd)
   def Int waitpid(Int pid, Bytes status, Int options)
   def Int kill(Int pid, Int signal)
@@ -73,6 +89,18 @@ class Job from Object
   String pending = ""
   Bytes chunk = null
   Bytes word = null
+  # 1 to give the program a pipe to read, which send() writes to.
+  Int interactive
+  # The pipe's path and descriptor, when there is one.
+  String input = ""
+  # Made by the launcher once it has the pipe open: until then the pipe cannot be
+  # closed, or the program, finding no one on the other end, waits for ever.
+  String ready = ""
+  Int inFd = 0 - 1
+  # What send() has been given and not yet written: outbox from outAt on.
+  String outbox = ""
+  Int outAt
+  Int closing
 
   constructor():
     chunk = new Bytes(16384)
@@ -130,8 +158,35 @@ class Job from Object
     return name
   end
 
-  # Give back the descriptor, the file and the folder.
+  # O_NONBLOCK, which is 0x800 on Linux and 4 on macOS. The pipe is written without
+  # waiting: a write that finds no room says so instead of holding the window up. (poll
+  # said there was room when there was less than a piece on macOS, and the write then
+  # waited for the program to read.)
+  def Int nonBlocking:
+    if File.exists("/proc/self") == 1:
+      return 2048
+    end
+    return 4
+  end
+
+  # Give back the descriptors, the files and the folder.
   def Void tidy:
+    if inFd >= 0:
+      unsafe:
+        JobC.close(inFd)
+      end
+      inFd = 0 - 1
+    end
+    if input.len() > 0:
+      File.remove(input)
+      input = ""
+    end
+    if ready.len() > 0:
+      File.remove(ready)
+      ready = ""
+    end
+    outbox = ""
+    outAt = 0
     if fd >= 0:
       unsafe:
         JobC.close(fd)
@@ -161,11 +216,31 @@ class Job from Object
     capped = 0
     asked = 0
     status = 0 - 1
+    closing = 0
     dir = makeDir()
     if dir.len() == 0:
       return 0
     end
     file = dir + "/output"
+    String feed = "/dev/null"
+    String signal = "/dev/null"
+    if interactive == 1:
+      input = dir + "/input"
+      ready = dir + "/ready"
+      signal = ready
+      Int fifo = 0 - 1
+      unsafe:
+        fifo = JobC.mkfifo(input, 448)
+        if fifo == 0:
+          inFd = JobC.open_read(input, 2 + nonBlocking(), 0)
+        end
+      end
+      if inFd < 0:
+        tidy()
+        return 0
+      end
+      feed = input
+    end
     File made = new File()
     if made.open(file, "w") == 0:
       tidy()
@@ -182,10 +257,12 @@ class Job from Object
     # whatever the shell would have said (macOS's sh says 126 for a path with a slash).
     launch.append("/bin/sh")
     launch.append("-c")
-    launch.append("exec >\"$1\" 2>&1 </dev/null; cd -- \"$2\" || exit 1; shift 2; case \"$1\" in */*) [ -e \"$1\" ] || { echo \"$1: not found\"; exit 127; };; esac; exec \"$@\"")
+    launch.append("exec >\"$1\" 2>&1 <\"$3\"; : >\"$4\"; cd -- \"$2\" || exit 1; shift 4; case \"$1\" in */*) [ -e \"$1\" ] || { echo \"$1: not found\"; exit 127; };; esac; exec \"$@\"")
     launch.append("job")
     launch.append(file)
     launch.append(folder)
+    launch.append(feed)
+    launch.append(signal)
     Int i = 0
     while i < argv.len():
       launch.append(argv.get(i))
@@ -326,6 +403,77 @@ class Job from Object
     end
   end
 
+  # Hand the pipe as much of what is waiting as it has room for, 512 bytes at a time;
+  # and when the end of the input has been asked for and all has gone, close it.
+  def Void flush:
+    if inFd >= 0:
+      while outAt < outbox.len():
+        Int stop = outAt + 4096
+        if stop > outbox.len():
+          stop = outbox.len()
+        end
+        String piece = outbox.substr(outAt, stop)
+        Bytes data = piece.toBytes()
+        Int64 wrote = 0
+        unsafe:
+          wrote = JobC.write(inFd, data, piece.len())
+        end
+        if wrote <= 0:
+          break
+        end
+        outAt = outAt + wrote
+      end
+      if outAt >= outbox.len():
+        outbox = ""
+        outAt = 0
+        if closing == 1 and File.exists(ready) == 1:
+          unsafe:
+            JobC.close(inFd)
+          end
+          inFd = 0 - 1
+        end
+      end
+    end
+  end
+
+  # Queue text for the program to read. 1 if it is taken; 0 if the program is not running
+  # or takes no input, or there is a megabyte waiting already.
+  def Int send(String text):
+    if inFd < 0 or closing == 1:
+      return 0
+    end
+    if outbox.len() - outAt + text.len() > 1048576:
+      return 0
+    end
+    outbox = outbox.substr(outAt, outbox.len()) + text
+    outAt = 0
+    flush()
+    return 1
+  end
+
+  # The end of the program's input, once what was sent has gone in: ^D.
+  def Void closeInput:
+    if inFd >= 0:
+      closing = 1
+      flush()
+    end
+  end
+
+  # ^C: signal what the program started, and not the program, which goes on to its next
+  # command if it is a shell.
+  def Void interrupt:
+    if running() == 1 and exited == 0:
+      Ints all = family()
+      Int i = 1
+      while i < all.len():
+        unsafe:
+          JobC.kill(all.get(i), 2)
+        end
+        i = i + 1
+      end
+    end
+  end
+
   # Has it ended? Finds out without waiting, and keeps how.
   def Void reap:
     Int r = 0
@@ -409,6 +557,7 @@ class Job from Object
     if running() == 0:
       return lines
     end
+    flush()
     # Look for the end first and read after: a program seen to have ended before the
     # read has written everything the read can find, and reading to the end of the file
     # then is reading all of it. The other way round, what it writes in between is lost.
