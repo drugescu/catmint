@@ -15,4 +15,5 @@
 # pixels 232 464 240 486 232 120 128 38
 # pixels 224 464 232 486 232 120 128 none
 1 key b ctrl
-2 key f5
+2 key f7
+3 wait idle

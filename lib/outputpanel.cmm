@@ -1,23 +1,86 @@
-# The panel at the bottom: what the compiler said, a line to a row, and whether it
-# is showing. A line that names a place can be clicked (lib/buildlog.cmm says which).
-# It holds the last two hundred lines it is given, and no more.
+# The panel at the bottom: what the compiler said or what a program printed, a line
+# to a row, and whether it is showing. A line that names a place can be clicked
+# (lib/buildlog.cmm says which).
+#
+# What the compiler says is the first lines that matter, so a build keeps the first
+# two hundred and shows from the top. A program's output is the last lines that
+# matter, so a run keeps the last two thousand and follows the end of it, until the
+# wheel takes the panel up; scrolled back to the end it follows again.
 
 class OutputPanel from Object
   List lines = null
   Int open
-  Int limit = 200
+  # The first line shown.
+  Int top
+  # How many lines show.
+  Int rows = 8
+  # 1 while it is a program's output: the newest lines are kept and shown.
+  Int tail
+  Int following
 
   constructor():
     lines = new List()
   end
 
-  def Void clear:
+  # Start afresh: for a program's output (1) or the compiler's (0).
+  def Void begin(Int program):
     lines = new List()
+    top = 0
+    tail = program
+    following = program
+  end
+
+  def Void clear:
+    begin(0)
+  end
+
+  # The most that top can be: the panel full, ending on the last line.
+  def Int most:
+    Int m = lines.len() - rows
+    if m < 0:
+      m = 0
+    end
+    return m
   end
 
   def Void add(String line):
-    if lines.len() < limit:
+    if tail == 0:
+      if lines.len() < 200:
+        lines.append(line)
+      end
+    else
       lines.append(line)
+      if lines.len() > 2000:
+        List kept = new List()
+        Int i = 1000
+        while i < lines.len():
+          kept.append(lines.get(i))
+          i = i + 1
+        end
+        lines = kept
+        top = top - 1000
+        if top < 0:
+          top = 0
+        end
+      end
+      if following == 1:
+        top = most()
+      end
+    end
+  end
+
+  # The wheel: three lines a notch, up for a positive number, within the lines there are.
+  def Void scrollBy(Int notches):
+    top = top - notches * 3
+    if top > most():
+      top = most()
+    end
+    if top < 0:
+      top = 0
+    end
+    following = 0
+    if tail == 1 and top == most():
+      following = 1
     end
   end
 

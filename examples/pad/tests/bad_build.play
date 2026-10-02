@@ -1,4 +1,4 @@
-# F5 on a file with a syntax error: the compiler fails, the status line says
+# F7 on a file with a syntax error: the compiler fails, the status line says
 # so, the panel opens with what it said. The first line of the output names no
 # place and is the text colour; the second names line 4 and is in the error
 # colour (232, 120, 128). The panel starts at y = 441 with a hairline and its
@@ -11,4 +11,5 @@
 # expect panel 1 2
 # pixels 0 442 960 464 232 120 128 none
 # pixels 0 464 960 486 232 120 128 some
-1 key f5
+1 key f7
+2 wait idle

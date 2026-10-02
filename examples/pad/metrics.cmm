@@ -72,6 +72,15 @@ class Metrics from Object
     return 0
   end
 
+  # 1 if a pixel is on the output panel: showing, right of the explorer, above the
+  # status line.
+  def Int inPanel(Int x, Int y):
+    if panelRows > 0 and x >= areaLeft() and y >= tabsHeight() + viewHeight() and y < height - rowHeight():
+      return 1
+    end
+    return 0
+  end
+
   def Int viewHeight:
     return height - tabsHeight() - rowHeight() - panelHeight()
   end

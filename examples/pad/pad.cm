@@ -7,8 +7,9 @@
 # fragment of their path, finds, replaces, goes to a line and picks a colour theme
 # -- and one line at the bottom says where you are. Files open in tabs, which
 # appear with the second, and Ctrl B shows the files below the folder pad was
-# started in down the left, to click open. F5 saves and builds with catmintc and shows what it said
-# in a panel; a click on a line that names a place goes there. The commands, and
+# started in down the left, to click open. F5 saves, builds with catmintc and runs
+# what it built; F7 only builds; Shift F5 stops. What the compiler said, and then what
+# the program printed, is in a panel; a click on a line that names a place goes there. The commands, and
 # the keys that run them, are listed in registerCommands below.
 #
 # F5 needs catmintc: started in the repository it is ./catmintc, run as
@@ -51,6 +52,7 @@ using files
 using buildlog
 using outputpanel
 using builder
+using runner
 using metrics
 using painter
 using workspace
@@ -75,10 +77,12 @@ class Pad from IO
   Recents recents = null
   Clicks clicks = null
   OutputPanel output = null
+  Runner runner = null
   FileTree tree = null
   Int sidebarOn
   Int treeFirst
   Int pointerX
+  Int pointerY
   Int dragging
   Int caretOn = 1
   Int lastBlink
@@ -102,6 +106,7 @@ class Pad from IO
     recents = new Recents()
     clicks = new Clicks()
     output = new OutputPanel()
+    runner = new Runner(builder, output)
     tree = new FileTree()
     commands = new Commands()
     m.width = w.width()
@@ -145,12 +150,21 @@ class Pad from IO
     end
     m.panelRows = 0
     if output.open == 1:
-      m.panelRows = 8
+      m.panelRows = output.rows
     end
     m.sidebarCells = 0
     if sidebarOn == 1:
       m.sidebarCells = 28
     end
+  end
+
+  # What the status line says after the file's name: the last thing said, else what is
+  # going on.
+  def String statusText:
+    if message.len() > 0:
+      return message
+    end
+    return runner.status()
   end
 
   def String statusName:
@@ -181,9 +195,9 @@ class Pad from IO
       painter.tabs(ws.labels(), ws.current, ws.firstTab)
     end
     if output.open == 1:
-      painter.panel(output.lines)
+      painter.panel(output.lines, output.top)
     end
-    painter.status(statusName(), message, ed().line(), ed().col())
+    painter.status(statusName(), statusText(), ed().line(), ed().col())
     if pal.isOpen() == 1:
       painter.palette(pal, caretOn)
     end
@@ -299,25 +313,45 @@ class Pad from IO
     return 0
   end
 
-  # Save what needs saving, build the file, and show what the compiler said.
-  def Void build:
-    if path().len() == 0:
+  # Save what needs saving and build the file, and run what it built if andRun is 1.
+  # The compiler's lines and the program's arrive in the panel as they are printed.
+  def Void build(Int andRun):
+    if runner.busy() == 1:
+      message = runner.whyBusy()
+    elif path().len() == 0:
       message = "save the file first"
       save()
     else
       if ed().buf.modified() == 1:
         save()
       end
-      message = "building..."
-      draw()
-      Int code = builder.build(path(), output)
-      if code == 0:
-        message = "built ${builder.outputFor(path())}"
-      else
-        message = "build failed"
-      end
-      output.show()
+      runner.start(path(), andRun)
+      notice()
       dirty = 1
+    end
+  end
+
+  # What the runner has to say, now it has something to: the status line takes it.
+  def Void notice:
+    if runner.note.len() > 0:
+      message = runner.note
+      runner.note = ""
+    end
+  end
+
+  # Once a frame while a build or a program is going: what has been printed, and an end.
+  def Void tick:
+    if runner.tick() == 1:
+      notice()
+      dirty = 1
+    end
+  end
+
+  def Void stopRunning:
+    if runner.busy() == 1:
+      runner.stop()
+    else
+      message = "nothing is running"
     end
   end
 
@@ -339,7 +373,9 @@ class Pad from IO
     commands.command("findprev", "Find previous", 0, 1, SDL2C.SDLK_F3(), "F3")
     commands.command("replace", "Replace", 1, 0, 104, "")
     commands.command("line", "Go to line", 1, 0, 108, "")
-    commands.command("build", "Build", 0, 0, SDL2C.SDLK_F5(), "F5")
+    commands.command("run", "Run", 0, 0, SDL2C.SDLK_F5(), "F5")
+    commands.command("build", "Build", 0, 0, SDL2C.SDLK_F7(), "F7")
+    commands.command("stop", "Stop", 0, 1, SDL2C.SDLK_F5(), "F5")
     commands.command("theme", "Toggle dark and light", 1, 0, 116, "")
     commands.command("themes", "Color theme...", 0, 0, 0, "")
     commands.command("bigger", "Bigger text", 1, 0, 61, "=")
@@ -560,8 +596,12 @@ class Pad from IO
       end
     elif id == "line":
       pal.open(Palette.lineMode(), "go to line", new List(), new List())
+    elif id == "run":
+      build(1)
     elif id == "build":
-      build()
+      build(0)
+    elif id == "stop":
+      stopRunning()
     elif id == "theme":
       themes.toggle()
     elif id == "themes":
@@ -678,6 +718,7 @@ class Pad from IO
 
   def Void onMouseDown(Int x, Int y):
     pointerX = x
+    pointerY = y
     wake()
     message = ""
     if pal.isOpen() == 1:
@@ -703,7 +744,7 @@ class Pad from IO
         end
       end
     elif output.open == 1 and y >= m.tabsHeight() + m.viewHeight() + 1 and y < m.height - m.rowHeight():
-      Int i = (y - m.tabsHeight() - m.viewHeight() - 1) / m.rowHeight()
+      Int i = output.top + (y - m.tabsHeight() - m.viewHeight() - 1) / m.rowHeight()
       if i < output.size():
         jumpTo(output.lineAt(i))
       end
@@ -722,6 +763,7 @@ class Pad from IO
 
   def Void onMouseMove(Int x, Int y):
     pointerX = x
+    pointerY = y
     if dragging == 1:
       ed().placeAt(m.rowAt(y, ed().top), m.colAt(x, ed().buf.lines(), ws.active().scrollX), 1)
       reveal()
@@ -782,6 +824,8 @@ class Pad from IO
     elif sdl.isWheel() == 1:
       if pointerX < m.areaLeft():
         sidebarScroll(0 - sdl.wheel())
+      elif m.inPanel(pointerX, pointerY) == 1:
+        output.scrollBy(sdl.wheel())
       else
         ed().scrollBy(0 - sdl.wheel() * 3)
       end
@@ -791,37 +835,52 @@ class Pad from IO
 
   # ---- the loop -------------------------------------------------------------------------------
 
-  # Wait for something to happen: an event, or the caret's next change.
-  # Nothing is drawn, and no time is used, while nothing does.
+  # How long the loop may sleep at time `now`: until the caret next changes, and
+  # while a build or a program is going only 30 ms, for its next line.
+  def Int waitTime(Int now):
+    Int wait = 500 - (now - lastBlink)
+    if wait < 1:
+      wait = 1
+    end
+    if runner.busy() == 1 and wait > 30:
+      wait = 30
+    end
+    return wait
+  end
+
+  # One turn of the loop: wait for an event, or the caret's next change, or a
+  # program's next line; deal with what came; draw if anything did. Nothing is drawn,
+  # and no time is used, while nothing happens.
+  def Void step:
+    Int got = sdl.wait(waitTime(sdl.ticks()))
+    while got == 1 and quitting == 0:
+      handle()
+      got = sdl.poll()
+    end
+    tick()
+    Int now = sdl.ticks()
+    if now - lastBlink >= 500:
+      lastBlink = now
+      if caretOn == 1:
+        caretOn = 0
+      else
+        caretOn = 1
+      end
+      dirty = 1
+    end
+    if dirty == 1:
+      draw()
+    end
+  end
+
   def Void run:
     sdl.startText()
     lastBlink = sdl.ticks()
     draw()
     while quitting == 0:
-      Int now = sdl.ticks()
-      Int wait = 500 - (now - lastBlink)
-      if wait < 1:
-        wait = 1
-      end
-      Int got = sdl.wait(wait)
-      while got == 1 and quitting == 0:
-        handle()
-        got = sdl.poll()
-      end
-      now = sdl.ticks()
-      if now - lastBlink >= 500:
-        lastBlink = now
-        if caretOn == 1:
-          caretOn = 0
-        else
-          caretOn = 1
-        end
-        dirty = 1
-      end
-      if dirty == 1:
-        draw()
-      end
+      step()
     end
+    runner.shutdown()
   end
 end
 
@@ -849,8 +908,8 @@ class Main from IO
       pad.message = ""
     end
     if o.script.len() > 0:
-      PlayScript runner = new PlayScript(pad)
-      runner.play(o.script, o.frames, o.shot)
+      PlayScript scripted = new PlayScript(pad)
+      scripted.play(o.script, o.frames, o.shot)
     else
       pad.run()
     end

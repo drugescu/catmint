@@ -5,10 +5,10 @@
 # from this program; otherwise whatever is on the PATH. The library folder beside a
 # compiler found by path is passed with it, so a program that says `using sdl`
 # builds without being told where sdl is. The program is built next to its source,
-# with its name less the .cm; its output is read a line at a time into the panel.
+# with its name less the .cm. It only says what to run; running it, a build or the
+# program, is the Runner's (runner.cmm).
 
 using files
-using outputpanel
 
 class Builder from Object
   String compiler = ""
@@ -59,9 +59,9 @@ class Builder from Object
     return path + ".out"
   end
 
-  # Compile path, putting what the compiler says in the panel. How it ended: 0 is
-  # a program, 127 is that there was no compiler to run.
-  def Int build(String path, OutputPanel panel):
+  # What to run to build path: the compiler, the library folders, the file, and
+  # where the program goes.
+  def List command(String path):
     List args = new List()
     args.append(compiler)
     Int i = 0
@@ -73,16 +73,16 @@ class Builder from Object
     args.append(path)
     args.append("-o")
     args.append(outputFor(path))
-    panel.clear()
-    Process p = new Process()
-    p.openArgs(args)
-    while p.eof() == 0:
-      panel.add(p.readLine())
+    return args
+  end
+
+  # What to run to run the program built from path. A name with no slash in it would
+  # be looked for on the PATH, so it is made to say it is here; a whole path is as it is.
+  def String program(String path):
+    String built = outputFor(path)
+    if built.at(0) == 47:
+      return built
     end
-    Int code = p.finish()
-    if code == 127:
-      panel.add("could not run ${compiler}")
-    end
-    return code
+    return "./" + built
   end
 end

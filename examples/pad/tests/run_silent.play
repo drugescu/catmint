@@ -1,0 +1,10 @@
+# A program that prints nothing and ends is noticed to have ended by the loop, though no
+# line arrives to say so.
+# files quiet.cm=class Main from IO\n  def main:\n    Int x = 1\n  end\nend\n
+# open quiet.cm
+# args --catmintc @ROOT@/catmintc
+# frames 3
+# expect message quiet finished
+# expect panelall [finished]
+1 key f5
+2 loop idle

@@ -1,0 +1,12 @@
+# Leaving the editor while a program runs ends the program: it wrote its process number
+# to pid.txt as it started, and there is no process with that number after.
+# files spin.cm=class Main from IO\n  def main:\n    File f = new File()\n    f.open("pid.txt", "w")\n    f.write("${Process.pid()}")\n    f.close()\n    while 1 == 1:\n      sleep(50)\n    end\n  end\nend\n
+# open spin.cm
+# args --catmintc @ROOT@/catmintc
+# frames 5
+# expect quit 1
+# gone pid.txt
+1 key f5
+2 wait file pid.txt
+3 key q ctrl
+3 run

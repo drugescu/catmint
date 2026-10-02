@@ -5,4 +5,6 @@
 # frames 4
 # expect message build failed
 # expect panel 1 1
-1 key f5
+# expect panelall could not run /nonexistent/catmintc
+1 key f7
+2 wait idle

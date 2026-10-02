@@ -4,5 +4,6 @@
 # args --catmintc @ROOT@/catmintc
 # frames 6
 # expect panel 0 2
-1 key f5
+1 key f7
+2 wait idle
 2 key esc

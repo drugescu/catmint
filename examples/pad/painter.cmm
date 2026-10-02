@@ -194,15 +194,16 @@ class Painter from Object
     end
   end
 
-  # What the compiler said, a line that names a place in the error colour.
-  def Void panel(List lines):
+  # What the compiler said or the program printed, from the first line shown; a line
+  # that names a place is in the error colour.
+  def Void panel(List lines, Int first):
     Int top = m.tabsHeight() + m.viewHeight()
     color(t.panel)
     view.fillRect(m.areaLeft(), top, m.width - m.areaLeft(), m.panelHeight())
     hairline(m.areaLeft(), top, m.width - m.areaLeft(), t.dim)
     Int i = 0
-    while i < m.panelRows and i < lines.len():
-      String line = lines.get(i)
+    while i < m.panelRows and first + i < lines.len():
+      String line = lines.get(first + i)
       Int c = t.text
       if BuildLog.line(line) > 0:
         c = t.error

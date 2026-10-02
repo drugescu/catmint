@@ -1,4 +1,4 @@
-# F5 on a program that compiles: it says where it put the program.
+# F7 on a program that compiles: it says where it put the program.
 # files good.cm=class Main from IO\n  def main:\n    out("hi")\n  end\nend\n
 # open good.cm
 # args --catmintc @ROOT@/catmintc
@@ -6,4 +6,5 @@
 # expect message built good
 # expect panel 1 1
 # pixels 0 442 960 486 232 120 128 none
-1 key f5
+1 key f7
+2 wait idle

@@ -9,4 +9,5 @@
 # expect message built t
 # expect panel 1 1
 # expect panellast fake compiler got: t.cm -o t
-1 key f5
+1 key f7
+2 wait idle

@@ -1,0 +1,184 @@
+# Building the file being edited and running what it built, without the window waiting.
+#
+# Both are programs started as a Job (lib/job.cmm) and looked at once a frame: the
+# compiler's lines, then the program's, arrive in the panel as they are printed,
+# and the window goes on being a window. Run is a build followed by the program; Build
+# stops after the build. Only one thing goes on at a time.
+#
+#   phase 0   nothing
+#   phase 1   the compiler is building
+#   phase 2   the program is running
+#
+# The program runs in the folder pad was started in, with no input (it finds the
+# keyboard at its end), and its standard output and standard error go in the panel in
+# the order they were written. When it ends the panel says how, under what it printed.
+# Ending pad ends it.
+
+using job
+using builder
+using outputpanel
+
+class Runner from IO
+  Builder builder = null
+  OutputPanel panel = null
+  Job job = null
+  Int phase
+  # 1 if the build is to be followed by the program.
+  Int thenRun
+  # The program's name as the status line says it, and what to run.
+  String label = ""
+  String program = ""
+  # What to tell the status line when something has ended; the owner takes it.
+  String note = ""
+  # 1 once someone has asked for it to stop.
+  Int asked
+
+  constructor(Builder b, OutputPanel p):
+    builder = b
+    panel = p
+    job = new Job()
+  end
+
+  def Int busy:
+    if phase > 0:
+      return 1
+    end
+    return 0
+  end
+
+  # What the status line says while something is going on.
+  def String status:
+    if phase == 1:
+      return "building..."
+    end
+    if phase == 2:
+      return "running ${label} - Shift F5 stops it"
+    end
+    return ""
+  end
+
+  # Why nothing new can start, for the status line.
+  def String whyBusy:
+    if phase == 1:
+      return "still building - Shift F5 stops it"
+    end
+    return "already running - Shift F5 stops it"
+  end
+
+  # Build path, and run it after if andRun is 1. 0 if nothing could be started.
+  def Int start(String path, Int andRun):
+    if phase > 0:
+      return 0
+    end
+    label = builder.outputFor(path)
+    program = builder.program(path)
+    thenRun = andRun
+    asked = 0
+    panel.begin(0)
+    panel.show()
+    if job.start(builder.command(path), "") == 0:
+      panel.add("could not start ${builder.compiler}")
+      note = "build failed"
+      return 0
+    end
+    phase = 1
+    return 1
+  end
+
+  # Ask the build or the program to end; asked again, make it.
+  def Void stop:
+    if phase > 0:
+      asked = 1
+      job.stop()
+    end
+  end
+
+  def Void startProgram:
+    panel.begin(1)
+    List argv = new List()
+    argv.append(program)
+    if job.start(argv, "") == 0:
+      panel.add("could not run ${program}")
+      note = "${label} could not be run"
+      phase = 0
+    else
+      phase = 2
+    end
+  end
+
+  # The build or the program has ended: what next, and what to say.
+  def Void ended:
+    Int code = job.code()
+    if phase == 1:
+      if code == 127:
+        panel.begin(0)
+        panel.add("could not run ${builder.compiler}")
+      end
+      if asked == 1:
+        panel.add("[stopped]")
+        note = "build stopped"
+        phase = 0
+      elif code == 0 and thenRun == 1:
+        startProgram()
+      elif code == 0:
+        note = "built ${label}"
+        phase = 0
+      else
+        note = "build failed"
+        phase = 0
+      end
+    else
+      if asked == 1:
+        panel.add("[stopped]")
+        note = "${label} stopped"
+      elif code == 0:
+        panel.add("[finished]")
+        note = "${label} finished"
+      else
+        panel.add("[exited with code ${code}]")
+        note = "${label} exited with code ${code}"
+      end
+      phase = 0
+    end
+  end
+
+  # Take what has been printed since the last look, and notice an end. 1 if there is
+  # anything new to show.
+  def Int tick:
+    if phase == 0:
+      return 0
+    end
+    Int changed = 0
+    List got = job.poll()
+    Int i = 0
+    while i < got.len():
+      panel.add(got.get(i))
+      changed = 1
+      i = i + 1
+    end
+    if job.running() == 0:
+      ended()
+      changed = 1
+    end
+    return changed
+  end
+
+  # Leaving: end what is going on and wait, a little, for it to be gone.
+  def Void shutdown:
+    if phase > 0:
+      job.stop()
+      Int waited = 0
+      while job.running() == 1 and waited < 200:
+        job.poll()
+        if job.running() == 1:
+          sleep(10)
+          waited = waited + 1
+          if waited == 30:
+            job.stop()
+          end
+        end
+      end
+      phase = 0
+    end
+  end
+end

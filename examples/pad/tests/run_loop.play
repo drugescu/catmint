@@ -1,0 +1,11 @@
+# The real loop, the one a person's session runs, takes a program's lines and its end as
+# they come, with no event to prompt it: F5, then turns of the loop until it is over.
+# files hello.cm=class Main from IO\n  def main:\n    out("hello\\n")\n  end\nend\n
+# open hello.cm
+# args --catmintc @ROOT@/catmintc
+# frames 3
+# expect message hello finished
+# expect panelall hello|[finished]
+# expect runner 0
+1 key f5
+2 loop idle

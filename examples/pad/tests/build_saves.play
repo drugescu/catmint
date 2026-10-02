@@ -1,4 +1,4 @@
-# F5 saves what has been changed before it builds: the file on disk has the
+# F7 saves what has been changed before it builds: the file on disk has the
 # comment line typed above the program, and the program, with it, still builds.
 # files good.cm=class Main from IO\n  def main:\n    out("hi")\n  end\nend\n
 # open good.cm
@@ -9,4 +9,5 @@
 # expect message built good
 1 text # x
 2 key enter
-3 key f5
+3 key f7
+4 wait idle

@@ -5,5 +5,6 @@
 # frames 6
 # expect cursor 4 3
 # expect panel 1 2
-1 key f5
+1 key f7
+2 wait idle
 2 click 100 470

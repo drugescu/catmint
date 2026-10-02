@@ -1,0 +1,8 @@
+# What a program writes to standard error is in the panel as well.
+# files oops.cm=class Main from IO\n  def main:\n    err("oops\\n")\n  end\nend\n
+# open oops.cm
+# args --catmintc @ROOT@/catmintc
+# frames 4
+# expect panelall oops|[finished]
+1 key f5
+2 wait idle

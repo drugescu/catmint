@@ -7,4 +7,5 @@
 # expect message build failed
 # expect panel 1 2
 # pixels 0 464 960 486 232 120 128 some
-1 key f5
+1 key f7
+2 wait idle

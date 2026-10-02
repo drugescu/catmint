@@ -1,0 +1,12 @@
+# A program that prints more than the panel shows is followed: twenty lines and the
+# closing line are 21, eight are shown, so the panel starts at the 14th (index 13).
+# files many.cm=class Main from IO\n  def main:\n    Int i = 1\n    while i <= 20:\n      out("line ${i}\\n")\n      i = i + 1\n    end\n  end\nend\n
+# open many.cm
+# args --catmintc @ROOT@/catmintc
+# frames 4
+# expect panel 1 21
+# expect paneltop 13
+# The first row shown is "line 14", in the text colour: 168 pixels of it ("line 1" would be 132).
+# pixels 8 442 960 464 223 225 230 168
+1 key f5
+2 wait idle

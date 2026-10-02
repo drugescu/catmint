@@ -1,0 +1,12 @@
+# Shift F5 during the build stops the compiler: the panel says so, nothing is left
+# running, and the program is not run.
+# files hello.cm=class Main from IO\n  def main:\n    out("hello\\n")\n  end\nend\n
+# open hello.cm
+# args --catmintc @ROOT@/catmintc
+# frames 5
+# expect message build stopped
+# expect panelall [stopped]
+# expect runner 0
+1 key f5
+2 key f5 shift
+3 wait idle

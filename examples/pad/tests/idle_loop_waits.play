@@ -1,0 +1,7 @@
+# With nothing running the loop sleeps until the caret's next change: the whole 500 ms.
+# files t.txt=x
+# open t.txt
+# frames 2
+# expect wait 500
+# expect status []
+1 key a

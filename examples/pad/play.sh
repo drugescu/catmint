@@ -4,6 +4,9 @@
 #
 #   ./build.sh && ./play.sh
 #   SHOTS=/some/dir ./play.sh      also keep each test's final frame as a BMP
+#   PLAY_ONLY='run_* good_build' ./play.sh   only the tests whose names match
+#   PLAY_TIMEOUT=20 ./play.sh      seconds a test may take (90): a test that waits for a
+#                                  build or a program that never ends fails, not hangs
 #
 # A play file drives pad with real SDL input events and, for typed text, the
 # program's own text handler (see Pad.send in pad.cm). Its header says how many
@@ -17,6 +20,8 @@
 #   # config-file settings=theme=Nord\n    (and what it holds afterwards)
 #   # open notes.txt          (start with this file)
 #   # args --catmintc @ROOT@/catmintc   (more arguments; @ROOT@ is the repository)
+#   # env TMPDIR=@DIR@/tmp     (variables pad runs with; @DIR@ is the test's own folder)
+#   # gone pid.txt             (no process has the number that file holds, afterwards)
 #   # expect cursor 1 6
 #   # absent quit 1
 #   # pixels 0 0 960 640 30 34 41 N
@@ -39,6 +44,14 @@ failed=0
 total=0
 for play in "$HERE"/tests/*.play; do
   name=$(basename "$play" .play)
+  if [ -n "$PLAY_ONLY" ]; then
+    wanted=0
+    for pattern in $PLAY_ONLY; do
+      # shellcheck disable=SC2254
+      case "$name" in $pattern) wanted=1 ;; esac
+    done
+    [ "$wanted" -eq 1 ] || continue
+  fi
   total=$((total + 1))
   frames=$(sed -n 's/^# frames \([0-9]*\)$/\1/p' "$play")
   shot="$TMP/$name.bmp"
@@ -78,11 +91,13 @@ EXECS
   done <<CONFIGS
 $(sed -n 's/^# config-files //p' "$play")
 CONFIGS
-  open=$(sed -n 's/^# open \(.*\)$/\1/p' "$play")
+  open=$(sed -n 's/^# open \(.*\)$/\1/p' "$play" | sed "s|@DIR@|$dir|g")
   # "# args ...": more arguments for pad; @ROOT@ is this repository.
   extra=$(sed -n 's/^# args \(.*\)$/\1/p' "$play" | sed "s|@ROOT@|$ROOT|g")
+  # "# env NAME=value ...": variables pad runs with; @DIR@ is the test's own folder.
+  envs=$(sed -n 's/^# env \(.*\)$/\1/p' "$play" | sed "s|@DIR@|$dir|g" | tr '\n' ' ')
   # shellcheck disable=SC2086
-  (cd "$dir" && "$PAD" $open $extra --play "$play" --frames "$frames" --shot "$shot") > "$TMP/out" 2>&1
+  (cd "$dir" && env $envs perl -e 'alarm shift; exec @ARGV' "${PLAY_TIMEOUT:-90}" "$PAD" $open $extra --play "$play" --frames "$frames" --shot "$shot") > "$TMP/out" 2>&1
   status=$?
   problems=""
   [ "$status" -eq 0 ] || problems="exit status $status"
@@ -107,6 +122,19 @@ ABSENT
   done <<FILECHECK
 $(sed -n 's/^# file //p' "$play")
 FILECHECK
+  # "# gone name": the file holds a process number, and there is no such process now.
+  while IFS= read -r fname; do
+    [ -z "$fname" ] && continue
+    pid=$(cat "$dir/$fname" 2>/dev/null)
+    if [ -z "$pid" ]; then
+      problems="$problems${problems:+; }$fname has no process number in it"
+    elif kill -0 "$pid" 2>/dev/null; then
+      problems="$problems${problems:+; }process $pid from $fname is still running"
+      kill -9 "$pid" 2>/dev/null
+    fi
+  done <<GONE
+$(sed -n 's/^# gone //p' "$play")
+GONE
   # "# config-file name=text": a file in the settings folder, afterwards.
   while IFS= read -r spec; do
     [ -z "$spec" ] && continue

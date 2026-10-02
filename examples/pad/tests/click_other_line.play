@@ -5,5 +5,6 @@
 # frames 6
 # expect cursor 1 1
 # expect message that line names no place
-1 key f5
+1 key f7
+2 wait idle
 2 click 100 450

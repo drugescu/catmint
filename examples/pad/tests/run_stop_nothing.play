@@ -1,0 +1,6 @@
+# Shift F5 with nothing running says so.
+# files t.txt=x
+# open t.txt
+# frames 3
+# expect message nothing is running
+1 key f5 shift

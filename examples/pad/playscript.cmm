@@ -5,6 +5,12 @@
 #   3 key s ctrl           a key, with any of shift ctrl alt
 #   4 text hello world     typed text
 #   5 click 100 200        a click; move x y; drag x1 y1 x2 y2; wheel n; clip some text
+#   6 wait idle            until the build or program has ended (wait running: until a
+#                          program is running; wait lines N: until the panel has N lines;
+#                          wait file NAME: until the file has something in it)
+#   7 loop idle            turns of pad's own loop, as a session makes them, until the
+#                          build or program has ended
+#   8 run                  pad's own loop until it is quit, then leaving as a session does
 #
 # Each frame pushes what is due as the events a person would make, lets pad
 # handle them, and draws; at the end the last frame is saved and the state
@@ -16,6 +22,7 @@
 # has been handled, so the order the script wrote is the order things happen in.
 
 using sdl
+using files
 
 # One thing a script does at one frame.
 class Cue from Object
@@ -62,6 +69,8 @@ class PlayScript from Object
       return SDL2C.SDLK_F3()
     elif name == "f5":
       return SDL2C.SDLK_F5()
+    elif name == "f7":
+      return SDL2C.SDLK_F7()
     elif name.len() == 1:
       return name.at(0)
     end
@@ -86,6 +95,61 @@ class PlayScript from Object
       i = i + 1
     end
     return s
+  end
+
+  # 1 if what a `wait` cue is for has happened.
+  def Int arrived(Cue c):
+    String what = c.words.get(0)
+    if what == "idle":
+      return 1 - pad.runner.busy()
+    elif what == "running":
+      if pad.runner.busy() == 0:
+        throw "wait running: nothing is running"
+      end
+      if pad.runner.phase == 2:
+        return 1
+      end
+      return 0
+    elif what == "lines":
+      if pad.output.size() >= number(c, 1):
+        return 1
+      end
+      return 0
+    elif what == "file":
+      String name = c.words.get(1)
+      String text = Files.read(name, 100)
+      if text != null and text.len() > 0:
+        return 1
+      end
+      return 0
+    end
+    throw "unknown wait '${what}' in the script"
+  end
+
+  # Let the build or program go on, a frame at a time, until the cue is satisfied.
+  def Void waitFor(Cue c):
+    Int tries = 0
+    while arrived(c) == 0:
+      pad.tick()
+      pad.sleep(5)
+      tries = tries + 1
+      if tries > 24000:
+        throw "waited two minutes for '${c.words.get(0)}'"
+      end
+    end
+    pad.tick()
+  end
+
+  # Turns of the real loop, the one pad.run() makes, until the build or program is over.
+  def Void loopUntilIdle:
+    Int began = pad.sdl.ticks()
+    pad.step()
+    while pad.runner.busy() == 1 and pad.quitting == 0:
+      pad.step()
+      if pad.sdl.ticks() - began > 20000:
+        throw "the loop did not see the end in twenty seconds"
+      end
+    end
   end
 
   def Void send(Cue c):
@@ -123,6 +187,12 @@ class PlayScript from Object
       pad.sdl.pushWheel(number(c, 0))
     elif c.cmd == "clip":
       pad.sdl.setClipboard(rest(c, 0))
+    elif c.cmd == "wait":
+      waitFor(c)
+    elif c.cmd == "loop":
+      loopUntilIdle()
+    elif c.cmd == "run":
+      pad.run()
     else
       throw "unknown command '${c.cmd}' in the script"
     end
@@ -182,6 +252,9 @@ class PlayScript from Object
     end
     Report r = new Report(pad)
     r.print()
+    if pad.quitting == 0:
+      pad.runner.shutdown()
+    end
   end
 end
 
@@ -227,6 +300,20 @@ class Report from IO
     out("tabnames ${names}\n")
     out("sidebar ${pad.sidebarOn} ${pad.tree.count()} first ${pad.treeFirst}\n")
     out("panel ${pad.output.open} ${pad.output.size()}\n")
+    out("paneltop ${pad.output.top}\n")
+    String all = ""
+    Int pi = 0
+    while pi < pad.output.size():
+      if pi > 0:
+        all = all + "|"
+      end
+      all = all + pad.output.lineAt(pi)
+      pi = pi + 1
+    end
+    out("panelall ${all}\n")
+    out("runner ${pad.runner.phase}\n")
+    out("status [${pad.statusText()}]\n")
+    out("wait ${pad.waitTime(pad.lastBlink)}\n")
     String last = "-"
     if pad.output.size() > 0:
       String tail = pad.output.lineAt(pad.output.size() - 1)
