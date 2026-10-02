@@ -160,6 +160,9 @@ class Main from IO
     # What the shell started reads the lines sent after it.
     fresh()
     sh.send("cat\n")
+    # As a person types: dash, which is sh on Debian, reads whatever has arrived in one go, so
+    # a line sent with `cat` is read by the shell and not by cat. A line typed afterwards is cat's.
+    sleep(300)
     sh.send("typed\n")
     Int typed = await("typed")
     sh.send("more\n")

@@ -1066,7 +1066,9 @@ editor, a pager waiting for a key, a password prompt) does not work, and anythin
 reads and writes lines does -- `cd` and variables persist, ^C stops what the shell is
 running without stopping the shell, ^D ends it. `TERM` is `dumb` and `CATMINT_LINEBUF=1`
 in its environment.
-A command typed after the shell has ended starts a new one. In the terminal: Enter runs the
+A command typed after the shell has ended starts a new one. Lines pasted together with a
+command that reads standard input (`cat`) go to the shell on Debian's `sh` (dash reads ahead on
+a pipe), where typed one at a time they go to the command. In the terminal: Enter runs the
 line, Up and Down walk the last 100 commands, Ctrl C interrupts, Ctrl D (on an empty line)
 ends the input, Ctrl L clears, Ctrl A, E and U are the readline ones, Ctrl V pastes, the
 wheel and the page keys scroll. Only the commands in `TerminalKeys.global` run from the
