@@ -224,8 +224,14 @@ annotate_failures() {
   [ -n "$GITHUB_ACTIONS" ] || return 0
   for log in "$ROOT"/.*.log; do
     [ -f "$log" ] || continue
-    body=$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -n -A5 -E "FAIL|failed|disagree|does not build|not what it should|missing '|unwanted '" | head -28 | cut -c1-240 | awk '{printf "%s%%0A", $0}')
-    [ -n "$body" ] && echo "::error title=test.sh $(basename "$log")::$body"
+    clean=$(sed 's/\x1b\[[0-9;]*m//g' "$log")
+    # Every test that failed, one line each, then the first one's whole report.
+    names=$(printf '%s\n' "$clean" | grep -E "FAIL|failed|disagree|does not build" | head -60 | cut -c1-200 | awk '{printf "%s%%0A", $0}')
+    first=$(printf '%s\n' "$clean" | grep -m1 -n -E "FAIL" | cut -d: -f1)
+    detail=""
+    [ -n "$first" ] && detail=$(printf '%s\n' "$clean" | sed -n "${first},$((first + 40))p" | cut -c1-200 | awk '{printf "%s%%0A", $0}')
+    [ -n "$names" ] && echo "::error title=test.sh $(basename "$log") (which)::$names"
+    [ -n "$detail" ] && echo "::error title=test.sh $(basename "$log") (first)::$detail"
   done
   return 0
 }
