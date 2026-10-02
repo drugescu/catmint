@@ -1,0 +1,9 @@
+# Ctrl D on an empty line ends the shell, and the terminal says how it ended.
+# files t.txt=abc
+# open t.txt
+# frames 4
+# expect term 1 1 0
+# expect termall [shell exited 0]
+1 key ` ctrl
+2 key d ctrl
+3 wait term [shell exited 0]

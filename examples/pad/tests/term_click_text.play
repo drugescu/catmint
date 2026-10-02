@@ -1,0 +1,9 @@
+# After a click in the text the keyboard is the text's.
+# files t.txt=abc
+# open t.txt
+# frames 4
+# expect term 1 0 1 0
+# expect text abcz
+1 key ` ctrl
+2 click 300 100
+3 text z

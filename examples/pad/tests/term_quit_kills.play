@@ -1,0 +1,13 @@
+# Leaving pad ends the shell: it wrote its process number to pid.txt, and no process has
+# that number afterwards. Ctrl Q works with the keyboard in the terminal.
+# files t.txt=abc
+# open t.txt
+# frames 6
+# expect quit 1
+# gone pid.txt
+1 key ` ctrl
+2 text echo $$ > pid.txt
+3 key enter
+4 wait file pid.txt
+5 key q ctrl
+5 run

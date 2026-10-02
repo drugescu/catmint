@@ -15,6 +15,7 @@ using palette
 using buildlog
 using metrics
 using filetree
+using terminal
 
 class Painter from Object
   Renderer view = null
@@ -213,6 +214,32 @@ class Painter from Object
       view.unclip()
       i = i + 1
     end
+  end
+
+  # The terminal: the end of its scrollback, and under it the prompt and the line being
+  # typed, with the caret when the terminal has the keyboard.
+  def Void terminal(Terminal term, Int caret):
+    Int top = m.tabsHeight() + m.viewHeight()
+    Int left = m.areaLeft() + m.cell()
+    color(t.panel)
+    view.fillRect(m.areaLeft(), top, m.width - m.areaLeft(), m.panelHeight())
+    hairline(m.areaLeft(), top, m.width - m.areaLeft(), t.dim)
+    view.clip(m.areaLeft(), top + 1, m.width - m.areaLeft(), m.panelHeight() - 1)
+    Int rows = m.panelRows - 1
+    Int i = 0
+    while i < rows and term.screen.top + i < term.screen.size():
+      ink(term.screen.lineAt(term.screen.top + i), left, top + 1 + i * m.rowHeight(), t.text)
+      i = i + 1
+    end
+    Int y = top + 1 + rows * m.rowHeight()
+    ink(term.prompt(), left, y, t.accent)
+    Int fieldX = left + Font.cells(term.prompt()) * m.cell()
+    ink(term.line.buf.text(), fieldX, y, t.text)
+    if caret == 1:
+      color(t.accent)
+      view.fillRect(fieldX + term.line.column(term.line.cursor) * m.cell(), y + 1, 2 * m.scale, m.rowHeight() - 2)
+    end
+    view.unclip()
   end
 
   # The last row: the file's name, a note, and where the cursor is.

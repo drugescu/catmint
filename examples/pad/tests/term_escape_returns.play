@@ -1,0 +1,11 @@
+# Escape takes the keyboard back to the text and leaves the terminal showing; the next
+# thing typed is in the file.
+# files t.txt=
+# open t.txt
+# frames 4
+# expect term 1 0 1 0
+# expect panel 1 0
+# expect text q
+1 key ` ctrl
+2 key esc
+3 text q

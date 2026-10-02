@@ -8,7 +8,9 @@
 #   6 wait idle            until the build or program has ended (wait running: until a
 #                          program is running; wait lines N: until the panel has N lines;
 #                          wait file NAME: until the file has something in it; wait panel
-#                          LINE: until the panel has that line)
+#                          LINE: until the panel has that line; wait term LINE: until the terminal has printed
+#                          that line; wait ms N: N ms of letting things go on; wait ctrlc LINE: ^C in the
+#                          terminal until that line is printed)
 #   7 loop idle            turns of pad's own loop, as a session makes them, until the
 #                          build or program has ended
 #   8 run                  pad's own loop until it is quit, then leaving as a session does
@@ -101,6 +103,33 @@ class PlayScript from Object
     return s
   end
 
+  # 1 if the terminal's scrollback has this line.
+  def Int termHas(String want):
+    Int ti = 0
+    while ti < pad.term.screen.size():
+      if pad.term.screen.lineAt(ti).equals(want):
+        return 1
+      end
+      ti = ti + 1
+    end
+    return 0
+  end
+
+  # ^C in the terminal until a line appears: the shell starts what it was told a moment
+  # after saying so, and a ^C before that stops nothing.
+  def Void interruptUntil(String want):
+    Int n = 0
+    while n < 50 and termHas(want) == 0:
+      pad.term.interrupt()
+      Int until = pad.sdl.ticks() + 200
+      while pad.sdl.ticks() < until and termHas(want) == 0:
+        pad.tick()
+        pad.sleep(5)
+      end
+      n = n + 1
+    end
+  end
+
   # 1 if what a `wait` cue is for has happened.
   def Int arrived(Cue c):
     String what = c.words.get(0)
@@ -129,6 +158,8 @@ class PlayScript from Object
         pj = pj + 1
       end
       return 0
+    elif what == "term":
+      return termHas(rest(c, 1))
     elif what == "file":
       String name = c.words.get(1)
       String text = Files.read(name, 100)
@@ -142,16 +173,26 @@ class PlayScript from Object
 
   # Let the build or program go on, a frame at a time, until the cue is satisfied.
   def Void waitFor(Cue c):
-    Int tries = 0
-    while arrived(c) == 0:
-      pad.tick()
-      pad.sleep(5)
-      tries = tries + 1
-      if tries > 24000:
-        throw "waited two minutes for '${c.words.get(0)}'"
+    if c.words.get(0) == "ctrlc":
+      interruptUntil(rest(c, 1))
+    elif c.words.get(0) == "ms":
+      Int until = pad.sdl.ticks() + number(c, 1)
+      while pad.sdl.ticks() < until:
+        pad.tick()
+        pad.sleep(5)
       end
+    else
+      Int tries = 0
+      while arrived(c) == 0:
+        pad.tick()
+        pad.sleep(5)
+        tries = tries + 1
+        if tries > 24000:
+          throw "waited two minutes for '${c.words.get(0)}'"
+        end
+      end
+      pad.tick()
     end
-    pad.tick()
   end
 
   # Turns of the real loop, the one pad.run() makes, until the build or program is over.
@@ -272,7 +313,7 @@ class PlayScript from Object
     r.peeked = peeked
     r.print()
     if pad.quitting == 0:
-      pad.runner.shutdown()
+      pad.close()
     end
   end
 end
@@ -332,6 +373,19 @@ class Report from IO
     end
     out("panelall ${all}\n")
     out("runner ${pad.runner.phase}\n")
+    out("term ${pad.panelMode} ${pad.termFocus} ${pad.term.running()} ${pad.term.screen.size()}\n")
+    out("termline [${pad.term.line.buf.text()}]\n")
+    out("termtop ${pad.term.screen.top}\n")
+    String tall = ""
+    Int tj = 0
+    while tj < pad.term.screen.size():
+      if tj > 0:
+        tall = tall + "|"
+      end
+      tall = tall + pad.term.screen.lineAt(tj)
+      tj = tj + 1
+    end
+    out("termall ${tall}\n")
     out("status [${pad.statusText()}]\n")
     out("wait ${pad.waitTime(pad.lastBlink)}\n")
     out("peeked ${peeked}\n")

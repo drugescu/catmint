@@ -1,0 +1,9 @@
+# What is typed in the terminal is not typed in the file.
+# files t.txt=abc
+# open t.txt
+# frames 3
+# expect text abc
+# expect termline [xyz]
+# expect modified 0
+1 key ` ctrl
+2 text xyz

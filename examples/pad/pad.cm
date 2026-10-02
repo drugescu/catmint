@@ -53,6 +53,8 @@ using buildlog
 using outputpanel
 using builder
 using runner
+using terminal
+using terminalkeys
 using metrics
 using painter
 using workspace
@@ -78,6 +80,11 @@ class Pad from IO
   Clicks clicks = null
   OutputPanel output = null
   Runner runner = null
+  Terminal term = null
+  # What the bottom panel holds: 0 the compiler's output and the program's, 1 the terminal.
+  Int panelMode
+  # 1 while the keyboard is in the terminal.
+  Int termFocus
   FileTree tree = null
   Int sidebarOn
   Int treeFirst
@@ -107,6 +114,8 @@ class Pad from IO
     clicks = new Clicks()
     output = new OutputPanel()
     runner = new Runner(builder, output)
+    term = new Terminal()
+    term.screen.rows = output.rows - 1
     tree = new FileTree()
     commands = new Commands()
     m.width = w.width()
@@ -194,7 +203,13 @@ class Pad from IO
       ws.ensureVisible(m)
       painter.tabs(ws.labels(), ws.current, ws.firstTab)
     end
-    if output.open == 1:
+    if output.open == 1 and panelMode == 1:
+      Int termCaret = 0
+      if termFocus == 1 and caretOn == 1 and pal.isOpen() == 0:
+        termCaret = 1
+      end
+      painter.terminal(term, termCaret)
+    elif output.open == 1:
       painter.panel(output.lines, output.top)
     end
     painter.status(statusName(), statusText(), ed().line(), ed().col())
@@ -325,6 +340,8 @@ class Pad from IO
       if ed().buf.modified() == 1:
         save()
       end
+      panelMode = 0
+      termFocus = 0
       runner.start(path(), andRun)
       notice()
       dirty = 1
@@ -339,12 +356,40 @@ class Pad from IO
     end
   end
 
-  # Once a frame while a build or a program is going: what has been printed, and an end.
+  # Once a frame while a build, a program or the shell is going: what has been printed,
+  # and an end.
   def Void tick:
     if runner.tick() == 1:
       notice()
       dirty = 1
     end
+    if term.tick() == 1:
+      dirty = 1
+    end
+  end
+
+  # Show the terminal and give it the keyboard -- starting its shell the first time --
+  # or, if it has the keyboard already, take the panel away. The shell goes on running.
+  def Void toggleTerminal:
+    if output.open == 1 and panelMode == 1 and termFocus == 1:
+      output.hide()
+      termFocus = 0
+    else
+      panelMode = 1
+      if term.started == 0:
+        term.start("")
+      end
+      output.show()
+      termFocus = 1
+    end
+    layout()
+    reveal()
+  end
+
+  # Leaving: end what is running, the build or program and the shell.
+  def Void close:
+    runner.shutdown()
+    term.stop()
   end
 
   def Void stopRunning:
@@ -376,6 +421,7 @@ class Pad from IO
     commands.command("run", "Run", 0, 0, SDL2C.SDLK_F5(), "F5")
     commands.command("build", "Build", 0, 0, SDL2C.SDLK_F7(), "F7")
     commands.command("stop", "Stop", 0, 1, SDL2C.SDLK_F5(), "F5")
+    commands.command("terminal", "Toggle terminal", 1, 0, 96, "")
     commands.command("theme", "Toggle dark and light", 1, 0, 116, "")
     commands.command("themes", "Color theme...", 0, 0, 0, "")
     commands.command("bigger", "Bigger text", 1, 0, 61, "=")
@@ -602,6 +648,8 @@ class Pad from IO
       build(0)
     elif id == "stop":
       stopRunning()
+    elif id == "terminal":
+      toggleTerminal()
     elif id == "theme":
       themes.toggle()
     elif id == "themes":
@@ -642,6 +690,7 @@ class Pad from IO
     elif id == "closepanel":
       if output.open == 1:
         output.hide()
+        termFocus = 0
         reveal()
       end
     elif id == "quit":
@@ -657,6 +706,8 @@ class Pad from IO
     if pal.isOpen() == 1:
       pal.typeText(s)
       afterFieldEdit()
+    elif termFocus == 1:
+      term.typeText(s)
     else
       ed().typeText(s)
       reveal()
@@ -710,10 +761,26 @@ class Pad from IO
     message = ""
     if pal.isOpen() == 1:
       paletteKey(key, shift, shortcut)
+    elif termFocus == 1:
+      terminalKey(key, shift, shortcut)
     else
       editorKey(key, shift, shortcut, alt)
     end
     wake()
+  end
+
+  # A key with the keyboard in the terminal: its own keys, else a command that does not
+  # touch the text.
+  def Void terminalKey(Int key, Int shift, Int shortcut):
+    Int done = TerminalKeys.apply(term, key, shift, shortcut, sdl.clipboard())
+    if done == 2:
+      termFocus = 0
+    elif done == 0:
+      String id = commands.lookup(shortcut, shift, key)
+      if TerminalKeys.global(id) == 1:
+        runCommand(id)
+      end
+    end
   end
 
   def Void onMouseDown(Int x, Int y):
@@ -721,6 +788,9 @@ class Pad from IO
     pointerY = y
     wake()
     message = ""
+    if pal.isOpen() == 0:
+      termFocus = 0
+    end
     if pal.isOpen() == 1:
       Int w = m.paletteWidth()
       Int left = (m.width - w) / 2
@@ -743,6 +813,8 @@ class Pad from IO
           switchTo(tab)
         end
       end
+    elif panelMode == 1 and m.inPanel(x, y) == 1:
+      termFocus = 1
     elif output.open == 1 and y >= m.tabsHeight() + m.viewHeight() + 1 and y < m.height - m.rowHeight():
       Int i = output.top + (y - m.tabsHeight() - m.viewHeight() - 1) / m.rowHeight()
       if i < output.size():
@@ -824,6 +896,8 @@ class Pad from IO
     elif sdl.isWheel() == 1:
       if pointerX < m.areaLeft():
         sidebarScroll(0 - sdl.wheel())
+      elif m.inPanel(pointerX, pointerY) == 1 and panelMode == 1:
+        term.screen.scrollBy(sdl.wheel())
       elif m.inPanel(pointerX, pointerY) == 1:
         output.scrollBy(sdl.wheel())
       else
@@ -844,6 +918,8 @@ class Pad from IO
     end
     if runner.busy() == 1 and wait > 30:
       wait = 30
+    elif term.running() == 1 and wait > 100:
+      wait = 100
     end
     return wait
   end
@@ -880,7 +956,7 @@ class Pad from IO
     while quitting == 0:
       step()
     end
-    runner.shutdown()
+    close()
   end
 end
 
