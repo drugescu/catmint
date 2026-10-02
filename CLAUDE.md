@@ -978,8 +978,9 @@ and was split into the modules below, one at a time with the suite green after e
 | `workspace.cmm` | the open files (`Doc`: text, path, sideways scroll), which is in front, the tab strip's model |
 | `metrics.cmm` | where things are: cell, row, gutter, explorer, tab strip, panel, palette -- no state but the size, the scale and the explorer's width |
 | `painter.cmm` | drawing, from what it is handed (an `Editor`, a `FileTree`, a theme, `Metrics`); never asks a question of the program |
-| `builder.cmm`, `outputpanel.cmm` | finding and running `catmintc`; the lines it printed |
+| `builder.cmm`, `runner.cmm` | finding `catmintc` and what to run to build or run a file; the build and the program as `Job`s, polled once a frame (F5 runs, F7 builds, Shift F5 stops) |
 | `themechooser.cmm` | which theme, the list that previews it, keeping the choice |
+| `terminalkeys.cmm` | the keys of the terminal panel when it has the keyboard, and which editor commands still work from it |
 | `search.cmm`, `recents.cmm`, `clicks.cmm`, `editkeys.cmm`, `options.cmm` | find state; files opened; double clicks; the text-editing keys; the command line |
 | `playscript.cmm` | `--play`: scripted input, and the state report the tests read |
 
@@ -996,6 +997,9 @@ and, with no window in them, in `lib/`, each with a test in `catmint-gen/test_su
 | `fuzzy`, `palette` | ranking, and the one-field list over it | `80_fuzzy`, `82_palette` |
 | `commands` | the commands, their keys and their hints in one table | `90_commands` |
 | `files` | capped read, safe save, tree listing, base name | `81_files` (permissions, links, failures) |
+| `job` | a program in the background: output to a private file, polled without waiting, stop (the process family, then kill), a cap on what it may print | `92_job`, `95_job_input` (sixty mutations; four survive: `ps -x` for `-A`, `O_RDWR` for `O_RDONLY`, and two guards against a recycled process number and a write between a read and a reap, which no test can aim at) |
+| `outputpanel` | what a compiler or program printed: keep the first 200 or follow the last 2000, the wheel; takes colour escapes, carriage returns and tabs out of a line | `93_outputpanel` |
+| `terminal` | a shell in the background (a `Job` with input), its scrollback, the line being typed and its history, ^C and ^D | `96_terminal` |
 | `filetree` | a folder's files as rows to fold and open: folders first, case-blind order, reveal a path | `91_filetree` |
 | `buildlog` | the place in a compiler message | `83_buildlog` |
 
@@ -1016,8 +1020,50 @@ uses, measured with `wait4`; a busy loop costs 1.0 s in 5, the real one 0.09).
 code it tests and watching the test fail; several first passed against a break,
 and were strengthened.
 
-Not done, on purpose: running the built program from the editor, a terminal,
-choosing the font, Windows, and indenting a block of lines.
+**Run.** F5 saves, builds, and runs what was built, all as `Job`s (`lib/job.cmm`)
+that `Pad.step()` looks at once a frame -- every 30 ms while one is going, so the
+window never waits for a compiler or a program. The program runs in the folder pad
+was started in, with no input (it finds the keyboard at its end), and its output and
+errors go to the panel in the order written, followed by `[finished]`, `[exited with
+code N]` or `[stopped]`. Closing pad stops it. `play.sh`'s `wait idle`, `wait running`,
+`wait file NAME` and `loop idle` (turns of the real `step()`) are how the tests wait
+without sleeping; `# gone pid.txt` checks a process is not there afterwards and
+`# env NAME=value` sets a variable for pad.
+
+Two things about a program run this way. Its standard output goes to a file, which
+stdio **buffers fully**: what it printed would appear when the buffer filled or the
+program ended, in an order that puts standard error first, and a program that is stopped
+would lose what was still in the buffer. So the runtime has `CATMINT_LINEBUF=1`
+(a constructor in `runtime.c` that makes stdout line-buffered, only when asked: it costs a
+write per line) and the Runner and the terminal set it for what they start
+(`94_linebuf.check`, `run_live`, `run_order`); changing it meant rebuilding both
+`runtime-*.bc`. And a `sh` is only the launcher -- it redirects, changes folder,
+and `exec`s the program, so the program is the process `Job.pid` names, and a missing
+program is 127 whatever the shell would have said (macOS's `sh` says 126 for a path
+with a slash).
+
+**The terminal** (Ctrl `, "Toggle terminal") is the bottom panel showing a shell instead
+of the compiler's output; F5 or F7 shows the output again and Ctrl ` brings the terminal
+back. There is no pseudo-terminal: `sh` reads what is typed as a script from a named
+pipe in the job's folder and writes to a file, so anything that wants a screen (an
+editor, a pager waiting for a key, a password prompt) does not work, and anything that
+reads and writes lines does -- `cd` and variables persist, ^C stops what the shell is
+running without stopping the shell, ^D ends it. `TERM` is `dumb` and `CATMINT_LINEBUF=1`
+in its environment.
+A command typed after the shell has ended starts a new one. In the terminal: Enter runs the
+line, Up and Down walk the last 100 commands, Ctrl C interrupts, Ctrl D (on an empty line)
+ends the input, Ctrl L clears, Ctrl A, E and U are the readline ones, Ctrl V pastes, the
+wheel and the page keys scroll. Only the commands in `TerminalKeys.global` run from the
+terminal; Escape gives the keyboard back to the text, and again closes the panel. Ctrl C
+is a SIGINT to what the shell started, so it does nothing to a program that inherited
+SIGINT as *ignored* -- which anything started from a script's background job (`cmd &`)
+does, and which cost an afternoon in the mutation harness (`signal.signal(SIGINT,
+SIG_DFL)` in the child fixes it there).
+A pipe opened for reading by a program that has not started yet blocks that program
+for ever if the writer closes first: `Job` therefore waits for the launcher's `ready`
+file before closing the input (a hang found by the test, not by thought).
+
+Not done, on purpose: choosing the font, Windows, and indenting a block of lines.
 
 ## Building on Linux
 

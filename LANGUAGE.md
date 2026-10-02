@@ -534,9 +534,12 @@ selection, movement, typing, auto-indent, find and replace), `highlight` and
 colours chosen by WCAG contrast ratio), `fuzzy` and `palette` (the command
 palette and file picker), `files` (read with a size limit, save through a
 temporary file and a rename that keeps permissions and follows links, list a
-directory tree without a shell) and `buildlog` (the place a compiler message
-names). `examples/pad` is an editor made of them.
-→ `76_textbuffer.cm` to `83_buildlog.cm`, `examples/pad/tests/`
+directory tree without a shell), `filetree` (a folder's files as rows to fold
+and open), `buildlog` (the place a compiler message names), `job` (a program run
+in the background and polled once a frame, so a window need not wait for it) and
+`outputpanel` (what it printed, a line to a row, newest followed). `examples/pad` is
+an editor made of them.
+→ `76_textbuffer.cm` to `96_terminal.cm`, `examples/pad/tests/`
 
 A `Map` key may be a String, an Int, or a class that `does Hashable` --
 `def Int hash` and `def Int equalTo(Object other)`. String and Int are
@@ -580,6 +583,18 @@ shell forms do not do this.) An empty list, a non-String
 item, or a String holding a NUL is a catchable error before anything starts; a
 program that does not exist exits 127, as under a shell.
 → `39_process.cm`, `69_process_args.cm`
+
+**A program, from a window.** `Process.openArgs` reads a pipe, and a read on a pipe
+waits for the program. `lib/job.cmm` does not: `Job` starts the program (no shell
+reads its arguments), sends its output and errors, in order, to a file in a folder
+only the user can enter, and `poll()` reads what has been added -- never waiting,
+whole lines, at most 256 KB a call -- until `running()` is 0 and `code()` has the
+exit status. `stop()` ends the program and what it started; asked again, it kills.
+A program that prints 8 MB (`limit`) is stopped. With `interactive = 1` it also
+reads a pipe that `send(text)` writes to without waiting (queued, handed over as the
+pipe has room), `closeInput()` ends and `interrupt()` is ^C; `lib/terminal.cmm` is a
+shell panel made of that.
+→ `92_job.cm`, `95_job_input.cm`, `96_terminal.cm`
 
 **A thread, for arithmetic only.** `Int h = spawn Sum.chunk(3)` runs a static
 method on a thread; `Worker.wait(h)` collects what it returned. The method
