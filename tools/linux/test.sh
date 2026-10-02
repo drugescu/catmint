@@ -30,7 +30,7 @@ NOCLANG=/tmp/llvm-noclang
 mkdir -p "$NOCLANG"
 for tool in llvm-link opt llc ld.lld; do ln -sf "$LLVM_BIN/$tool" "$NOCLANG/$tool"; done
 env -i HOME=/tmp PATH=/usr/bin:/bin LLVM_BIN="$NOCLANG" \
-  ./catmintc -I lib examples/wordcount.cm -o /tmp/wc >/dev/null
+  ./catmintc examples/wordcount.cm -o /tmp/wc >/dev/null
 echo "one two two" > /tmp/words.txt
 /tmp/wc /tmp/words.txt | head -3
 env -i HOME=/tmp PATH=/usr/bin:/bin LLVM_BIN="$NOCLANG" \

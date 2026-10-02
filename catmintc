@@ -2,8 +2,9 @@
 # catmintc - compile a .cm program to a native executable.
 #
 #   ./catmintc examples/tour.cm            -> ./tour
-#   ./catmintc -I lib app.cm               -> also search ./lib for modules
-#   ./catmintc --separate -I lib app.cm    -> compile each module to its own
+#   ./catmintc -I mylibs app.cm            -> also search ./mylibs for modules (lib/ beside
+#                                             this script always is)
+#   ./catmintc --separate app.cm           -> compile each module to its own
 #                                             object and link them
 #   ./catmintc examples/tour.cm -o mytour  -> ./mytour
 #   ./catmintc --run examples/tour.cm      -> compile, then run it
@@ -85,6 +86,11 @@ while [ $# -gt 0 ]; do
     *)     SRC="$1"; shift ;;
   esac
 done
+
+# The standard library, lib/ beside this script, is searched last, after the source's own
+# folder and any -I; so `using files` or `using sdl` needs no flag. A module of the program's
+# own with the same name wins.
+[ -d "$ROOT/lib" ] && INCLUDES="$INCLUDES -I $ROOT/lib"
 
 if [ -z "$SRC" ]; then
   echo "usage: catmintc [--run] [--separate] [-g] [--asan] [-O0|-O1|-O2|-O3] [-o output] [-I moduledir]... [-l lib]... [-L dir]... <program.cm>" >&2

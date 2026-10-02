@@ -3,22 +3,11 @@
 #
 #   ./build.sh          -> ./pad
 #
-# SDL comes from the standard library -- `using sdl`, catmint over bindings
-# generated from SDL's own headers -- so this only says where SDL2 is
-# installed, since Homebrew's prefix is not on the linker's default path.
+# SDL and SDL_ttf come from the standard library (`using sdl`, `using ttf`), which catmintc finds
+# by itself, as it finds Homebrew's library folder; so this is only the compiler run on pad.cm.
 # No C is compiled.
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-
-LIBS=""
-if command -v brew >/dev/null 2>&1; then
-  for formula in sdl2 sdl2_ttf; do
-    PREFIX=$(brew --prefix "$formula" 2>/dev/null || true)
-    [ -n "$PREFIX" ] && [ -d "$PREFIX/lib" ] && LIBS="$LIBS -L $PREFIX/lib"
-  done
-fi
-
-# shellcheck disable=SC2086
-"$ROOT/catmintc" -I "$ROOT/lib" $LIBS -o "$HERE/pad" "$@" "$HERE/pad.cm"
+"$ROOT/catmintc" -o "$HERE/pad" "$@" "$HERE/pad.cm"
 echo "build.sh: wrote $HERE/pad"

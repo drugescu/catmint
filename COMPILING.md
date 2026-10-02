@@ -448,7 +448,7 @@ boxed integers by value and everything else by identity.
 catmint:
 
 ```sh
-./catmintc --run -I lib myprogram.cm
+./catmintc --run myprogram.cm
 ```
 
 `Vector` adds `size`, `push`, `indexOf`, `contains` and `reversed` over a

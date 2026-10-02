@@ -2,9 +2,9 @@
 #
 # Where the compiler is, when --catmintc did not say: started from the repository,
 # it is ./catmintc; started as examples/pad/pad from anywhere, it is two folders up
-# from this program; otherwise whatever is on the PATH. The library folder beside a
-# compiler found by path is passed with it, so a program that says `using sdl`
-# builds without being told where sdl is. The program is built next to its source,
+# from this program; otherwise whatever is on the PATH. The compiler finds the library
+# beside itself, so a program that says `using sdl` builds without being told where sdl is.
+# The program is built next to its source,
 # with its name less the .cm. It only says what to run; running it, a build or the
 # program, is the Runner's (runner.cmm).
 
@@ -42,13 +42,6 @@ class Builder from Object
       found = "catmintc"
     end
     compiler = found
-    if includes.len() == 0:
-      if found.len() > 8 and File.exists(found.substr(0, found.len() - 8) + "lib/sdl.cmm") == 1:
-        includes.append(found.substr(0, found.len() - 8) + "lib")
-      elif File.exists("lib/sdl.cmm") == 1:
-        includes.append("lib")
-      end
-    end
   end
 
   # Where a build of this file is put: its name less the extension.

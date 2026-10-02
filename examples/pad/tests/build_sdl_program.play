@@ -3,7 +3,7 @@
 # undefined, and the game, examples/rps-rts, would not build from the editor.)
 # files sdl_user.cm=using sdl\nclass Main from IO\n  def main:\n    out("hi")\n  end\nend\n
 # open sdl_user.cm
-# args --catmintc @ROOT@/catmintc -I @ROOT@/lib
+# args --catmintc @ROOT@/catmintc
 # frames 3
 # expect message built sdl_user
 # expect runner 0

@@ -62,6 +62,20 @@ else
   failed=1
 fi
 
+# The standard library is found without -I: a program that says `using files`, compiled
+# from some other folder, builds, in the usual way and separately compiled.
+printf "\n${BOLD}the library needs no flag${NC}\n"
+libdir=$(mktemp -d)
+printf 'using files\nclass Main from IO\n  def main:\n    out(Files.baseName("a/b.txt"))\n  end\nend\n' > "$libdir/t.cm"
+if ( cd "$libdir" && "$ROOT/catmintc" t.cm -o t >/dev/null 2>&1 && [ "$(./t)" = "b.txt" ] &&
+     "$ROOT/catmintc" --separate t.cm -o t2 >/dev/null 2>&1 && [ "$(./t2)" = "b.txt" ] ); then
+  printf "  a program finds lib/ beside catmintc, from any folder\n"
+else
+  printf "  ${RED}failed${NC}: catmintc did not find the standard library by itself\n"
+  failed=1
+fi
+rm -rf "$libdir"
+
 if [ -n "$THOROUGH" ]; then
   printf "\n${BOLD}differential against C${NC}\n"
   if ( cd "$ROOT" && ./difftest/run.sh 50 1 ) > "$ROOT/.difftest.log" 2>&1; then
@@ -196,7 +210,7 @@ fi
 printf "\n${BOLD}examples${NC}\n"
 for source in "$ROOT"/examples/*.cm; do
   name=$(basename "$source" .cm)
-  if "$ROOT/catmintc" -I "$ROOT/lib" "$source" -o "/tmp/catmint-example-$name" >/dev/null 2>&1; then
+  if "$ROOT/catmintc" "$source" -o "/tmp/catmint-example-$name" >/dev/null 2>&1; then
     printf "  %-12s ${GREEN}builds${NC}\n" "$name"
   else
     printf "  %-12s ${RED}does not build${NC}\n" "$name"

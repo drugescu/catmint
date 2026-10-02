@@ -13,7 +13,7 @@ SDL_PREFIX=$(command -v brew >/dev/null 2>&1 && brew --prefix sdl2 2>/dev/null |
 LIBS=""
 [ -n "$SDL_PREFIX" ] && [ -d "$SDL_PREFIX/lib" ] && LIBS="-L $SDL_PREFIX/lib"
 # shellcheck disable=SC2086
-if ! "$ROOT/catmintc" -I "$ROOT/lib" $LIBS "$HERE/errors.cm" -o "$work/errors" \
+if ! "$ROOT/catmintc" $LIBS "$HERE/errors.cm" -o "$work/errors" \
       > "$work/build.log" 2>&1; then
   if grep -q "cannot find -lSDL2\|library not found\|unable to find library" "$work/build.log"; then
     echo "skipped: SDL2 is not installed"
@@ -25,7 +25,7 @@ fi
 # Homebrew's libraries are found without a -L: the editor's build command, and a hand-typed
 # `catmintc`, pass none, and used to fail with every SDL symbol undefined.
 if [ "$(uname -s)" = Darwin ] && { [ -e /opt/homebrew/lib/libSDL2.dylib ] || [ -e /usr/local/lib/libSDL2.dylib ]; }; then
-  if "$ROOT/catmintc" -I "$ROOT/lib" "$HERE/errors.cm" -o "$work/nol" > "$work/nol.log" 2>&1; then
+  if "$ROOT/catmintc" "$HERE/errors.cm" -o "$work/nol" > "$work/nol.log" 2>&1; then
     echo "an SDL program links with no -L"
   else
     echo "an SDL program did not link without -L:"; tail -3 "$work/nol.log"; exit 1
@@ -41,7 +41,7 @@ esac
 
 # Textures and text: a frame drawn with a known texture and known glyphs, then
 # compared pixel by pixel with what the font data says it should be.
-if ! "$ROOT/catmintc" -I "$ROOT/lib" $LIBS "$HERE/texture.cm" -o "$work/texture" \
+if ! "$ROOT/catmintc" $LIBS "$HERE/texture.cm" -o "$work/texture" \
       > "$work/texture.log" 2>&1; then
   cat "$work/texture.log"; exit 1
 fi
@@ -59,7 +59,7 @@ TTF_PREFIX=$(command -v brew >/dev/null 2>&1 && brew --prefix sdl2_ttf 2>/dev/nu
 TTF_LIBS="$LIBS"
 [ -n "$TTF_PREFIX" ] && [ -d "$TTF_PREFIX/lib" ] && TTF_LIBS="$LIBS -L $TTF_PREFIX/lib"
 # shellcheck disable=SC2086
-if ! "$ROOT/catmintc" -I "$ROOT/lib" $TTF_LIBS "$HERE/ttf.cm" -o "$work/ttf" > "$work/ttf.log" 2>&1; then
+if ! "$ROOT/catmintc" $TTF_LIBS "$HERE/ttf.cm" -o "$work/ttf" > "$work/ttf.log" 2>&1; then
   if grep -q "cannot find -lSDL2_ttf\|library not found\|unable to find library" "$work/ttf.log"; then
     echo "TrueType text skipped: SDL2_ttf is not installed"
     exit 0

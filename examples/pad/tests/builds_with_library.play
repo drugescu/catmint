@@ -1,9 +1,0 @@
-# A compiler found with a lib folder beside it is given that folder with -I.
-# files t.cm=x
-# files lib/sdl.cmm=x
-# exec catmintc=#!/bin/sh\necho "fake compiler got: $*"\n
-# open t.cm
-# frames 3
-# expect panellast fake compiler got: -I ./lib t.cm -o t
-1 key f7
-2 wait idle

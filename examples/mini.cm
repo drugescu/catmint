@@ -5,7 +5,7 @@
 # it is the shape of program the language claims to be for, and test.sh builds
 # it, so the claim stays checked.
 #
-#   ./catmintc -I lib examples/mini.cm --run
+#   ./catmintc examples/mini.cm --run
 #
 # One thing it works around: there are no character literals, so it compares
 # against ASCII codes. `"0".at(0)` would read better and costs nothing -- it

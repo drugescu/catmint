@@ -1044,6 +1044,11 @@ and `exec`s the program, so the program is the process `Job.pid` names, and a mi
 program is 127 whatever the shell would have said (macOS's `sh` says 126 for a path
 with a slash).
 
+**The build commands need no flags.** `catmintc` searches `lib/` beside itself for modules (after the
+source's own folder and any `-I`) and, on macOS, Homebrew's `/opt/homebrew/lib` and `/usr/local/lib`
+for libraries, so pad runs it on a file with nothing but the file and `-o`, and `build.sh` is only
+that; `test.sh` checks the library is found from another folder, and `tools/sdl_test` that SDL links.
+
 **Fonts.** The editor draws with JetBrains Mono (OFL, in `examples/pad/fonts/` with its
 licence) unless the settings or `--font` say otherwise; "Choose font..." in the palette lists
 the monospaced TrueType fonts it can find -- `fonts/` beside the program, `fonts/` in the
