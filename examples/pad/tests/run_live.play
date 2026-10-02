@@ -1,0 +1,11 @@
+# A program's lines are in the panel while it is still running, not when it ends: this one
+# prints "up" and goes on for ever. (Its output goes to a file, which would be buffered
+# without CATMINT_LINEBUF=1 in the environment pad starts it with.)
+# files live.cm=class Main from IO\n  def main:\n    out("up\\n")\n    while 1 == 1:\n      sleep(50)\n    end\n  end\nend\n
+# open live.cm
+# args --catmintc @ROOT@/catmintc
+# frames 3
+# expect runner 2
+# expect panelall up
+1 key f5
+2 wait panel up

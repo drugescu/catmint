@@ -7,10 +7,12 @@
 #   5 click 100 200        a click; move x y; drag x1 y1 x2 y2; wheel n; clip some text
 #   6 wait idle            until the build or program has ended (wait running: until a
 #                          program is running; wait lines N: until the panel has N lines;
-#                          wait file NAME: until the file has something in it)
+#                          wait file NAME: until the file has something in it; wait panel
+#                          LINE: until the panel has that line)
 #   7 loop idle            turns of pad's own loop, as a session makes them, until the
 #                          build or program has ended
 #   8 run                  pad's own loop until it is quit, then leaving as a session does
+#   9 draw / peek          draw now / note whether the window wants drawing (peeked)
 #
 # Each frame pushes what is due as the events a person would make, lets pad
 # handle them, and draws; at the end the last frame is saved and the state
@@ -33,6 +35,8 @@ end
 
 class PlayScript from Object
   Pad pad = null
+  # What `peek` saw: whether the window wanted drawing.
+  Int peeked
 
   constructor(Pad p):
     pad = p
@@ -115,6 +119,16 @@ class PlayScript from Object
         return 1
       end
       return 0
+    elif what == "panel":
+      String line = rest(c, 1)
+      Int pj = 0
+      while pj < pad.output.size():
+        if pad.output.lineAt(pj).equals(line):
+          return 1
+        end
+        pj = pj + 1
+      end
+      return 0
     elif what == "file":
       String name = c.words.get(1)
       String text = Files.read(name, 100)
@@ -193,6 +207,10 @@ class PlayScript from Object
       loopUntilIdle()
     elif c.cmd == "run":
       pad.run()
+    elif c.cmd == "draw":
+      pad.draw()
+    elif c.cmd == "peek":
+      peeked = pad.dirty
     else
       throw "unknown command '${c.cmd}' in the script"
     end
@@ -251,6 +269,7 @@ class PlayScript from Object
       pad.view.saveBMP(shot)
     end
     Report r = new Report(pad)
+    r.peeked = peeked
     r.print()
     if pad.quitting == 0:
       pad.runner.shutdown()
@@ -261,6 +280,7 @@ end
 # The state a script's test can ask about, one fact to a line.
 class Report from IO
   Pad pad = null
+  Int peeked
 
   constructor(Pad p):
     pad = p
@@ -314,6 +334,7 @@ class Report from IO
     out("runner ${pad.runner.phase}\n")
     out("status [${pad.statusText()}]\n")
     out("wait ${pad.waitTime(pad.lastBlink)}\n")
+    out("peeked ${peeked}\n")
     String last = "-"
     if pad.output.size() > 0:
       String tail = pad.output.lineAt(pad.output.size() - 1)

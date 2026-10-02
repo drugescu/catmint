@@ -1,0 +1,12 @@
+# Output is flushed at every newline when CATMINT_LINEBUF=1 is in the environment, and
+# not otherwise. The program prints a line, waits 800 ms, and prints another; the check
+# (94_linebuf.check) runs it to a file both ways and looks at the file after 400 ms.
+# Run by ctest as an ordinary program, it prints both lines.
+
+class Main from IO
+  def main:
+    out("first\n")
+    sleep(800)
+    out("second\n")
+  end
+end

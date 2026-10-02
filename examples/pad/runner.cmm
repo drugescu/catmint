@@ -11,7 +11,8 @@
 #
 # The program runs in the folder pad was started in, with no input (it finds the
 # keyboard at its end), and its standard output and standard error go in the panel in
-# the order they were written. When it ends the panel says how, under what it printed.
+# the order they were written (the program is started with CATMINT_LINEBUF=1, which asks
+# the runtime for a flush at every newline, since its output goes to a file). When it ends the panel says how, under what it printed.
 # Ending pad ends it.
 
 using job
@@ -96,6 +97,8 @@ class Runner from IO
   def Void startProgram:
     panel.begin(1)
     List argv = new List()
+    argv.append("env")
+    argv.append("CATMINT_LINEBUF=1")
     argv.append(program)
     if job.start(argv, "") == 0:
       panel.add("could not run ${program}")

@@ -2642,6 +2642,21 @@ __attribute__((constructor)) static void record_main_thread(void) {
   gMainThreadKnown = 1;
 }
 
+/* A program an editor runs has its output sent to a file, which stdio buffers
+ * fully: the editor sees nothing until the buffer fills or the program ends, the
+ * order of what went to standard output and standard error is lost, and a program
+ * that is stopped loses what it had printed. CATMINT_LINEBUF=1 in the environment
+ * asks for what a terminal gets, a flush at every newline. It is only ever asked
+ * for: the cost is a write for every line, which a program printing a great deal
+ * to a file does not want unasked. */
+__attribute__((constructor)) static void line_buffer_if_asked(void) {
+  const char *asked = getenv("CATMINT_LINEBUF");
+
+  if (asked && asked[0] == '1' && asked[1] == '\0') {
+    setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
+  }
+}
+
 static int on_main_thread(void) {
   return gMainThreadKnown && pthread_equal(pthread_self(), gMainThread);
 }
