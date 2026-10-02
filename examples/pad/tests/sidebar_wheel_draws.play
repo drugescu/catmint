@@ -1,0 +1,52 @@
+# The explorer draws from the first row that is showing, not the first there is. Forty
+# files, f05.txt open, one notch down the wheel: three rows scrolled, so f04.txt is
+# at the top and f05.txt, which was the fifth row, is the second, y 22 to 44; the
+# band for the open file is there and not where f05.txt was, y 88 to 110.
+# files f01.txt=x
+# files f02.txt=x
+# files f03.txt=x
+# files f04.txt=x
+# files f05.txt=x
+# files f06.txt=x
+# files f07.txt=x
+# files f08.txt=x
+# files f09.txt=x
+# files f10.txt=x
+# files f11.txt=x
+# files f12.txt=x
+# files f13.txt=x
+# files f14.txt=x
+# files f15.txt=x
+# files f16.txt=x
+# files f17.txt=x
+# files f18.txt=x
+# files f19.txt=x
+# files f20.txt=x
+# files f21.txt=x
+# files f22.txt=x
+# files f23.txt=x
+# files f24.txt=x
+# files f25.txt=x
+# files f26.txt=x
+# files f27.txt=x
+# files f28.txt=x
+# files f29.txt=x
+# files f30.txt=x
+# files f31.txt=x
+# files f32.txt=x
+# files f33.txt=x
+# files f34.txt=x
+# files f35.txt=x
+# files f36.txt=x
+# files f37.txt=x
+# files f38.txt=x
+# files f39.txt=x
+# files f40.txt=x
+# open f05.txt
+# frames 6
+# expect sidebar 1 40 first 3
+# pixels 0 22 223 44 58 72 100 some
+# pixels 0 88 223 110 58 72 100 none
+1 key b ctrl
+2 move 60 100
+3 wheel -1

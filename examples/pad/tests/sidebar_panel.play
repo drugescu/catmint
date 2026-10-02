@@ -1,0 +1,18 @@
+# The output panel, too, begins at the explorer's edge: its hairline across the top
+# is 960 - 224 = 736 pixels, from x = 224, and nothing of it is under the explorer. The
+# error line, the second row (y 464 to 486), is in the error colour and begins one cell in,
+# at x = 232, with the "b" of bad.cm, 38 pixels in Unscii.
+# files bad.cm=class Main from IO\n  def main:\n    Int x = \n  end\nend\n
+# open bad.cm
+# args --catmintc @ROOT@/catmintc
+# frames 5
+# expect panel 1 2
+# pixels 224 441 960 442 137 147 160 736
+# pixels 0 441 223 442 137 147 160 none
+# pixels 223 0 224 618 137 147 160 618
+# pixels 0 442 223 618 232 120 128 none
+# pixels 224 442 960 618 232 120 128 some
+# pixels 232 464 240 486 232 120 128 38
+# pixels 224 464 232 486 232 120 128 none
+1 key b ctrl
+2 key f5

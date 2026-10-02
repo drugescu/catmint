@@ -1,0 +1,15 @@
+# Ctrl B shows the file explorer down the left: 28 cells, 224 pixels, in the panel
+# colour, edged on its right by a hairline in the dim colour that runs from the top
+# of the window to the status line (618 pixels). Where the explorer has no rows it is all in
+# the panel colour (35, 40, 48): 223 by 518 pixels below the first 100. The editor keeps the rest, so the
+# current line's band is not in the explorer, and the band is still there to the right.
+# files a.txt=A
+# files sub/b.txt=B
+# open a.txt
+# frames 4
+# expect sidebar 1 2
+# pixels 223 0 224 618 137 147 160 618
+# pixels 0 100 223 618 35 40 48 115514
+# pixels 0 0 223 22 37 42 51 none
+# pixels 700 0 960 22 37 42 51 5720
+1 key b ctrl

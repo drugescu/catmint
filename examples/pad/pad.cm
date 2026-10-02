@@ -6,7 +6,8 @@
 # (Ctrl P, or Cmd on a Mac) does what those do -- it runs commands, opens files by a
 # fragment of their path, finds, replaces, goes to a line and picks a colour theme
 # -- and one line at the bottom says where you are. Files open in tabs, which
-# appear with the second. F5 saves and builds with catmintc and shows what it said
+# appear with the second, and Ctrl B shows the files below the folder pad was
+# started in down the left, to click open. F5 saves and builds with catmintc and shows what it said
 # in a panel; a click on a line that names a place goes there. The commands, and
 # the keys that run them, are listed in registerCommands below.
 #
@@ -29,7 +30,7 @@
 #
 # and the parts with no window in them are in lib/: textbuffer and editor (the text
 # and what is done to it), palette and fuzzy, commands (the commands and their keys),
-# theme, themes and base16, settings, files, highlight and buildlog.
+# theme, themes and base16, settings, files and filetree, highlight and buildlog.
 #
 # Testing without a person: `--play script --frames N --shot out.bmp` feeds scripted
 # input to the same code, draws N frames, saves the last, and prints the state; see
@@ -40,6 +41,7 @@ using font
 using theme
 using editor
 using highlight
+using settings
 using themechooser
 using search
 using commands
@@ -52,6 +54,7 @@ using builder
 using metrics
 using painter
 using workspace
+using filetree
 using options
 using recents
 using clicks
@@ -72,6 +75,10 @@ class Pad from IO
   Recents recents = null
   Clicks clicks = null
   OutputPanel output = null
+  FileTree tree = null
+  Int sidebarOn
+  Int treeFirst
+  Int pointerX
   Int dragging
   Int caretOn = 1
   Int lastBlink
@@ -95,6 +102,7 @@ class Pad from IO
     recents = new Recents()
     clicks = new Clicks()
     output = new OutputPanel()
+    tree = new FileTree()
     commands = new Commands()
     m.width = w.width()
     m.height = w.height()
@@ -139,6 +147,10 @@ class Pad from IO
     if output.open == 1:
       m.panelRows = 8
     end
+    m.sidebarCells = 0
+    if sidebarOn == 1:
+      m.sidebarCells = 28
+    end
   end
 
   def String statusName:
@@ -156,6 +168,9 @@ class Pad from IO
     layout()
     painter.begin(themes.t, m)
     painter.clear()
+    if sidebarOn == 1:
+      painter.sidebar(tree, path(), treeFirst)
+    end
     Int caret = 0
     if caretOn == 1 and pal.isOpen() == 0:
       caret = 1
@@ -315,6 +330,8 @@ class Pad from IO
     commands.command("open", "Open file", 1, 0, 111, "")
     commands.command("new", "New file", 1, 0, 110, "")
     commands.command("close", "Close tab", 1, 0, 119, "")
+    commands.command("sidebar", "Toggle file explorer", 1, 0, 98, "")
+    commands.command("refresh", "Refresh file explorer", 0, 0, 0, "")
     commands.command("nexttab", "Next tab", 1, 0, tab, "Tab")
     commands.command("prevtab", "Previous tab", 1, 1, tab, "Tab")
     commands.command("find", "Find", 1, 0, 102, "")
@@ -347,6 +364,58 @@ class Pad from IO
       runCommand(id)
     elif EditKeys.apply(ed(), key, shift, shortcut, m.viewRows()) == 1:
       reveal()
+    end
+  end
+
+  # ---- the file explorer -----------------------------------------------------------
+
+  # The files below the folder pad was started in, folded, with the one in front shown.
+  def Void loadTree:
+    tree.load(Files.list(".", 6, 5000))
+    tree.reveal(path())
+    treeFirst = 0
+  end
+
+  def Void toggleSidebar:
+    sidebarOn = 1 - sidebarOn
+    if sidebarOn == 1:
+      loadTree()
+    end
+    Settings.put(themes.configDir, "sidebar", "${sidebarOn}")
+    layout()
+    reveal()
+  end
+
+  # The explorer was showing when pad last ran.
+  def Void restoreSidebar:
+    if Settings.get(themes.configDir, "sidebar", "0").equals("1"):
+      sidebarOn = 1
+      loadTree()
+    end
+  end
+
+  # A click on a row: a folder opens or folds, a file opens in a tab.
+  def Void sidebarClick(Int y):
+    Int row = treeFirst + y / m.rowHeight()
+    if row < tree.count():
+      TreeNode n = tree.rowAt(row)
+      if n.isDir == 1:
+        tree.toggle(row)
+      else
+        openPath(n.path)
+      end
+    end
+  end
+
+  # The wheel over the explorer: three rows a notch, within the rows there are.
+  def Void sidebarScroll(Int notches):
+    Int most = tree.count() - m.sidebarRows()
+    treeFirst = treeFirst + notches * 3
+    if treeFirst > most:
+      treeFirst = most
+    end
+    if treeFirst < 0:
+      treeFirst = 0
     end
   end
 
@@ -465,6 +534,10 @@ class Pad from IO
       save()
     elif id == "open":
       openFiles()
+    elif id == "sidebar":
+      toggleSidebar()
+    elif id == "refresh":
+      loadTree()
     elif id == "new":
       newDoc()
     elif id == "close":
@@ -604,6 +677,7 @@ class Pad from IO
   end
 
   def Void onMouseDown(Int x, Int y):
+    pointerX = x
     wake()
     message = ""
     if pal.isOpen() == 1:
@@ -616,6 +690,8 @@ class Pad from IO
       elif y >= m.rowHeight() * (2 + pal.results.len()) or x < left or x >= left + w:
         closePalette()
       end
+    elif x < m.areaLeft() and y < m.height - m.rowHeight():
+      sidebarClick(y)
     elif y < m.tabsHeight():
       Int tab = ws.tabAt(x, m)
       if tab >= 0:
@@ -645,6 +721,7 @@ class Pad from IO
   end
 
   def Void onMouseMove(Int x, Int y):
+    pointerX = x
     if dragging == 1:
       ed().placeAt(m.rowAt(y, ed().top), m.colAt(x, ed().buf.lines(), ws.active().scrollX), 1)
       reveal()
@@ -703,7 +780,11 @@ class Pad from IO
     elif sdl.isMouseMove() == 1:
       onMouseMove(sdl.mouseX(), sdl.mouseY())
     elif sdl.isWheel() == 1:
-      ed().scrollBy(0 - sdl.wheel() * 3)
+      if pointerX < m.areaLeft():
+        sidebarScroll(0 - sdl.wheel())
+      else
+        ed().scrollBy(0 - sdl.wheel() * 3)
+      end
       dirty = 1
     end
   end
@@ -759,6 +840,7 @@ class Main from IO
       pad.themes.themeDir = o.themes
     end
     pad.themes.restore()
+    pad.restoreSidebar()
     if pad.builder.compiler.len() == 0:
       pad.builder.locate(arg(0))
     end

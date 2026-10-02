@@ -1,0 +1,12 @@
+# The line numbers are in the editor's own area, not under the explorer. A gutter of
+# three digits starts at x = 224, puts a number two cells in, right-aligned, so the "1"
+# of the first line, the current one and so in the text colour, is at 224 + 32 = 256:
+# 29 pixels in Unscii. The "2" below it, in the dim colour (32 pixels), is at the same x
+# and is not at x = 32 in the explorer, which has nothing on that row.
+# files t.txt=x\ny
+# open t.txt
+# frames 4
+# pixels 256 0 264 22 223 225 230 29
+# pixels 256 22 264 44 137 147 160 32
+# pixels 32 22 40 44 137 147 160 none
+1 key b ctrl

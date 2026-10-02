@@ -14,6 +14,7 @@ using highlight
 using palette
 using buildlog
 using metrics
+using filetree
 
 class Painter from Object
   Renderer view = null
@@ -91,7 +92,7 @@ class Painter from Object
         Int y = m.tabsHeight() + i * m.rowHeight()
         if row == cursorRow:
           color(t.line)
-          view.fillRect(0, y, m.width, m.rowHeight())
+          view.fillRect(m.areaLeft(), y, m.width - m.areaLeft(), m.rowHeight())
         end
         # The selection on this row, and the newline if it goes on past it.
         Int ls = ed.buf.lineStart(row)
@@ -118,7 +119,7 @@ class Painter from Object
         if row == cursorRow:
           numberColor = t.text
         end
-        ink(number, (2 + m.digits(ed.buf.lines()) - number.len()) * m.cell(), y, numberColor)
+        ink(number, m.areaLeft() + (2 + m.digits(ed.buf.lines()) - number.len()) * m.cell(), y, numberColor)
         view.clip(left, y, m.width - left, m.rowHeight())
         code(ed.buf.lineText(row), left - scrollX * m.cell(), y)
         view.unclip()
@@ -131,12 +132,48 @@ class Painter from Object
     end
   end
 
+  # The file explorer: folders to open and files to click, from the first row
+  # shown. The file being edited is on a band; the explorer's right edge is a
+  # hairline the full height of the window above the status line.
+  def Void sidebar(FileTree tree, String activePath, Int first):
+    Int sw = m.areaLeft()
+    Int h = m.height - m.rowHeight()
+    color(t.panel)
+    view.fillRect(0, 0, sw, h)
+    color(t.dim)
+    view.fillRect(sw - 1, 0, 1, h)
+    Int rows = m.sidebarRows()
+    Int i = 0
+    while i < rows:
+      Int index = first + i
+      if index < tree.count():
+        TreeNode n = tree.rowAt(index)
+        Int y = i * m.rowHeight()
+        if n.path.equals(activePath):
+          color(t.selection)
+          view.fillRect(0, y, sw - 1, m.rowHeight())
+        end
+        String mark = "  "
+        if n.isDir == 1:
+          mark = "> "
+          if n.expanded == 1:
+            mark = "v "
+          end
+        end
+        view.clip(0, y, sw - 1, m.rowHeight())
+        ink(mark + n.name, m.cell() + n.depth * 2 * m.cell(), y, t.text)
+        view.unclip()
+      end
+      i = i + 1
+    end
+  end
+
   # The strip of tabs, from the first one shown; the one in front joins the page.
   def Void tabs(List labels, Int current, Int first):
     Int h = m.rowHeight()
     color(t.panel)
-    view.fillRect(0, 0, m.width, h)
-    Int x = 0
+    view.fillRect(m.areaLeft(), 0, m.width - m.areaLeft(), h)
+    Int x = m.areaLeft()
     Int i = first
     while i < labels.len() and x < m.width:
       String label = labels.get(i)
@@ -161,8 +198,8 @@ class Painter from Object
   def Void panel(List lines):
     Int top = m.tabsHeight() + m.viewHeight()
     color(t.panel)
-    view.fillRect(0, top, m.width, m.panelHeight())
-    hairline(0, top, m.width, t.dim)
+    view.fillRect(m.areaLeft(), top, m.width - m.areaLeft(), m.panelHeight())
+    hairline(m.areaLeft(), top, m.width - m.areaLeft(), t.dim)
     Int i = 0
     while i < m.panelRows and i < lines.len():
       String line = lines.get(i)
@@ -170,8 +207,8 @@ class Painter from Object
       if BuildLog.line(line) > 0:
         c = t.error
       end
-      view.clip(0, top + 1, m.width, m.panelHeight() - 1)
-      ink(line, m.cell(), top + 1 + i * m.rowHeight(), c)
+      view.clip(m.areaLeft(), top + 1, m.width - m.areaLeft(), m.panelHeight() - 1)
+      ink(line, m.areaLeft() + m.cell(), top + 1 + i * m.rowHeight(), c)
       view.unclip()
       i = i + 1
     end

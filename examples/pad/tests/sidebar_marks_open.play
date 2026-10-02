@@ -1,0 +1,12 @@
+# A folder that is open shows "v", 26 pixels in Unscii, and what is in it is
+# indented by two cells for each level: "b.txt" in "sub" begins at 8 + 16 for its
+# level + 16 for the two cells of mark, x = 40, with nothing before that.
+# files a.txt=A
+# files sub/b.txt=B
+# open a.txt
+# frames 4
+# pixels 8 0 16 22 223 225 230 26
+# pixels 24 22 40 44 223 225 230 none
+# pixels 40 22 48 44 223 225 230 some
+1 key b ctrl
+2 click 60 10

@@ -4,7 +4,7 @@
 #
 #   3 key s ctrl           a key, with any of shift ctrl alt
 #   4 text hello world     typed text
-#   5 click 100 200        a click; drag x1 y1 x2 y2; wheel n; clip some text
+#   5 click 100 200        a click; move x y; drag x1 y1 x2 y2; wheel n; clip some text
 #
 # Each frame pushes what is due as the events a person would make, lets pad
 # handle them, and draws; at the end the last frame is saved and the state
@@ -117,6 +117,8 @@ class PlayScript from Object
       pad.sdl.pushMouse(0, number(c, 0), number(c, 1), 1)
       pad.sdl.pushMouse(2, number(c, 2), number(c, 3), 1)
       pad.sdl.pushMouse(1, number(c, 2), number(c, 3), 1)
+    elif c.cmd == "move":
+      pad.sdl.pushMouse(2, number(c, 0), number(c, 1), 0)
     elif c.cmd == "wheel":
       pad.sdl.pushWheel(number(c, 0))
     elif c.cmd == "clip":
@@ -223,6 +225,7 @@ class Report from IO
     end
     out("tabs ${pad.ws.count()} ${pad.ws.current}\n")
     out("tabnames ${names}\n")
+    out("sidebar ${pad.sidebarOn} ${pad.tree.count()} first ${pad.treeFirst}\n")
     out("panel ${pad.output.open} ${pad.output.size()}\n")
     String last = "-"
     if pad.output.size() > 0:

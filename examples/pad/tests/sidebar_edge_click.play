@@ -1,0 +1,9 @@
+# The first pixel to the right of the explorer, x = 224, belongs to the editor: a click
+# on it, in the gutter of the second line, puts the caret at the start of that line.
+# files t.txt=ab\ncd
+# open t.txt
+# frames 4
+# expect cursor 2 1
+# expect tabs 1 0
+1 key b ctrl
+2 click 224 30

@@ -1,0 +1,12 @@
+# The explorer lists folders before files: "sub" is the first row and "a.txt" the
+# second. The file being edited is on a band in the selection colour (58, 72, 100);
+# the folder's row is not, and nor is the third, z.txt, which is a file but not that one.
+# files a.txt=A
+# files z.txt=Z
+# files sub/b.txt=B
+# open a.txt
+# frames 4
+# pixels 0 22 223 44 58 72 100 some
+# pixels 0 0 223 22 58 72 100 none
+# pixels 0 44 223 66 58 72 100 none
+1 key b ctrl

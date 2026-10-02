@@ -976,8 +976,8 @@ and was split into the modules below, one at a time with the suite green after e
 | module | what it knows |
 |---|---|
 | `workspace.cmm` | the open files (`Doc`: text, path, sideways scroll), which is in front, the tab strip's model |
-| `metrics.cmm` | where things are: cell, row, gutter, tab strip, panel, palette -- no state but the size and scale |
-| `painter.cmm` | drawing, from what it is handed (an `Editor`, a theme, `Metrics`); never asks a question of the program |
+| `metrics.cmm` | where things are: cell, row, gutter, explorer, tab strip, panel, palette -- no state but the size, the scale and the explorer's width |
+| `painter.cmm` | drawing, from what it is handed (an `Editor`, a `FileTree`, a theme, `Metrics`); never asks a question of the program |
 | `builder.cmm`, `outputpanel.cmm` | finding and running `catmintc`; the lines it printed |
 | `themechooser.cmm` | which theme, the list that previews it, keeping the choice |
 | `search.cmm`, `recents.cmm`, `clicks.cmm`, `editkeys.cmm`, `options.cmm` | find state; files opened; double clicks; the text-editing keys; the command line |
@@ -996,7 +996,16 @@ and, with no window in them, in `lib/`, each with a test in `catmint-gen/test_su
 | `fuzzy`, `palette` | ranking, and the one-field list over it | `80_fuzzy`, `82_palette` |
 | `commands` | the commands, their keys and their hints in one table | `90_commands` |
 | `files` | capped read, safe save, tree listing, base name | `81_files` (permissions, links, failures) |
+| `filetree` | a folder's files as rows to fold and open: folders first, case-blind order, reveal a path | `91_filetree` |
 | `buildlog` | the place in a compiler message | `83_buildlog` |
+
+The file explorer (Ctrl B; shown or not is remembered in the settings as `sidebar`,
+next to `theme`) is 28 cells down the left: `Metrics.areaLeft()` is where the editor
+begins, and the tab strip, the gutter, the text and the output panel all start there,
+so a pixel is "in the explorer" by `x < areaLeft()`, which is how a click and the
+wheel (by the pointer's last x) are routed. Its tests are `tests/sidebar_*.play`;
+the pixel counts in them for the folder marks are Unscii's glyphs counted from
+`lib/fontdata.cmm` (">" 18, "v" 26, "1" 29), not read off a run.
 
 `font` and `Texture` (in `sdl`) draw text and sprites; `tools/sdl_test` checks
 them pixel for pixel. The pad itself is tested by `examples/pad/play.sh` (one

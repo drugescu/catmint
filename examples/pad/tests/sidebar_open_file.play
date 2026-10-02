@@ -1,0 +1,14 @@
+# Click the folder to open it, then a file in it: it opens in a tab of its own.
+# Rows are 22 high from the top, so the folder is y 0 to 22 and the file in it
+# y 22 to 44.
+# files a.txt=A
+# files sub/b.txt=B
+# open a.txt
+# frames 6
+# expect sidebar 1 3
+# expect tabs 2 1
+# expect file sub/b.txt
+# expect text B
+1 key b ctrl
+2 click 60 10
+3 click 60 30

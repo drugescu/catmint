@@ -1082,8 +1082,10 @@ was written.
 **Status.** `examples/pad` exists and is tested (CLAUDE.md, "The editor"): the
 text buffer, the editor core, highlighting from the lexer's own keywords, the
 theme, the fuzzy palette (commands, open by path fragment, find, replace, go to
-line, save as), safe save, F5 build with click-to-jump, dark and light, and
-sizes by whole numbers. It is not built on a general toolkit as designed below:
+line, save as), safe save, F5 build with click-to-jump, tabs for several files,
+a file explorer down the left, thirteen colour themes and any Base16 scheme file
+(the tinted-theming format) with the choice remembered, and sizes by whole
+numbers. It is not built on a general toolkit as designed below:
 the design's own argument was that rationing leaves very little (a label, a
 list, one field, an editor), and all of that is drawn directly by `pad.cm`
 because there is only one program to want it. A toolkit would be extracted when
@@ -1095,8 +1097,9 @@ against 1.0 for a loop that polls), the palette's ranking for typed fragments
 
 **What it does not do, and why.** *Run* the program it built: reading a child's
 output without blocking the window needs a non-blocking read the language does
-not have, so F5 builds and shows the compiler's messages. More than one file at
-a time ("switch file" is Open). Block indentation of a multi-line selection.
+not have, so F5 builds and shows the compiler's messages; with it, a terminal
+panel, and a choice of font (the one font is Unscii, a bitmap; TrueType would be
+SDL_ttf, a new dependency). Block indentation of a multi-line selection.
 Wrapping. Focus mode. Windows (6C was skipped). A 5 MB file is checked at the
 buffer (`84_bigtext`: 150,000 lines opened, searched, edited in the middle and
 undone in well under a second, and the memory comes back); scrolling it in the

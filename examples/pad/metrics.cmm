@@ -3,10 +3,12 @@
 #
 # A cell is one character: 8 x 16 pixels, times `scale`. A row is 1.4 cells high.
 # From the top, a window is: the strip of tabs (when there is more than one file),
-# the text, the output panel (when it is open), and the status line. The text
-# begins to the right of a gutter of two cells, the line numbers, and two more.
-# The owner sets `scale`, `width`, `height`, `tabRows` (0 or 1) and `panelRows`
-# (0 or 8) when they change; everything else is worked out from those.
+# the text, the output panel (when it is open), and the status line. Down the left,
+# when it is showing, is the file explorer (`sidebarCells` wide) and all of that sits
+# to the right of it. The text begins to the right of a gutter of two cells, the line
+# numbers, and two more. The owner sets `scale`, `width`, `height`, `tabRows` (0 or 1),
+# `panelRows` (0 or 8) and `sidebarCells` when they change; everything else is worked
+# out from those.
 
 using font
 
@@ -16,6 +18,8 @@ class Metrics from Object
   Int height
   Int tabRows
   Int panelRows
+  # The file explorer down the left, in cells: 0 when it is not showing.
+  Int sidebarCells
 
   def Int cell:
     return 8 * scale
@@ -42,9 +46,19 @@ class Metrics from Object
     return d
   end
 
+  # Where the editor begins: past the explorer, if it is showing.
+  def Int areaLeft:
+    return sidebarCells * cell()
+  end
+
+  # How many rows the explorer has room for: down to the status line.
+  def Int sidebarRows:
+    return (height - rowHeight()) / rowHeight()
+  end
+
   # Two cells of margin, the line number, two cells more.
   def Int textLeft(Int lines):
-    return (4 + digits(lines)) * cell()
+    return areaLeft() + (4 + digits(lines)) * cell()
   end
 
   def Int tabsHeight:

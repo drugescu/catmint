@@ -156,7 +156,7 @@ class Workspace from Object
       used = used + m.tabWidth(d.label())
       i = i + 1
     end
-    while used > m.width and firstTab < current:
+    while used > m.width - m.areaLeft() and firstTab < current:
       Doc first = docs.get(firstTab)
       used = used - m.tabWidth(first.label())
       firstTab = firstTab + 1
@@ -164,7 +164,8 @@ class Workspace from Object
   end
 
   # The tab under a pixel of the strip, or -1.
-  def Int tabAt(Int px, Metrics m):
+  def Int tabAt(Int pixel, Metrics m):
+    Int px = pixel - m.areaLeft()
     Int x = 0
     Int i = firstTab
     while i < docs.len():
@@ -180,7 +181,8 @@ class Workspace from Object
   end
 
   # 1 if the pixel is on the closing x of the tab with this index.
-  def Int onClose(Int px, Int index, Metrics m):
+  def Int onClose(Int pixel, Int index, Metrics m):
+    Int px = pixel - m.areaLeft()
     Int x = 0
     Int i = firstTab
     while i < index:

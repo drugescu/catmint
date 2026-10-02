@@ -1,0 +1,14 @@
+# The closing x of a tab is hit-tested from the strip's own left edge, not the window's:
+# "a.txt" is a tab of 11 cells, 88 pixels, from x = 224, and its x is the tenth cell,
+# x = 224 + 72 = 296 to 304. A click there closes it, which leaves b.txt.
+# files a.txt=A
+# files b.txt=B
+# open a.txt
+# frames 8
+# expect tabs 1 0
+# expect file b.txt
+1 key b ctrl
+2 key o ctrl
+3 text b.txt
+4 key enter
+5 click 300 10

@@ -1,0 +1,47 @@
+# Tabs scroll to keep the one in front in view, within the strip, which with the explorer
+# showing is 736 pixels and not 960. Ten tabs of 96 pixels are 960, which would fit in the
+# window; with the tenth in front the strip begins at the fourth, seven tabs, 672 pixels,
+# so the tenth is the seventh shown, x = 224 + 6 * 96 = 800, its accent underline there,
+# 96 pixels of it.
+# files t0.txt=0
+# files t1.txt=1
+# files t2.txt=2
+# files t3.txt=3
+# files t4.txt=4
+# files t5.txt=5
+# files t6.txt=6
+# files t7.txt=7
+# files t8.txt=8
+# files t9.txt=9
+# open t0.txt
+# frames 40
+# expect tabs 10 9
+# pixels 800 21 896 22 232 176 74 96
+1 key b ctrl
+2 key o ctrl
+3 text t1.txt
+4 key enter
+5 key o ctrl
+6 text t2.txt
+7 key enter
+8 key o ctrl
+9 text t3.txt
+10 key enter
+11 key o ctrl
+12 text t4.txt
+13 key enter
+14 key o ctrl
+15 text t5.txt
+16 key enter
+17 key o ctrl
+18 text t6.txt
+19 key enter
+20 key o ctrl
+21 text t7.txt
+22 key enter
+23 key o ctrl
+24 text t8.txt
+25 key enter
+26 key o ctrl
+27 text t9.txt
+28 key enter
