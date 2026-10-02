@@ -22,6 +22,16 @@ if ! "$ROOT/catmintc" -I "$ROOT/lib" $LIBS "$HERE/errors.cm" -o "$work/errors" \
   cat "$work/build.log"; exit 1
 fi
 
+# Homebrew's libraries are found without a -L: the editor's build command, and a hand-typed
+# `catmintc`, pass none, and used to fail with every SDL symbol undefined.
+if [ "$(uname -s)" = Darwin ] && { [ -e /opt/homebrew/lib/libSDL2.dylib ] || [ -e /usr/local/lib/libSDL2.dylib ]; }; then
+  if "$ROOT/catmintc" -I "$ROOT/lib" "$HERE/errors.cm" -o "$work/nol" > "$work/nol.log" 2>&1; then
+    echo "an SDL program links with no -L"
+  else
+    echo "an SDL program did not link without -L:"; tail -3 "$work/nol.log"; exit 1
+  fi
+fi
+
 # A video driver that is not there: SDL's error names it.
 out=$(SDL_VIDEODRIVER=no_such_driver "$work/errors" 2>&1 || true)
 case "$out" in

@@ -260,10 +260,18 @@ link_executable() {
                          echo "  (xcode-select --install)" >&2; exit 1; }
       SDKVER=$(xcrun --show-sdk-version 2>/dev/null || sw_vers -productVersion)
       case "$TRIPLE" in arm64*|aarch64*) ARCH=arm64 ;; *) ARCH=x86_64 ;; esac
+      # Homebrew keeps its libraries off the linker's default path (/opt/homebrew/lib on
+      # Apple silicon, /usr/local/lib on Intel), so a program that says `link "SDL2"` would
+      # not link without a -L that every caller had to know. They are searched last, after
+      # any -L given on the command line.
+      BREW=""
+      for dir in /opt/homebrew/lib /usr/local/lib; do
+        [ -d "$dir" ] && BREW="$BREW -L$dir"
+      done
       # macOS executables are position independent by default.
       # shellcheck disable=SC2086
       "$LD" -arch "$ARCH" -platform_version macos "$(sw_vers -productVersion)" "$SDKVER" \
-        -syslibroot "$SDK" -o "$OUT" "$obj" $LIBS -lSystem
+        -syslibroot "$SDK" -o "$OUT" "$obj" $LIBS $BREW -lSystem
       ;;
     Linux)
       LD=$(find_linker ld.lld) || true

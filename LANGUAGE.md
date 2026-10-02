@@ -519,7 +519,8 @@ and `sdl` -- windows, drawing, input and a clock, over SDL2.
 and every handle released by `finalize`. Underneath is `sdl2.cmm`, SDL's whole
 API as extern structs, functions and constants, generated from SDL's own
 headers by `tools/bindgen.py` and never edited by hand. Nothing in either is
-C. Needs SDL2 installed; on Homebrew build with `-L /opt/homebrew/lib`.
+C. Needs SDL2 installed; `catmintc` looks in Homebrew's library folders itself on macOS
+(`/opt/homebrew/lib`, `/usr/local/lib`), after any `-L` you give.
 
 `sdl` also has `Texture` (from a `Bytes` of pixels; draw a part of it, tint,
 opacity), text input, the clipboard, the wheel and modifier keys. `font` draws
