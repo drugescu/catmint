@@ -1,0 +1,13 @@
+# Changes in a tab that is not the one being looked at still count: quitting
+# says so, and does not quit.
+# files a.txt=A
+# files b.txt=B
+# open a.txt
+# frames 8
+# expect quit 0
+# expect message unsaved changes
+1 text x
+2 key o ctrl
+3 text b.t
+4 key enter
+5 key q ctrl

@@ -1,0 +1,13 @@
+# ... and the second Ctrl W closes it, leaving the first tab as it was.
+# files a.txt=A
+# files b.txt=B
+# open a.txt
+# frames 8
+# expect tabs 1 0
+# expect file a.txt
+1 key o ctrl
+2 text b.t
+3 key enter
+4 text x
+5 key w ctrl
+6 key w ctrl

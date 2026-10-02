@@ -1,0 +1,17 @@
+# Closing the middle of three tabs goes to the one before it, not the one after.
+# files a.txt=A
+# files b.txt=B
+# files c.txt=C
+# open a.txt
+# frames 10
+# expect tabs 2 0
+# expect file a.txt
+# expect tabnames a.txt|c.txt
+1 key o ctrl
+2 text b.t
+3 key enter
+4 key o ctrl
+5 text c.t
+6 key enter
+7 click 100 10
+8 key w ctrl

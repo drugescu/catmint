@@ -1,0 +1,10 @@
+# Started with nothing, the one empty tab with no name and no changes is what a
+# first file opens into: no second tab.
+# files b.txt=B
+# frames 5
+# expect tabs 1 0
+# expect file b.txt
+# expect text B
+1 key o ctrl
+2 text b.t
+3 key enter

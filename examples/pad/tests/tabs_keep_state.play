@@ -1,0 +1,18 @@
+# Each tab keeps its own text, cursor and unsaved changes. "1" typed at the end of
+# A, then B opened and "2" typed at its start, then back to the first tab: it is
+# "A1" with the cursor after the 1, and both tabs are marked as changed.
+# files a.txt=A
+# files b.txt=B
+# open a.txt
+# frames 10
+# expect tabnames a.txt *|b.txt *
+# expect file a.txt
+# expect text A1
+# expect cursor 1 3
+1 key end
+2 text 1
+3 key o ctrl
+4 text b.t
+5 key enter
+6 text 2
+7 key tab ctrl shift

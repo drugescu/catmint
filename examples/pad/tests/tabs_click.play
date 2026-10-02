@@ -1,0 +1,11 @@
+# A click on a tab goes to it.
+# files a.txt=A
+# files b.txt=B
+# open a.txt
+# frames 6
+# expect tabs 2 0
+# expect file a.txt
+1 key o ctrl
+2 text b.t
+3 key enter
+4 click 20 10
