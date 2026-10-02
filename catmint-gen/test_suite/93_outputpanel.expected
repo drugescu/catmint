@@ -30,5 +30,25 @@ three lines, wheeled: size 3, top 0, following 1, first l1, last l3, shown from 
 2001 while scrolled: size 1001, top 500, following 0, first l1001, last l2001, shown from l1501
 2000, up 400 notches: size 2000, top 792, following 0, first l1, last l2000, shown from l793
 2001 while near the start: size 1001, top 0, following 0, first l1001, last l2001, shown from l1001
+plain: [plain] 5
+colour: [red] 3
+parameters: [green ok] 8
+erase: [xy] 2
+title: [text] 4
+lone escape: [ab] 2
+escape and a letter: [ab] 2
+tab: [a       b] 9
+tab at eight: [abcdefgh        x] 17
+leading tab: [        x] 9
+two tabs: [a               b] 17
+carriage return: [XY] 2
+tab after a carriage return: [        x] 9
+sequence ending in @: [ab] 2
+sequence ending in ~: [x] 1
+bell and backspace: [abc] 3
+delete: [ab] 2
+long: 100000
+added: [a       b]
+added to a compiler's: [bold]
 begun again: size 0, top 0, following 0, first -, last -, shown from -
 cleared: following 0, top 0

@@ -43,7 +43,58 @@ class OutputPanel from Object
     return m
   end
 
-  def Void add(String line):
+  # A line as the panel shows it. A program's output is written for a terminal: colour
+  # and cursor sequences (ESC [ ... and ESC ] ... BEL, or ESC and one more character) are
+  # dropped; a carriage return takes back what came before it; other control characters
+  # are dropped; and a tab is spread to the next multiple of 8 columns, since the font
+  # has no tab.
+  static def String clean(String line):
+    Int n = line.len()
+    String result = ""
+    Int col = 0
+    Int run = 0
+    Int i = 0
+    while i < n:
+      Int c = line.at(i)
+      if c >= 32 and c != 127:
+        i = i + 1
+      else
+        String piece = line.substr(run, i)
+        result = result + piece
+        col = col + piece.len()
+        i = i + 1
+        if c == 27 and i < n:
+          Int next = line.at(i)
+          i = i + 1
+          if next == 91:
+            while i < n and (line.at(i) < 64 or line.at(i) > 126):
+              i = i + 1
+            end
+            i = i + 1
+          elif next == 93:
+            while i < n and line.at(i) != 7:
+              i = i + 1
+            end
+          end
+        elif c == 9:
+          Int spaces = 8 - (col % 8)
+          result = result + "        ".substr(0, spaces)
+          col = col + spaces
+        elif c == 13:
+          result = ""
+          col = 0
+        end
+        run = i
+      end
+    end
+    if run < n:
+      result = result + line.substr(run, n)
+    end
+    return result
+  end
+
+  def Void add(String text):
+    String line = OutputPanel.clean(text)
     if tail == 0:
       if lines.len() < 200:
         lines.append(line)

@@ -46,6 +46,19 @@ class Main from IO
     out("${label}: size ${p.size()}, top ${p.top}, following ${p.following}, first ${first}, last ${last}, shown from ${at}\n")
   end
 
+  def Void cleaned(String label, String s):
+    String c = OutputPanel.clean(s)
+    out("${label}: [${c}] ${c.len()}\n")
+  end
+
+  def String xs(Int n):
+    String s = "x"
+    while s.len() < n:
+      s = s + s
+    end
+    return s.substr(0, n)
+  end
+
   def main:
     OutputPanel p = new OutputPanel()
     show("fresh", p)
@@ -147,6 +160,36 @@ class Main from IO
     show("2000, up 400 notches", p)
     fill(p, 2001, 2001)
     show("2001 while near the start", p)
+
+    # What a line is cleaned of: escape sequences, what a carriage return overwrote,
+    # control characters; and tabs are spread to the next multiple of 8 columns.
+    String esc = String.chr(27)
+    String tab = String.chr(9)
+    cleaned("plain", "plain")
+    cleaned("colour", esc + "[31mred" + esc + "[0m")
+    cleaned("parameters", esc + "[1;32mgreen" + esc + "[0m ok")
+    cleaned("erase", "x" + esc + "[2Ky")
+    cleaned("title", esc + "]0;title" + String.chr(7) + "text")
+    cleaned("lone escape", "ab" + esc)
+    cleaned("escape and a letter", "a" + esc + "7b")
+    cleaned("tab", "a" + tab + "b")
+    cleaned("tab at eight", "abcdefgh" + tab + "x")
+    cleaned("leading tab", tab + "x")
+    cleaned("two tabs", "a" + tab + tab + "b")
+    cleaned("carriage return", "abc" + String.chr(13) + "XY")
+    cleaned("tab after a carriage return", "abc" + String.chr(13) + tab + "x")
+    cleaned("sequence ending in @", "a" + esc + "[3@b")
+    cleaned("sequence ending in ~", esc + "[3~x")
+    cleaned("bell and backspace", "a" + String.chr(7) + "b" + String.chr(8) + "c")
+    cleaned("delete", "a" + String.chr(127) + "b")
+    String long = xs(100000)
+    out("long: ${OutputPanel.clean(long).len()}\n")
+    p.begin(1)
+    p.add("a" + tab + "b")
+    out("added: [${p.lineAt(0)}]\n")
+    p.begin(0)
+    p.add(esc + "[1mbold" + esc + "[0m")
+    out("added to a compiler's: [${p.lineAt(0)}]\n")
 
     # A fresh start.
     p.begin(0)
