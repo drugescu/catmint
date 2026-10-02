@@ -1,0 +1,1 @@
+A file that is not a scheme at all.
