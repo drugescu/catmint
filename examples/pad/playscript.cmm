@@ -233,6 +233,6 @@ class Report from IO
     out("top ${ed.top} scrollx ${pad.scrollX}\n")
     out("scale ${pad.m.scale}\n")
     out("quit ${pad.quitting}\n")
-    out("theme ${pad.t.name}\n")
+    out("theme ${pad.themes.t.name}\n")
   end
 end

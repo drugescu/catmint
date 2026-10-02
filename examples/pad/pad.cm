@@ -36,9 +36,8 @@ using font
 using theme
 using editor
 using highlight
-using themes
-using base16
-using settings
+using themechooser
+using search
 using palette
 using files
 using buildlog
@@ -63,11 +62,8 @@ class Pad from IO
   Renderer view = null
   Painter painter = null
   Metrics m = null
-  Theme t = null
-  List themeList = null
-  Theme themeBefore = null
-  String configDir = ""
-  String themeDir = ""
+  ThemeChooser themes = null
+  Search search = null
   Editor ed = null
   List docs = null
   Int current
@@ -89,8 +85,6 @@ class Pad from IO
   Int quitting
   String armed = ""
   String was = ""
-  String needle = ""
-  Int findOrigin
   List commandIds = null
   List commandNames = null
   List commandHints = null
@@ -101,11 +95,8 @@ class Pad from IO
     view = r
     painter = new Painter(r)
     m = new Metrics()
-    t = Theme.dark()
-    configDir = Settings.dir()
-    if configDir.len() > 0:
-      themeDir = configDir + "/themes"
-    end
+    themes = new ThemeChooser()
+    search = new Search()
     ed = new Editor()
     Doc first = new Doc()
     first.ed = ed
@@ -152,88 +143,6 @@ class Pad from IO
   end
 
   # ---- themes -----------------------------------------------------------------
-
-  # The theme the settings name, if it can still be found: built in, or in the
-  # themes folder. Anything else is the default, not an error.
-  def Void restoreTheme:
-    String wanted = Settings.get(configDir, "theme", "")
-    if wanted.len() > 0:
-      Theme found = Themes.named(wanted)
-      if found == null and themeDir.len() > 0:
-        List all = Base16.withFolder(themeDir)
-        Int i = 0
-        while i < all.len():
-          Theme candidate = all.get(i)
-          if candidate.name.equals(wanted):
-            found = candidate
-          end
-          i = i + 1
-        end
-      end
-      if found != null:
-        t = found
-      end
-    end
-  end
-
-  def Void rememberTheme:
-    Settings.put(configDir, "theme", t.name)
-  end
-
-  # The list of themes: the built-in ones, then any in the themes folder, with
-  # the one in use highlighted.
-  def Void openThemes:
-    themeBefore = t
-    if themeDir.len() > 0:
-      themeList = Base16.withFolder(themeDir)
-    else
-      themeList = Themes.all()
-    end
-    List names = new List()
-    List kinds = new List()
-    Int i = 0
-    while i < themeList.len():
-      Theme each = themeList.get(i)
-      names.append(each.name)
-      if each.isDark == 1:
-        kinds.append("dark")
-      else
-        kinds.append("light")
-      end
-      i = i + 1
-    end
-    pal.open(Palette.themeMode(), "theme", names, kinds)
-    pal.rows = 12
-    pal.refresh()
-    i = 0
-    while i < pal.results.len():
-      Int which = pal.results.get(i)
-      String name = names.get(which)
-      if name.equals(t.name):
-        pal.selected = i
-      end
-      i = i + 1
-    end
-  end
-
-  # While the list is open, the highlighted theme is the one on screen.
-  def Void previewTheme:
-    if pal.mode == Palette.themeMode():
-      Int which = pal.chosen()
-      if which >= 0:
-        Theme shown = themeList.get(which)
-        t = shown
-      end
-    end
-  end
-
-  # Close the palette. A list of themes that is dismissed puts back what it found.
-  def Void closePalette:
-    if pal.mode == Palette.themeMode():
-      t = themeBefore
-    end
-    pal.close()
-  end
 
   # ---- measures ---------------------------------------------------------------
 
@@ -480,7 +389,7 @@ class Pad from IO
 
   def Void draw:
     layout()
-    painter.begin(t, m)
+    painter.begin(themes.t, m)
     painter.clear()
     Int caret = 0
     if caretOn == 1 and pal.isOpen() == 0:
@@ -602,6 +511,48 @@ class Pad from IO
 
   # ---- the palette ---------------------------------------------------------------------
 
+  # ---- the palette's work ---------------------------------------------------------
+
+  def Void openFind:
+    search.begin(ed)
+    pal.open(Palette.findMode(), "find", new List(), new List())
+    if search.has() == 1:
+      pal.typeText(search.needle)
+      pal.field.selectAll()
+    end
+  end
+
+  def Void findAgain(Int forward):
+    if search.has() == 0:
+      openFind()
+    else
+      if search.again(ed, forward) == 0:
+        message = "not found"
+      end
+      reveal()
+    end
+  end
+
+  # Something was typed into the palette's field: the list narrows by itself; a
+  # theme list shows the one it now highlights, and a find looks as you type.
+  def Void afterFieldEdit:
+    themes.preview(pal)
+    if pal.mode == Palette.findMode():
+      if search.typed(ed, pal.field.buf.text()) == 0:
+        message = "not found"
+      end
+      reveal()
+    end
+  end
+
+  # Close the palette. A list of themes that is dismissed puts back what it found.
+  def Void closePalette:
+    if pal.mode == Palette.themeMode():
+      themes.cancel()
+    end
+    pal.close()
+  end
+
   def Void openCommands:
     pal.open(Palette.commandMode(), "command", commandNames, commandHints)
   end
@@ -634,42 +585,6 @@ class Pad from IO
     pal.open(Palette.fileMode(), "open", names, new List())
   end
 
-  def Void openFind:
-    findOrigin = ed.selStart()
-    pal.open(Palette.findMode(), "find", new List(), new List())
-    if needle.len() > 0:
-      pal.typeText(needle)
-      pal.field.selectAll()
-    end
-  end
-
-  def Void afterFieldEdit:
-    if pal.mode == Palette.themeMode():
-      previewTheme()
-    end
-    if pal.mode == Palette.findMode():
-      needle = pal.field.buf.text()
-      ed.moveTo(findOrigin, 0)
-      if needle.len() > 0:
-        if ed.find(needle, 1) == 0:
-          message = "not found"
-        end
-      end
-      reveal()
-    end
-  end
-
-  def Void findAgain(Int forward):
-    if needle.len() == 0:
-      openFind()
-    else
-      if ed.find(needle, forward) == 0:
-        message = "not found"
-      end
-      reveal()
-    end
-  end
-
   def Void acceptPalette(Int shift, Int shortcut):
     Int m = pal.mode
     if m == Palette.commandMode():
@@ -692,7 +607,7 @@ class Pad from IO
         openPath(target)
       end
     elif m == Palette.findMode():
-      needle = pal.field.buf.text()
+      search.needle = pal.field.buf.text()
       if shift == 1:
         findAgain(0)
       else
@@ -701,10 +616,10 @@ class Pad from IO
     elif m == Palette.replaceMode():
       String replacement = pal.field.buf.text()
       if shortcut == 1:
-        message = "replaced ${ed.replaceAll(needle, replacement)}"
+        message = "replaced ${ed.replaceAll(search.needle, replacement)}"
         pal.close()
       else
-        if ed.replaceNext(needle, replacement) == 0:
+        if ed.replaceNext(search.needle, replacement) == 0:
           message = "no more"
         end
       end
@@ -717,11 +632,8 @@ class Pad from IO
         reveal()
       end
     elif m == Palette.themeMode():
-      if pal.chosen() < 0:
-        t = themeBefore
-      end
+      themes.accept(pal)
       pal.close()
-      rememberTheme()
     elif m == Palette.saveMode():
       String target = pal.field.buf.text()
       pal.close()
@@ -753,20 +665,19 @@ class Pad from IO
     elif id == "findprev":
       findAgain(0)
     elif id == "replace":
-      if needle.len() == 0:
+      if search.has() == 0:
         message = "find something first (Ctrl F)"
       else
-        pal.open(Palette.replaceMode(), "replace ${needle} with", new List(), new List())
+        pal.open(Palette.replaceMode(), "replace ${search.needle} with", new List(), new List())
       end
     elif id == "line":
       pal.open(Palette.lineMode(), "go to line", new List(), new List())
     elif id == "build":
       build()
     elif id == "theme":
-      t = Themes.pairOf(t)
-      rememberTheme()
+      themes.toggle()
     elif id == "themes":
-      openThemes()
+      themes.open(pal)
     elif id == "bigger":
       if m.scale < 4:
         m.scale = m.scale + 1
@@ -825,10 +736,10 @@ class Pad from IO
       acceptPalette(shift, shortcut)
     elif key == SDL2C.SDLK_UP():
       pal.up()
-      previewTheme()
+      themes.preview(pal)
     elif key == SDL2C.SDLK_DOWN():
       pal.down()
-      previewTheme()
+      themes.preview(pal)
     elif key == SDL2C.SDLK_BACKSPACE():
       pal.backspace()
       afterFieldEdit()
@@ -844,7 +755,7 @@ class Pad from IO
     elif key == SDL2C.SDLK_END():
       pal.field.docEnd(shift)
     elif key == SDL2C.SDLK_F3() and pal.mode == Palette.findMode():
-      needle = pal.field.buf.text()
+      search.needle = pal.field.buf.text()
       if shift == 1:
         findAgain(0)
       else
@@ -1145,7 +1056,7 @@ class Main from IO
         pad.builder.compiler = arg(i)
       elif a == "--themes":
         i = i + 1
-        pad.themeDir = arg(i)
+        pad.themes.themeDir = arg(i)
       elif a == "-I":
         i = i + 1
         pad.builder.includes.append(arg(i))
@@ -1164,7 +1075,7 @@ class Main from IO
       end
       i = i + 1
     end
-    pad.restoreTheme()
+    pad.themes.restore()
     if pad.builder.compiler.len() == 0:
       pad.builder.locate(arg(0))
     end
