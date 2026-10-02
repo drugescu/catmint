@@ -203,7 +203,15 @@ general value to a more specific variable inserts a checked conversion.
 `trim`, `upper`, `lower`, `split`, `replace`, and the statics `String.chr` (so
 `String.chr(0)` is a one-character String holding a NUL) and `String.fromC`
 (under "Calling C").
-→ `28_strings.cm`, `23_escapes.cm`
+
+In a double-quoted string a backslash takes the character after it, left to
+right: `\n`, `\t`, `\r`, `\0` are the control characters, `\\` a backslash, `\"` a
+quote, `\'` an apostrophe, `\$` a dollar sign that does not start an
+interpolation; any other pair is kept as written. A quote ends the string unless
+a backslash is claiming it, so a string can end in a backslash: `"C:\\"`. A
+single-quoted string is raw -- nothing in it is decoded and nothing is
+interpolated -- though a backslash still keeps the quote after it inside.
+→ `28_strings.cm`, `23_escapes.cm`, `85_string_end_backslash.cm`
 
 ## String interpolation
 
@@ -247,9 +255,13 @@ Nothing to call. The compiler counts references: storing an object keeps it,
 leaving the scope releases it, and anything an expression makes that nobody
 names is released at the end of the method — or of the loop iteration, if it
 was made in one. `retain()` and `release()` exist for what a scope cannot
-express, such as an object held in a field. `IO.allocated()` is the live
-object count, so "does this leak?" has an answer.
-→ `31_memory.cm`
+express, such as an object held in a field. `IO.allocated()` is the count of
+live objects that something holds -- a variable, a field, a container -- and not
+those a pending temporary alone is keeping until its method returns, so "does
+this leak?" has an answer in the very method that did the work: `things = null`
+brings it back down. A reference cycle is held by its own members and stays
+counted, because counting cannot free one.
+→ `31_memory.cm`, `75_allocated.cm`
 
 ## Modules
 
@@ -320,7 +332,9 @@ a `Float` given where C takes an integer is a compile error.
 `UInt8`, `UInt16`, `UInt32` and `UInt64` are C's unsigned types, for extern
 declarations only. Read, each becomes the smallest catmint integer that holds
 every value -- `Int` for the first two, `Int64` for `UInt32` -- and `UInt64`
-an `Int64` holding the same bits. Anywhere else they are an error saying what
+an `Int64` holding the same bits. Given, a `UInt8` or `UInt16` takes the low 8
+or 16 bits of the number passed, as a cast in C would, and reaches C extended
+to 32 bits, as C's callees expect. Anywhere else they are an error saying what
 to write instead.
 
 `link "name"` adds `-lname`, and `catmintc -l name -L dir` does the same from
@@ -360,6 +374,68 @@ promoted to a double by C, so it is declared `Float`, and a pointer whose
 meaning only the callee knows goes through an explicit `Ptr`.
 → `49_ffi.cm`, `64_extern_struct.cm`, `65_extern_refusals.cm`,
 `66_c_strings.cm`, `67_variadic.cm`
+
+## Callbacks
+
+```
+extern def Compare(Ptr left, Ptr right) Int
+
+extern class Libc
+  def Void qsort(Ptr base, UInt64 count, UInt64 size, Compare order)
+end
+
+class Order
+  static def Int ascending(Ptr left, Ptr right):
+    ...
+  end
+end
+
+unsafe:
+  Libc.qsort(numbers, 6, 8, Order.ascending)
+end
+```
+
+`extern def Name(params) Result` declares the type of a C function pointer, as a
+typedef does in a header. A **static method** is passed where a parameter has
+that type, by naming it: `Order.ascending`. Its signature must be exactly the
+type's (a mismatch says both), and it must be written in catmint. A callback
+type is the type of an extern function's parameter and nothing else -- not a
+variable, a field or a result -- and has no instances.
+
+The compiler writes the function C actually calls, with C's calling
+convention: it converts what C passes (an unsigned argument is zero-extended,
+a pointer to an extern struct arrives as a view of it), runs the method, and
+converts the result back. What a callback may take and return is a number, a
+`Ptr`, or an extern struct; never a String or an array, which would be C's
+`char *` taken for a catmint object.
+
+What keeps it safe, each shown by a test that fails without it:
+
+- **It runs on the program's own thread only.** The reference counts, the pools
+  and the handler stack are not atomic. A C library that calls a callback from a
+  thread of its own stops the program at once, saying so, before anything shared
+  is touched. (`Handles` has the same guard.) A library that does that --
+  an audio callback, a timer -- is not yet supported, and the binding generator
+  leaves such types as a `Ptr` (`--foreign-thread`).
+- **An error cannot escape through C.** A `throw` is a `longjmp`, and a jump
+  over `qsort`'s frames skips whatever it still had to do. So the function the
+  compiler writes catches it, remembers it, answers zero to every later call
+  without running the method, and the extern call that started it throws it once
+  C has returned -- to the `catch` around that call.
+- **C never holds an address inside a catmint object**, which would be a
+  reference nobody counts. State goes through `Handles`: `Handles.make(object)`
+  gives a `Ptr` that is a number naming a slot in a table, which holds a
+  reference until `Handles.drop(handle)`; `Handles.get(handle)` (needs `unsafe`)
+  gives the object back, or `null` for a handle that was dropped, from a reused
+  slot, or never was one. C keeps the `Ptr` as its `void *userdata`.
+- **A callback gets a pool of its own**, so what each call makes is gone when it
+  returns, however many times C calls it.
+
+Not supported: C functions that install a handler for a signal or for the
+process exiting (`signal`, `sigaction`, `atexit`), which the binding generator
+never binds, since catmint code cannot run at an arbitrary instant.
+→ `71_handles.cm`, `72_callbacks.cm`, `65_extern_refusals.cm`,
+`tools/callback_test`
 
 ## C structs and unions
 
@@ -402,9 +478,16 @@ of object, over memory C owns, which catmint never frees. Making a view needs
 its fields read like any other. A null pointer gives `null`. A struct
 parameter takes `null` too, for C's "none". A nested struct used whole is
 copied, as C assigns structs; a `Ptr` parameter takes a struct's bytes, which
-is how an out-parameter is written. Passing structs by value and callbacks are
-not supported; a variadic function is called by instantiation, above.
-→ `64_extern_struct.cm`, `65_extern_refusals.cm`
+is how an out-parameter is written. Passing structs by value is not supported;
+a variadic function is called by instantiation, above, and a callback is passed
+as described under "Callbacks".
+→ `64_extern_struct.cm`, `65_extern_refusals.cm`, `73_struct_arrays.cm`
+
+An element of an array of structs, and a struct held by value in another, are
+places: `items.cells[2].value = 42` writes into the element, and
+`items.cells[0].tags[1]` reaches an array inside one. Used whole (`Cell c =
+items.cells[1]`, `items.cells[2] = c`) an element is copied, as C assigns
+structs.
 
 ## finalize
 
@@ -436,7 +519,30 @@ and `sdl` -- windows, drawing, input and a clock, over SDL2.
 and every handle released by `finalize`. Underneath is `sdl2.cmm`, SDL's whole
 API as extern structs, functions and constants, generated from SDL's own
 headers by `tools/bindgen.py` and never edited by hand. Nothing in either is
-C. Needs SDL2 installed; on Homebrew build with `-L /opt/homebrew/lib`.
+C. Needs SDL2 installed; `catmintc` looks in Homebrew's library folders itself on macOS
+(`/opt/homebrew/lib`, `/usr/local/lib`), after any `-L` you give.
+
+`sdl` also has `Texture` (from a `Bytes` of pixels; draw a part of it, tint,
+opacity), text input, the clipboard, the wheel and modifier keys. `font` draws
+text from Unscii's printable ASCII, built into a texture when the `Font` is
+made: a fixed 8 x 16 cell, anything else one `?`, no font file. `ttf` does the same
+from a TrueType font through SDL_ttf (anti-aliased, cells the size of the font's advance and
+line height) and is the one module that needs that library.
+
+For a program that edits text, also in `lib/`, each testable without a window:
+`textbuffer` (a gap buffer with a line index and undo), `editor` (cursor,
+selection, movement, typing, auto-indent, find and replace), `highlight` and
+`keywords` (colour a line of catmint by the lexer's own keyword list, which
+`tools/make_keywords.py` reads out of `catmint.l`), `theme` (dark and light
+colours chosen by WCAG contrast ratio), `fuzzy` and `palette` (the command
+palette and file picker), `files` (read with a size limit, save through a
+temporary file and a rename that keeps permissions and follows links, list a
+directory tree without a shell), `filetree` (a folder's files as rows to fold
+and open), `buildlog` (the place a compiler message names), `job` (a program run
+in the background and polled once a frame, so a window need not wait for it) and
+`outputpanel` (what it printed, a line to a row, newest followed). `examples/pad` is
+an editor made of them.
+→ `76_textbuffer.cm` to `96_terminal.cm`, `examples/pad/tests/`
 
 A `Map` key may be a String, an Int, or a class that `does Hashable` --
 `def Int hash` and `def Int equalTo(Object other)`. String and Int are
@@ -480,6 +586,18 @@ shell forms do not do this.) An empty list, a non-String
 item, or a String holding a NUL is a catchable error before anything starts; a
 program that does not exist exits 127, as under a shell.
 → `39_process.cm`, `69_process_args.cm`
+
+**A program, from a window.** `Process.openArgs` reads a pipe, and a read on a pipe
+waits for the program. `lib/job.cmm` does not: `Job` starts the program (no shell
+reads its arguments), sends its output and errors, in order, to a file in a folder
+only the user can enter, and `poll()` reads what has been added -- never waiting,
+whole lines, at most 256 KB a call -- until `running()` is 0 and `code()` has the
+exit status. `stop()` ends the program and what it started; asked again, it kills.
+A program that prints 8 MB (`limit`) is stopped. With `interactive = 1` it also
+reads a pipe that `send(text)` writes to without waiting (queued, handed over as the
+pipe has room), `closeInput()` ends and `interrupt()` is ^C; `lib/terminal.cmm` is a
+shell panel made of that.
+→ `92_job.cm`, `95_job_input.cm`, `96_terminal.cm`
 
 **A thread, for arithmetic only.** `Int h = spawn Sum.chunk(3)` runs a static
 method on a thread; `Worker.wait(h)` collects what it returned. The method

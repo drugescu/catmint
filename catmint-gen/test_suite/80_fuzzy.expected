@@ -1,0 +1,25 @@
+commands [sav] -> Save | Save as
+commands [fn] -> Find next | Find
+commands [dl] -> Toggle dark and light
+commands [u] -> Undo | Run | Quit
+commands [] -> Save | Save as | Open file | Find | Find next
+commands [zq] -> nothing
+commands [SAV] -> Save | Save as
+commands [text] -> Bigger text | Smaller text
+commands [u] -> Undo | Run
+files [edi] -> lib/editor.cmm | catmint-gen/test_suite/79_editor.cm
+files [pad] -> examples/pad/pad.cm
+files [tbuf] -> lib/textbuffer.cmm
+files [mk] -> tools/make_font.py
+a word start beats the middle of a word: 1
+consecutive beats scattered: 1
+the shorter wins when otherwise equal: 1
+together beats apart, even where the second letter starts a word: 1
+closer beats further apart: 1
+nearer the start beats further on: 1
+a capital inside a name starts a word: 1
+an empty query scores 0: 1
+no match scores as none: 1
+matches: 1 1 0 0
+ranked 5000 paths in a fair time: 1
+and found 10 of them

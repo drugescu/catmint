@@ -1,0 +1,7 @@
+# While the shell runs the loop looks every 100 ms: a turn that would wait the whole 500
+# for the caret waits 100.
+# files t.txt=abc
+# open t.txt
+# frames 2
+# expect wait 100
+1 key ` ctrl

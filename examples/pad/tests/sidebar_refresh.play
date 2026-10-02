@@ -1,0 +1,17 @@
+# The explorer does not follow the disk by itself; "Refresh file explorer" in the
+# palette reads the folder again. out.txt is made by saving a new document, and the
+# explorer, which had one file, has two after the refresh.
+# files a.txt=A
+# open a.txt
+# frames 14
+# expect sidebar 1 2 first 0
+# file out.txt=hello
+1 key b ctrl
+2 key n ctrl
+3 text hello
+4 key s ctrl
+5 text out.txt
+6 key enter
+7 key p ctrl
+8 text Refresh
+9 key enter

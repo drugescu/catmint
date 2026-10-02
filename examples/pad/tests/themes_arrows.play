@@ -1,0 +1,12 @@
+# Down moves the highlight and the theme on screen with it: from Catmint Dark, two
+# Downs is Dracula (the third in the list). Nothing is chosen yet, so the list is
+# still open, and the ground outside it is Dracula's, (40, 42, 54).
+# frames 8
+# expect theme Dracula
+# expect palette 7 
+# pixels 100 300 200 400 40 42 54 10000
+1 key p ctrl
+2 text color
+3 key enter
+4 key down
+5 key down

@@ -1,0 +1,461 @@
+# A text buffer: the editable text of one file, in memory, with undo.
+#
+#   using textbuffer
+#   TextBuffer b = new TextBuffer()
+#   b.load("one\ntwo\n")
+#   b.insert(3, "!")        # "one!\ntwo\n"
+#   b.lineText(1)            # "two"
+#   b.undo()
+#
+# The text is a gap buffer: one run of bytes with a hole in it at the place
+# last edited, so typing is writing into the hole and the hole moves only as
+# far as the next edit is from the last. Alongside is an index of where each
+# line starts, kept up to date by every edit rather than rebuilt, because
+# rebuilding it on a keystroke in a large file would be the whole cost.
+#
+# Positions are byte offsets into UTF-8. A step by `next` or `prev` lands on a
+# character, never in the middle of one; an edit at an offset is the caller's
+# to place on a boundary. Lines end at a newline; a carriage return before it
+# stays in the text and is left out of lineText.
+#
+# Every edit is recorded so it can be undone, and a run of single characters
+# typed one after another is one step. Test 76 holds this against a model.
+
+class Edit from Object
+  Int at
+  String removed = null
+  String added = null
+
+  constructor(Int where, String took, String put):
+    at = where
+    removed = took
+    added = put
+  end
+end
+
+class TextBuffer from Object
+  # The text, then the gap, then the rest of the text.
+  Bytes data = null
+  Int gapStart
+  Int gapEnd
+  # The offset of the first byte of each line, in order; entry 0 is always 0.
+  Ints starts = null
+  Int lineCount
+  List undoStack = null
+  List redoStack = null
+  # Whether the next typed character may join the last undo step.
+  Int mayJoin
+  # Counts every change, undo and redo included, so "modified" is a comparison.
+  Int revision
+  Int savedRevision
+
+  constructor():
+    data = new Bytes(64)
+    gapStart = 0
+    gapEnd = 64
+    starts = new Ints(16)
+    starts.set(0, 0)
+    lineCount = 1
+    undoStack = new List()
+    redoStack = new List()
+  end
+
+  # ---- reading --------------------------------------------------------
+
+  def Int length:
+    return data.len() - (gapEnd - gapStart)
+  end
+
+  def Int byteAt(Int pos):
+    if pos < gapStart:
+      return data.get(pos)
+    end
+    return data.get(pos + gapEnd - gapStart)
+  end
+
+  def Int lines:
+    return lineCount
+  end
+
+  def Int lineStart(Int line):
+    return starts.get(line)
+  end
+
+  # The offset of the newline that ends the line, or the end of the text.
+  def Int lineEnd(Int line):
+    if line + 1 < lineCount:
+      return starts.get(line + 1) - 1
+    end
+    return length()
+  end
+
+  # The line a position is on: the last whose start is not after it. A position
+  # at the very end belongs to the last line.
+  def Int lineOf(Int pos):
+    Int low = 0
+    Int high = lineCount - 1
+    while low < high:
+      Int mid = (low + high + 1) / 2
+      if starts.get(mid) <= pos:
+        low = mid
+      else
+        high = mid - 1
+      end
+    end
+    return low
+  end
+
+  def String slice(Int start, Int stop):
+    Bytes copy = new Bytes(stop - start)
+    Int i = start
+    while i < stop:
+      copy.set(i - start, byteAt(i))
+      i = i + 1
+    end
+    return copy.toString()
+  end
+
+  def String text:
+    return slice(0, length())
+  end
+
+  # The line without its newline, and without a carriage return before it.
+  def String lineText(Int line):
+    Int start = lineStart(line)
+    Int stop = lineEnd(line)
+    if stop > start and byteAt(stop - 1) == 13:
+      stop = stop - 1
+    end
+    return slice(start, stop)
+  end
+
+  # ---- characters ------------------------------------------------------
+
+  # The start of the character after pos, or the end of the text.
+  def Int next(Int pos):
+    Int n = length()
+    if pos >= n:
+      return n
+    end
+    Int p = pos + 1
+    while p < n and (byteAt(p) & 192) == 128:
+      p = p + 1
+    end
+    return p
+  end
+
+  # The start of the character before pos, or 0.
+  def Int prev(Int pos):
+    if pos <= 0:
+      return 0
+    end
+    Int p = pos - 1
+    while p > 0 and (byteAt(p) & 192) == 128:
+      p = p - 1
+    end
+    return p
+  end
+
+  # ---- the gap -----------------------------------------------------------
+
+  # Move the gap so that it starts at pos.
+  def Void moveGap(Int pos):
+    if pos < gapStart:
+      Int n = gapStart - pos
+      Int i = n - 1
+      while i >= 0:
+        data.set(gapEnd - n + i, data.get(pos + i))
+        i = i - 1
+      end
+      gapStart = pos
+      gapEnd = gapEnd - n
+    elif pos > gapStart:
+      Int n = pos - gapStart
+      Int i = 0
+      while i < n:
+        data.set(gapStart + i, data.get(gapEnd + i))
+        i = i + 1
+      end
+      gapStart = gapStart + n
+      gapEnd = gapEnd + n
+    end
+  end
+
+  # Make room for at least n more bytes in the gap.
+  def Void makeRoom(Int n):
+    if gapEnd - gapStart < n:
+      Int capacity = data.len()
+      Int bigger = capacity * 2
+      if bigger < length() + n + 64:
+        bigger = length() + n + 64
+      end
+      Bytes grown = new Bytes(bigger)
+      Int i = 0
+      while i < gapStart:
+        grown.set(i, data.get(i))
+        i = i + 1
+      end
+      Int tail = capacity - gapEnd
+      Int j = 0
+      while j < tail:
+        grown.set(bigger - tail + j, data.get(gapEnd + j))
+        j = j + 1
+      end
+      data = grown
+      gapEnd = bigger - tail
+    end
+  end
+
+  def Void makeRoomForLines(Int n):
+    if n > starts.len():
+      Int bigger = starts.len() * 2
+      if bigger < n:
+        bigger = n
+      end
+      Ints grown = new Ints(bigger)
+      Int i = 0
+      while i < lineCount:
+        grown.set(i, starts.get(i))
+        i = i + 1
+      end
+      starts = grown
+    end
+  end
+
+  # ---- the edits themselves, without a record -------------------------------
+
+  def Void insertRaw(Int pos, String s):
+    Int n = s.len()
+    if n > 0:
+      # The line index first, while positions are still the old ones.
+      Int line = lineOf(pos)
+      Int newlines = 0
+      Int k = 0
+      while k < n:
+        if s.at(k) == 10:
+          newlines = newlines + 1
+        end
+        k = k + 1
+      end
+      Int i = line + 1
+      while i < lineCount:
+        starts.set(i, starts.get(i) + n)
+        i = i + 1
+      end
+      if newlines > 0:
+        makeRoomForLines(lineCount + newlines)
+        i = lineCount - 1
+        while i > line:
+          starts.set(i + newlines, starts.get(i))
+          i = i - 1
+        end
+        Int placed = 0
+        Int j = 0
+        while j < n:
+          if s.at(j) == 10:
+            starts.set(line + 1 + placed, pos + j + 1)
+            placed = placed + 1
+          end
+          j = j + 1
+        end
+        lineCount = lineCount + newlines
+      end
+
+      moveGap(pos)
+      makeRoom(n)
+      Int c = 0
+      while c < n:
+        data.set(gapStart + c, s.at(c))
+        c = c + 1
+      end
+      gapStart = gapStart + n
+    end
+  end
+
+  def Void removeRaw(Int start, Int stop):
+    Int n = stop - start
+    if n > 0:
+      Int line = lineOf(start)
+      # Lines that started inside the removed text are gone.
+      Int gone = 0
+      while line + 1 + gone < lineCount and starts.get(line + 1 + gone) <= stop:
+        gone = gone + 1
+      end
+      Int i = line + 1 + gone
+      while i < lineCount:
+        starts.set(i - gone, starts.get(i) - n)
+        i = i + 1
+      end
+      lineCount = lineCount - gone
+
+      moveGap(stop)
+      gapStart = start
+    end
+  end
+
+  # ---- editing, with undo ----------------------------------------------------
+
+  # Replace [start, stop) with s, as one undoable step.
+  def Void replace(Int start, Int stop, String s):
+    if stop > start or s.len() > 0:
+      doReplace(start, stop, s)
+    end
+  end
+
+  def Void doReplace(Int start, Int stop, String s):
+    String took = slice(start, stop)
+    Int joined = 0
+    if mayJoin == 1 and stop == start and s.len() == 1 and s.at(0) != 10 and undoStack.len() > 0:
+      Edit last = undoStack.get(undoStack.len() - 1)
+      if last.removed.len() == 0 and last.at + last.added.len() == start:
+        undoStack.set(undoStack.len() - 1, new Edit(last.at, "", last.added + s))
+        joined = 1
+      end
+    end
+    if joined == 0:
+      undoStack.append(new Edit(start, took, s))
+    end
+    redoStack = new List()
+    removeRaw(start, stop)
+    insertRaw(start, s)
+    revision = revision + 1
+    mayJoin = 1
+  end
+
+  def Void insert(Int pos, String s):
+    replace(pos, pos, s)
+  end
+
+  def Void remove(Int start, Int stop):
+    replace(start, stop, "")
+    mayJoin = 0
+  end
+
+  # The next typed character starts a new undo step.
+  def Void breakUndo:
+    mayJoin = 0
+  end
+
+  # Undo the last step; where the cursor belongs afterwards, or -1 when there
+  # is nothing to undo.
+  def Int undo:
+    mayJoin = 0
+    if undoStack.len() == 0:
+      return 0 - 1
+    end
+    Edit e = undoStack.get(undoStack.len() - 1)
+    undoStack = undoStack.slice(0, undoStack.len() - 1)
+    removeRaw(e.at, e.at + e.added.len())
+    insertRaw(e.at, e.removed)
+    redoStack.append(e)
+    revision = revision + 1
+    return e.at + e.removed.len()
+  end
+
+  def Int redo:
+    mayJoin = 0
+    if redoStack.len() == 0:
+      return 0 - 1
+    end
+    Edit e = redoStack.get(redoStack.len() - 1)
+    redoStack = redoStack.slice(0, redoStack.len() - 1)
+    removeRaw(e.at, e.at + e.removed.len())
+    insertRaw(e.at, e.added)
+    undoStack.append(e)
+    revision = revision + 1
+    return e.at + e.added.len()
+  end
+
+  # ---- whole-text operations ---------------------------------------------------
+
+  # Replace everything, forgetting the history: a file just opened.
+  def Void load(String s):
+    Int n = s.len()
+    Int capacity = n + 64
+    data = new Bytes(capacity)
+    Int i = 0
+    while i < n:
+      data.set(i, s.at(i))
+      i = i + 1
+    end
+    gapStart = n
+    gapEnd = capacity
+    starts = new Ints(16)
+    starts.set(0, 0)
+    lineCount = 1
+    i = 0
+    while i < n:
+      if s.at(i) == 10:
+        makeRoomForLines(lineCount + 1)
+        starts.set(lineCount, i + 1)
+        lineCount = lineCount + 1
+      end
+      i = i + 1
+    end
+    undoStack = new List()
+    redoStack = new List()
+    mayJoin = 0
+    revision = 0
+    savedRevision = 0
+  end
+
+  def Void markSaved:
+    savedRevision = revision
+  end
+
+  def Int modified:
+    if revision != savedRevision:
+      return 1
+    end
+    return 0
+  end
+
+  # ---- searching ----------------------------------------------------------------
+
+  # The offset of the next match of needle at or after origin (forward = 1), or
+  # the last match that starts at or before origin (forward = 0); -1 for none.
+  def Int find(String needle, Int origin, Int forward):
+    Int n = needle.len()
+    Int total = length()
+    if n == 0 or n > total:
+      return 0 - 1
+    end
+    Int first = needle.at(0)
+    Int last = total - n
+    if forward == 1:
+      Int p = origin
+      if p < 0:
+        p = 0
+      end
+      while p <= last:
+        if byteAt(p) == first and matchesAt(needle, p) == 1:
+          return p
+        end
+        p = p + 1
+      end
+    else
+      Int p = origin
+      if p > last:
+        p = last
+      end
+      while p >= 0:
+        if byteAt(p) == first and matchesAt(needle, p) == 1:
+          return p
+        end
+        p = p - 1
+      end
+    end
+    return 0 - 1
+  end
+
+  def Int matchesAt(String needle, Int pos):
+    Int i = 1
+    while i < needle.len():
+      if byteAt(pos + i) != needle.at(i):
+        return 0
+      end
+      i = i + 1
+    end
+    return 1
+  end
+end

@@ -1,0 +1,10 @@
+# The terminal's last row is the prompt and the line: "$" in the accent colour (232, 176,
+# 74) in the cell at x = 8 (34 pixels in Unscii) and the caret, 2 pixels wide and
+# 20 high, after the two cells of prompt, at x = 24, in rows 597 to 617.
+# files t.txt=abc
+# open t.txt
+# frames 3
+# pixels 24 597 26 617 232 176 74 40
+# pixels 8 596 16 618 232 176 74 34
+# pixels 0 596 8 618 232 176 74 none
+1 key ` ctrl

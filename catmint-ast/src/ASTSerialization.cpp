@@ -29,6 +29,7 @@ const auto Abstract = "Abstract";
 const auto Unsafe = "Unsafe";
 const auto Extern = "Extern";
 const auto CKind = "CKind";
+const auto CallbackType = "CallbackType";
 const auto AssertedSize = "AssertedSize";
 const auto CType = "CType";
 const auto ArrayLength = "ArrayLength";
@@ -203,6 +204,10 @@ bool ASTSerializer::visit(Class *C) {
   }
   // Written only for extern structs and unions, so every other AST is what
   // it was before they existed.
+  if (C->isCallbackType()) {
+    writer->Key(keys::CallbackType);
+    writer->Bool(true);
+  }
   if (C->isCStruct()) {
     writePair(keys::CKind, C->getCKind());
     if (C->getAssertedSize() >= 0) {
@@ -1045,6 +1050,10 @@ std::unique_ptr<Class> ASTDeserializer::parseClass(rapidjson::Value &tree) {
   if (tree.HasMember(keys::Extern)) {
     assert(tree[keys::Extern].IsBool() && "Invalid extern flag");
     classNode->setExtern(tree[keys::Extern].GetBool());
+  }
+  if (tree.HasMember(keys::CallbackType)) {
+    assert(tree[keys::CallbackType].IsBool() && "Invalid callback flag");
+    classNode->setCallbackType(tree[keys::CallbackType].GetBool());
   }
   if (tree.HasMember(keys::CKind)) {
     assert(tree[keys::CKind].IsInt() && "Invalid struct kind");

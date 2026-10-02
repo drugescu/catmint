@@ -1,0 +1,8 @@
+# Showing the explorer takes 224 pixels off the text, and a caret that was in view must
+# stay in it: a line of 100 characters with the caret at its end is in view in 111
+# columns, not in the 83 that are left (85, less 2 at the edge), so the text scrolls
+# 100 - 83 + 1 = 18 columns.
+# frames 4
+# expect scrollx 18
+1 text 0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789
+2 key b ctrl

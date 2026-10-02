@@ -1,0 +1,48 @@
+# The status line is not part of the explorer: a click on it, at y = 630, opens nothing even
+# though there are more files than rows (forty, 28 showing) and row 29 would be under it.
+# files f01.txt=x
+# files f02.txt=x
+# files f03.txt=x
+# files f04.txt=x
+# files f05.txt=x
+# files f06.txt=x
+# files f07.txt=x
+# files f08.txt=x
+# files f09.txt=x
+# files f10.txt=x
+# files f11.txt=x
+# files f12.txt=x
+# files f13.txt=x
+# files f14.txt=x
+# files f15.txt=x
+# files f16.txt=x
+# files f17.txt=x
+# files f18.txt=x
+# files f19.txt=x
+# files f20.txt=x
+# files f21.txt=x
+# files f22.txt=x
+# files f23.txt=x
+# files f24.txt=x
+# files f25.txt=x
+# files f26.txt=x
+# files f27.txt=x
+# files f28.txt=x
+# files f29.txt=x
+# files f30.txt=x
+# files f31.txt=x
+# files f32.txt=x
+# files f33.txt=x
+# files f34.txt=x
+# files f35.txt=x
+# files f36.txt=x
+# files f37.txt=x
+# files f38.txt=x
+# files f39.txt=x
+# files f40.txt=x
+# open f01.txt
+# frames 4
+# expect tabs 1 0
+# expect file f01.txt
+1 key b ctrl
+2 click 60 630

@@ -1,0 +1,223 @@
+# Reading, saving and listing files, for a program that edits them.
+#
+#   using files
+#   String text = Files.read("notes.txt", 64 * 1024 * 1024)    # null if too big or not there
+#   Int ok = Files.save("notes.txt", text)                      # 1 if it is all on disk
+#   List names = Files.list(".", 6, 5000)                       # "lib/editor.cmm", ...
+#
+# A save must not lose what is there. The text goes to a temporary file beside
+# the target and is renamed over it, so a failure at any point leaves the
+# original as it was, and a crash cannot leave half a file. Before the rename
+# every byte is counted back, because a full disk does not make the write say
+# so. The temporary starts as a copy of the target (`cp -p`, run without a
+# shell), which is how permissions and owner survive: a private file does not
+# become readable by others on being saved. A symbolic link is followed, so the
+# text goes to the file it points at and the link stays a link.
+#
+# Nothing here goes through a shell, and a name is only ever a name.
+
+extern class FilesC
+  def Int rename(String oldPath, String newPath)
+  def Ptr realpath(String path, Ptr resolved)
+  def Void free(Ptr block)
+end
+
+class Files from Object
+  # The last part of a path: "a/b/c.txt" is "c.txt", and "a/" is "".
+  static def String baseName(String p):
+    Int slash = 0 - 1
+    Int i = 0
+    while i < p.len():
+      if p.at(i) == 47:
+        slash = i
+      end
+      i = i + 1
+    end
+    return p.substr(slash + 1, p.len())
+  end
+
+  # 1 if name a sorts before name b, ignoring case; equal names are not before.
+  static def Int before(String a, String b):
+    String x = a.lower()
+    String y = b.lower()
+    Int i = 0
+    while i < x.len() and i < y.len():
+      if x.at(i) != y.at(i):
+        if x.at(i) < y.at(i):
+          return 1
+        end
+        return 0
+      end
+      i = i + 1
+    end
+    if x.len() < y.len():
+      return 1
+    end
+    return 0
+  end
+
+  # Run a program and answer how it ended, saying nothing of its own: whatever
+  # it prints is read and dropped.
+  static def Int quietly(List args):
+    Process p = new Process()
+    p.openArgs(args)
+    while p.eof() == 0:
+      p.readLine()
+    end
+    return p.finish()
+  end
+
+  # 1 if path is a directory, else 0.
+  static def Int isDirectory(String path):
+    List args = new List()
+    args.append("test")
+    args.append("-d")
+    args.append(path)
+    if Files.quietly(args) == 0:
+      return 1
+    end
+    return 0
+  end
+
+  # How many bytes the file holds, counted only as far as limit + 1, or -1 if
+  # it cannot be opened.
+  static def Int size(String path, Int limit):
+    File f = new File()
+    if f.open(path, "r") == 0:
+      return 0 - 1
+    end
+    Bytes chunk = new Bytes(65536)
+    Int total = 0
+    Int got = f.readBytes(chunk)
+    while got > 0 and total <= limit:
+      total = total + got
+      got = f.readBytes(chunk)
+    end
+    f.close()
+    return total
+  end
+
+  # 1 if the file holds exactly this many bytes. A save asks it of the
+  # temporary before the rename, because a full disk does not make a write say
+  # so.
+  static def Int holds(String path, Int bytes):
+    if Files.size(path, bytes) == bytes:
+      return 1
+    end
+    return 0
+  end
+
+  # The whole file, or null if it is not there, is a directory, or is longer
+  # than limit bytes -- refused, never cut short.
+  static def String read(String path, Int limit):
+    if Files.isDirectory(path) == 1:
+      return null
+    end
+    Int n = Files.size(path, limit)
+    if n < 0 or n > limit:
+      return null
+    end
+    File f = new File()
+    if f.open(path, "r") == 0:
+      return null
+    end
+    String text = f.readAll()
+    f.close()
+    return text
+  end
+
+  # The file a path leads to, with links followed; the path itself if it leads
+  # nowhere yet.
+  static def String resolve(String path):
+    String result = path
+    unsafe:
+      Ptr p = FilesC.realpath(path, null)
+      if p != null:
+        result = String.fromC(p, 4096)
+        FilesC.free(p)
+      end
+    end
+    return result
+  end
+
+  # Put text in the file at path, all of it or nothing. 1 if it is saved.
+  static def Int save(String path, String text):
+    String target = Files.resolve(path)
+    String temp = "${target}.save~${Process.pid()}"
+    if File.exists(target) == 1:
+      List copy = new List()
+      copy.append("cp")
+      copy.append("-p")
+      copy.append(target)
+      copy.append(temp)
+      if Files.quietly(copy) != 0:
+        File.remove(temp)
+        return 0
+      end
+    end
+    File f = new File()
+    if f.open(temp, "w") == 0:
+      File.remove(temp)
+      return 0
+    end
+    f.write(text)
+    f.close()
+    if Files.holds(temp, text.len()) == 0:
+      File.remove(temp)
+      return 0
+    end
+    return Files.replace(temp, target)
+  end
+
+  # Move temp over target. 1 if it is there now; 0, with temp removed, if not.
+  static def Int replace(String temp, String target):
+    Int renamed = 1
+    unsafe:
+      renamed = FilesC.rename(temp, target)
+    end
+    if renamed != 0:
+      File.remove(temp)
+      return 0
+    end
+    return 1
+  end
+
+  # The files below dir, as paths relative to it: at most depth levels down,
+  # at most limit of them, leaving out anything hidden (a name that starts
+  # with a dot) and everything under it.
+  static def List list(String dir, Int depth, Int limit):
+    String root = dir
+    while root.len() > 1 and root.at(root.len() - 1) == 47:
+      root = root.substr(0, root.len() - 1)
+    end
+    List args = new List()
+    args.append("find")
+    args.append(root)
+    args.append("-mindepth")
+    args.append("1")
+    args.append("-maxdepth")
+    args.append("${depth}")
+    args.append("(")
+    args.append("-name")
+    args.append(".*")
+    args.append("-prune")
+    args.append(")")
+    args.append("-o")
+    args.append("-type")
+    args.append("f")
+    args.append("-print")
+    List names = new List()
+    Process p = new Process()
+    p.openArgs(args)
+    String prefix = root + "/"
+    while p.eof() == 0:
+      String line = p.readLine()
+      # Anything else is find complaining, not a file.
+      if line.indexOf(prefix) == 0 and names.len() < limit:
+        names.append(line.substr(prefix.len(), line.len()))
+      end
+    end
+    p.finish()
+    return names
+  end
+end

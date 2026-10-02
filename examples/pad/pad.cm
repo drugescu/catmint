@@ -1,0 +1,1035 @@
+# pad: a small editor for catmint programs.
+#
+#   pad [file] [--catmintc path] [-I dir] [--themes dir] [--font pixel|name|path]
+#
+# Text is the interface. There is no menu bar and no dialog: one command palette
+# (Ctrl P, or Cmd on a Mac) does what those do -- it runs commands, opens files by a
+# fragment of their path, finds, replaces, goes to a line and picks a colour theme
+# -- and one line at the bottom says where you are. Files open in tabs, which
+# appear with the second, and Ctrl B shows the files below the folder pad was
+# started in down the left, to click open. F5 saves, builds with catmintc and runs
+# what it built; F7 only builds; Shift F5 stops. What the compiler said, and then what
+# the program printed, is in a panel; a click on a line that names a place goes there. Ctrl `
+# swaps that panel for a terminal. Text is JetBrains Mono (fonts/, needs SDL2_ttf), and
+# "Choose font..." picks another. The commands, and the keys that run them, are listed in
+# registerCommands below.
+#
+# F5 needs catmintc: started in the repository it is ./catmintc, run as
+# examples/pad/pad it is found from there, else it is looked for on the PATH. A
+# tab character is drawn as ?, and a string that runs over a newline is coloured on
+# its first line only. Open lists the files below the directory pad was started in
+# (six levels, five thousand files, nothing hidden), so start it in a project, not
+# in a home directory.
+#
+# This file is the controller: it owns the window and the event loop, turns events
+# into commands and commands into calls. What each piece knows is in its own module:
+#
+#   workspace    the open files and which is in front        metrics    where things are
+#   painter      drawing, from state it is handed            builder    finding and running catmintc
+#   outputpanel  what the compiler said                      search     find, and where it began
+#   themechooser which theme, and keeping the choice         recents    files opened, and the open list
+#   editkeys     the keys that edit the text                 clicks     double clicks
+#   options      the command line                            playscript driving pad from a script
+#
+# and the parts with no window in them are in lib/: textbuffer and editor (the text
+# and what is done to it), palette and fuzzy, commands (the commands and their keys),
+# theme, themes and base16, settings, files and filetree, highlight and buildlog.
+#
+# Testing without a person: `--play script --frames N --shot out.bmp` feeds scripted
+# input to the same code, draws N frames, saves the last, and prints the state; see
+# examples/pad/play.sh.
+
+using sdl
+using font
+using theme
+using editor
+using highlight
+using settings
+using themechooser
+using fontchooser
+using search
+using commands
+using editkeys
+using palette
+using files
+using buildlog
+using outputpanel
+using builder
+using runner
+using terminal
+using terminalkeys
+using metrics
+using painter
+using workspace
+using filetree
+using options
+using recents
+using clicks
+using playscript
+
+class Pad from IO
+  Sdl sdl = null
+  Window win = null
+  Renderer view = null
+  Painter painter = null
+  Metrics m = null
+  ThemeChooser themes = null
+  FontChooser fonts = null
+  Search search = null
+  Workspace ws = null
+  Palette pal = null
+  String message = ""
+  Builder builder = null
+  Recents recents = null
+  Clicks clicks = null
+  OutputPanel output = null
+  Runner runner = null
+  Terminal term = null
+  # What the bottom panel holds: 0 the compiler's output and the program's, 1 the terminal.
+  Int panelMode
+  # 1 while the keyboard is in the terminal.
+  Int termFocus
+  FileTree tree = null
+  Int sidebarOn
+  Int treeFirst
+  Int pointerX
+  Int pointerY
+  Int dragging
+  Int caretOn = 1
+  Int lastBlink
+  Int dirty = 1
+  Int quitting
+  String armed = ""
+  String was = ""
+  Commands commands = null
+
+  constructor(Sdl s, Window w, Renderer r):
+    sdl = s
+    win = w
+    view = r
+    painter = new Painter(r)
+    m = new Metrics()
+    themes = new ThemeChooser()
+    fonts = new FontChooser(r)
+    search = new Search()
+    ws = new Workspace()
+    pal = new Palette()
+    builder = new Builder()
+    recents = new Recents()
+    clicks = new Clicks()
+    output = new OutputPanel()
+    runner = new Runner(builder, output)
+    term = new Terminal()
+    term.screen.rows = output.rows - 1
+    tree = new FileTree()
+    commands = new Commands()
+    m.width = w.width()
+    m.height = w.height()
+    registerCommands()
+  end
+
+  # ---- themes -----------------------------------------------------------------
+
+  # ---- measures ---------------------------------------------------------------
+
+  # Scroll just far enough that the cursor can be seen.
+  def Void reveal:
+    ed().reveal(m.viewRows())
+    Int c = ed().column(ed().cursor)
+    Int cols = m.visibleCols(ed().buf.lines()) - 2
+    if c < ws.active().scrollX:
+      ws.active().scrollX = c
+    elif c >= ws.active().scrollX + cols:
+      ws.active().scrollX = c - cols + 1
+    end
+    dirty = 1
+  end
+
+  def Void wake:
+    caretOn = 1
+    lastBlink = sdl.ticks()
+    dirty = 1
+  end
+
+  # ---- drawing ----------------------------------------------------------------
+
+  # ---- tabs ---------------------------------------------------------------------
+
+  # Tell the measures what the window now holds: a strip of tabs when there are
+  # two files or more, the output panel when it is open.
+  def Void layout:
+    m.tabRows = 0
+    if ws.count() >= 2:
+      m.tabRows = 1
+    end
+    m.panelRows = 0
+    if output.open == 1:
+      m.panelRows = output.rows
+    end
+    m.fixedW = fonts.cellW()
+    m.fixedH = fonts.cellH()
+    painter.face = fonts.face
+    m.sidebarCells = 0
+    if sidebarOn == 1:
+      m.sidebarCells = 28
+    end
+  end
+
+  # What the status line says after the file's name: the last thing said, else what is
+  # going on.
+  def String statusText:
+    if message.len() > 0:
+      return message
+    end
+    return runner.status()
+  end
+
+  def String statusName:
+    String name = path()
+    if name.len() == 0:
+      name = "(no name)"
+    end
+    if ed().buf.modified() == 1:
+      name = name + " *"
+    end
+    return name
+  end
+
+  def Void draw:
+    layout()
+    painter.begin(themes.t, m)
+    painter.clear()
+    if sidebarOn == 1:
+      painter.sidebar(tree, path(), treeFirst)
+    end
+    Int caret = 0
+    if caretOn == 1 and pal.isOpen() == 0:
+      caret = 1
+    end
+    painter.text(ed(), ws.active().scrollX, caret)
+    if ws.count() >= 2:
+      ws.ensureVisible(m)
+      painter.tabs(ws.labels(), ws.current, ws.firstTab)
+    end
+    if output.open == 1 and panelMode == 1:
+      Int termCaret = 0
+      if termFocus == 1 and caretOn == 1 and pal.isOpen() == 0:
+        termCaret = 1
+      end
+      painter.terminal(term, termCaret)
+    elif output.open == 1:
+      painter.panel(output.lines, output.top)
+    end
+    painter.status(statusName(), statusText(), ed().line(), ed().col())
+    if pal.isOpen() == 1:
+      painter.palette(pal, caretOn)
+    end
+    painter.present()
+    dirty = 0
+  end
+
+  # ---- the files that are open ---------------------------------------------------
+
+  # The file in front: its text, its path.
+  def Editor ed:
+    return ws.active().ed
+  end
+
+  def String path:
+    return ws.active().path
+  end
+
+  # A different file is in front: its name in the title, its tab in view, its
+  # cursor on screen.
+  def Void shown:
+    dragging = 0
+    ws.ensureVisible(m)
+    if path().len() == 0:
+      win.title("pad")
+    else
+      win.title("pad - ${path()}")
+    end
+    reveal()
+  end
+
+  def Void switchTo(Int i):
+    if i >= 0 and i < ws.count() and i != ws.current:
+      ws.switchTo(i)
+      shown()
+    end
+  end
+
+  def Void newDoc:
+    ws.add()
+    shown()
+  end
+
+  # Close the file in front. With changes it says so first, and the same again
+  # discards them.
+  def Void closeCurrent:
+    if mayDiscard("close") == 1:
+      ws.closeActive()
+      shown()
+    end
+  end
+
+  # ---- files ------------------------------------------------------------------------
+
+  # Open a file in a tab of its own, or go to its tab if it is open already. The
+  # one empty tab with no name that a new pad starts with is used, not left
+  # beside it.
+  def Void openPath(String p):
+    Int open = ws.indexOfPath(p)
+    if open >= 0:
+      switchTo(open)
+      recents.remember(p)
+    else
+      String text = Files.read(p, 64 * 1024 * 1024)
+      if text == null and File.exists(p) == 1:
+        message = "cannot read ${p}: a directory, or over 64 MB"
+      else
+        if ws.active().isBlank() == 0:
+          newDoc()
+        end
+        Doc d = ws.active()
+        if text == null:
+          d.ed.load("")
+          message = "new file"
+        else
+          d.ed.load(text)
+        end
+        d.path = p
+        d.scrollX = 0
+        recents.remember(p)
+        ws.ensureVisible(m)
+        win.title("pad - ${p}")
+      end
+    end
+    reveal()
+  end
+
+  def Void save:
+    if path().len() == 0:
+      pal.open(Palette.saveMode(), "save as", new List(), new List())
+    else
+      if Files.save(path(), ed().buf.text()) == 1:
+        ed().buf.markSaved()
+        message = "saved"
+      else
+        message = "could not save ${path()}"
+      end
+    end
+  end
+
+  # With unsaved changes, the first attempt says so and the same action again
+  # goes ahead. 1 if it may.
+  def Int mayDiscard(String action):
+    Int changed = ed().buf.modified()
+    if action.equals("quit"):
+      changed = ws.anyModified()
+    end
+    if changed == 0 or was.equals(action):
+      return 1
+    end
+    message = "unsaved changes - Ctrl S saves, or do that again to discard them"
+    armed = action
+    return 0
+  end
+
+  # Save what needs saving and build the file, and run what it built if andRun is 1.
+  # The compiler's lines and the program's arrive in the panel as they are printed.
+  def Void build(Int andRun):
+    if runner.busy() == 1:
+      message = runner.whyBusy()
+    elif path().len() == 0:
+      message = "save the file first"
+      save()
+    else
+      if ed().buf.modified() == 1:
+        save()
+      end
+      panelMode = 0
+      termFocus = 0
+      runner.start(path(), andRun)
+      notice()
+      dirty = 1
+    end
+  end
+
+  # What the runner has to say, now it has something to: the status line takes it.
+  def Void notice:
+    if runner.note.len() > 0:
+      message = runner.note
+      runner.note = ""
+    end
+  end
+
+  # Once a frame while a build, a program or the shell is going: what has been printed,
+  # and an end.
+  def Void tick:
+    if runner.tick() == 1:
+      notice()
+      dirty = 1
+    end
+    if term.tick() == 1:
+      dirty = 1
+    end
+  end
+
+  # Show the terminal and give it the keyboard -- starting its shell the first time --
+  # or, if it has the keyboard already, take the panel away. The shell goes on running.
+  def Void toggleTerminal:
+    if output.open == 1 and panelMode == 1 and termFocus == 1:
+      output.hide()
+      termFocus = 0
+    else
+      panelMode = 1
+      if term.started == 0:
+        term.start("")
+      end
+      output.show()
+      termFocus = 1
+    end
+    layout()
+    reveal()
+  end
+
+  # Leaving: end what is running, the build or program and the shell.
+  def Void close:
+    runner.shutdown()
+    term.stop()
+  end
+
+  def Void stopRunning:
+    if runner.busy() == 1:
+      runner.stop()
+    else
+      message = "nothing is running"
+    end
+  end
+
+  # ---- the palette ---------------------------------------------------------------------
+
+  # The commands, and the keys that run them. The palette lists them in this order.
+  def Void registerCommands:
+    Int tab = SDL2C.SDLK_TAB()
+    commands.command("save", "Save", 1, 0, 115, "")
+    commands.command("open", "Open file", 1, 0, 111, "")
+    commands.command("new", "New file", 1, 0, 110, "")
+    commands.command("close", "Close tab", 1, 0, 119, "")
+    commands.command("sidebar", "Toggle file explorer", 1, 0, 98, "")
+    commands.command("refresh", "Refresh file explorer", 0, 0, 0, "")
+    commands.command("nexttab", "Next tab", 1, 0, tab, "Tab")
+    commands.command("prevtab", "Previous tab", 1, 1, tab, "Tab")
+    commands.command("find", "Find", 1, 0, 102, "")
+    commands.command("findnext", "Find next", 0, 0, SDL2C.SDLK_F3(), "F3")
+    commands.command("findprev", "Find previous", 0, 1, SDL2C.SDLK_F3(), "F3")
+    commands.command("replace", "Replace", 1, 0, 104, "")
+    commands.command("line", "Go to line", 1, 0, 108, "")
+    commands.command("run", "Run", 0, 0, SDL2C.SDLK_F5(), "F5")
+    commands.command("build", "Build", 0, 0, SDL2C.SDLK_F7(), "F7")
+    commands.command("stop", "Stop", 0, 1, SDL2C.SDLK_F5(), "F5")
+    commands.command("terminal", "Toggle terminal", 1, 0, 96, "")
+    commands.command("theme", "Toggle dark and light", 1, 0, 116, "")
+    commands.command("themes", "Color theme...", 0, 0, 0, "")
+    commands.command("fonts", "Choose font...", 0, 0, 0, "")
+    commands.command("bigger", "Bigger text", 1, 0, 61, "=")
+    commands.alias("bigger", 1, 0, 43)
+    commands.command("smaller", "Smaller text", 1, 0, 45, "-")
+    commands.command("undo", "Undo", 1, 0, 122, "")
+    commands.command("redo", "Redo", 1, 1, 122, "")
+    commands.alias("redo", 1, 0, 121)
+    commands.command("all", "Select all", 1, 0, 97, "")
+    commands.command("cut", "Cut", 1, 0, 120, "")
+    commands.command("copy", "Copy", 1, 0, 99, "")
+    commands.command("paste", "Paste", 1, 0, 118, "")
+    commands.command("quit", "Quit", 1, 0, 113, "")
+    commands.bind("commands", 1, 0, 112)
+    commands.bind("closepanel", 0, 0, SDL2C.SDLK_ESCAPE())
+  end
+
+  # A key pressed with no palette open: a command, or a key that edits the text.
+  def Void editorKey(Int key, Int shift, Int shortcut, Int alt):
+    String id = commands.lookup(shortcut, shift, key)
+    if id.len() > 0:
+      runCommand(id)
+    elif EditKeys.apply(ed(), key, shift, shortcut, m.viewRows()) == 1:
+      reveal()
+    end
+  end
+
+  # ---- the file explorer -----------------------------------------------------------
+
+  # The files below the folder pad was started in, folded, with the one in front shown.
+  def Void loadTree:
+    tree.load(Files.list(".", 6, 5000))
+    tree.reveal(path())
+    treeFirst = 0
+  end
+
+  def Void toggleSidebar:
+    sidebarOn = 1 - sidebarOn
+    if sidebarOn == 1:
+      loadTree()
+    end
+    Settings.put(themes.configDir, "sidebar", "${sidebarOn}")
+    layout()
+    reveal()
+  end
+
+  # The explorer was showing when pad last ran.
+  def Void restoreSidebar:
+    if Settings.get(themes.configDir, "sidebar", "0").equals("1"):
+      sidebarOn = 1
+      loadTree()
+    end
+  end
+
+  # A click on a row: a folder opens or folds, a file opens in a tab.
+  def Void sidebarClick(Int y):
+    Int row = treeFirst + y / m.rowHeight()
+    if row < tree.count():
+      TreeNode n = tree.rowAt(row)
+      if n.isDir == 1:
+        tree.toggle(row)
+      else
+        openPath(n.path)
+      end
+    end
+  end
+
+  # The wheel over the explorer: three rows a notch, within the rows there are.
+  def Void sidebarScroll(Int notches):
+    Int most = tree.count() - m.sidebarRows()
+    treeFirst = treeFirst + notches * 3
+    if treeFirst > most:
+      treeFirst = most
+    end
+    if treeFirst < 0:
+      treeFirst = 0
+    end
+  end
+
+  # ---- the palette's work ---------------------------------------------------------
+
+  def Void openFind:
+    search.begin(ed())
+    pal.open(Palette.findMode(), "find", new List(), new List())
+    if search.has() == 1:
+      pal.typeText(search.needle)
+      pal.field.selectAll()
+    end
+  end
+
+  def Void findAgain(Int forward):
+    if search.has() == 0:
+      openFind()
+    else
+      if search.again(ed(), forward) == 0:
+        message = "not found"
+      end
+      reveal()
+    end
+  end
+
+  # While the font list is open the highlighted font is the one drawn, and the cursor must
+  # stay in view in its cells.
+  def Void previewFont:
+    if pal.mode == Palette.fontMode():
+      fonts.preview(pal)
+      layout()
+      reveal()
+    end
+  end
+
+  # Something was typed into the palette's field: the list narrows by itself; a
+  # theme list shows the one it now highlights, and a find looks as you type.
+  def Void afterFieldEdit:
+    themes.preview(pal)
+    previewFont()
+    if pal.mode == Palette.findMode():
+      if search.typed(ed(), pal.field.buf.text()) == 0:
+        message = "not found"
+      end
+      reveal()
+    end
+  end
+
+  # Close the palette. A list of themes that is dismissed puts back what it found.
+  def Void closePalette:
+    if pal.mode == Palette.themeMode():
+      themes.cancel()
+    end
+    if pal.mode == Palette.fontMode():
+      fonts.cancel()
+      pal.close()
+      layout()
+      reveal()
+    end
+    pal.close()
+  end
+
+  def Void openFiles:
+    pal.open(Palette.fileMode(), "open", recents.candidates(), new List())
+  end
+
+  def Void openCommands:
+    pal.open(Palette.commandMode(), "command", commands.names, commands.hints)
+  end
+
+  def Void acceptPalette(Int shift, Int shortcut):
+    Int m = pal.mode
+    if m == Palette.commandMode():
+      Int which = pal.chosen()
+      pal.close()
+      if which >= 0:
+        String id = commands.ids.get(which)
+        runCommand(id)
+      end
+    elif m == Palette.fileMode():
+      Int which = pal.chosen()
+      String typed = pal.field.buf.text()
+      String target = typed
+      if which >= 0:
+        String named = pal.names.get(which)
+        target = named
+      end
+      if target.len() > 0:
+        pal.close()
+        openPath(target)
+      end
+    elif m == Palette.findMode():
+      search.needle = pal.field.buf.text()
+      if shift == 1:
+        findAgain(0)
+      else
+        findAgain(1)
+      end
+    elif m == Palette.replaceMode():
+      String replacement = pal.field.buf.text()
+      if shortcut == 1:
+        message = "replaced ${ed().replaceAll(search.needle, replacement)}"
+        pal.close()
+      else
+        if ed().replaceNext(search.needle, replacement) == 0:
+          message = "no more"
+        end
+      end
+      reveal()
+    elif m == Palette.lineMode():
+      Int n = pal.number()
+      pal.close()
+      if n >= 1:
+        ed().goToLine(n)
+        reveal()
+      end
+    elif m == Palette.themeMode():
+      themes.accept(pal)
+      pal.close()
+    elif m == Palette.fontMode():
+      fonts.accept(pal)
+      pal.close()
+      layout()
+      reveal()
+    elif m == Palette.saveMode():
+      String target = pal.field.buf.text()
+      pal.close()
+      if target.len() > 0:
+        ws.active().path = target
+        win.title("pad - ${path()}")
+        save()
+      end
+    end
+  end
+
+  def Void runCommand(String id):
+    if id == "save":
+      save()
+    elif id == "open":
+      openFiles()
+    elif id == "sidebar":
+      toggleSidebar()
+    elif id == "refresh":
+      loadTree()
+    elif id == "new":
+      newDoc()
+    elif id == "close":
+      closeCurrent()
+    elif id == "nexttab":
+      switchTo((ws.current + 1) % ws.count())
+    elif id == "prevtab":
+      switchTo((ws.current + ws.count() - 1) % ws.count())
+    elif id == "find":
+      openFind()
+    elif id == "findnext":
+      findAgain(1)
+    elif id == "findprev":
+      findAgain(0)
+    elif id == "replace":
+      if search.has() == 0:
+        message = "find something first (Ctrl F)"
+      else
+        pal.open(Palette.replaceMode(), "replace ${search.needle} with", new List(), new List())
+      end
+    elif id == "line":
+      pal.open(Palette.lineMode(), "go to line", new List(), new List())
+    elif id == "run":
+      build(1)
+    elif id == "build":
+      build(0)
+    elif id == "stop":
+      stopRunning()
+    elif id == "terminal":
+      toggleTerminal()
+    elif id == "theme":
+      themes.toggle()
+    elif id == "themes":
+      themes.open(pal)
+    elif id == "fonts":
+      fonts.open(pal)
+    elif id == "bigger":
+      if fonts.step(1) == 0 and m.scale < 4:
+        m.scale = m.scale + 1
+      end
+      layout()
+      reveal()
+    elif id == "smaller":
+      if fonts.step(0 - 1) == 0 and m.scale > 1:
+        m.scale = m.scale - 1
+      end
+      layout()
+      reveal()
+    elif id == "undo":
+      ed().undo()
+      reveal()
+    elif id == "redo":
+      ed().redo()
+      reveal()
+    elif id == "all":
+      ed().selectAll()
+    elif id == "cut":
+      String s = ed().cut()
+      if s.len() > 0:
+        sdl.setClipboard(s)
+      end
+      reveal()
+    elif id == "copy":
+      if ed().hasSelection() == 1:
+        sdl.setClipboard(ed().copyText())
+      end
+    elif id == "paste":
+      ed().paste(sdl.clipboard())
+      reveal()
+    elif id == "commands":
+      openCommands()
+    elif id == "closepanel":
+      if output.open == 1:
+        output.hide()
+        termFocus = 0
+        reveal()
+      end
+    elif id == "quit":
+      if mayDiscard("quit") == 1:
+        quitting = 1
+      end
+    end
+  end
+
+  # ---- input --------------------------------------------------------------------------------
+
+  def Void onText(String s):
+    if pal.isOpen() == 1:
+      pal.typeText(s)
+      afterFieldEdit()
+    elif termFocus == 1:
+      term.typeText(s)
+    else
+      ed().typeText(s)
+      reveal()
+    end
+    wake()
+  end
+
+  def Void paletteKey(Int key, Int shift, Int shortcut):
+    if key == SDL2C.SDLK_ESCAPE():
+      closePalette()
+    elif key == SDL2C.SDLK_RETURN():
+      acceptPalette(shift, shortcut)
+    elif key == SDL2C.SDLK_UP():
+      pal.up()
+      themes.preview(pal)
+      previewFont()
+    elif key == SDL2C.SDLK_DOWN():
+      pal.down()
+      themes.preview(pal)
+      previewFont()
+    elif key == SDL2C.SDLK_BACKSPACE():
+      pal.backspace()
+      afterFieldEdit()
+    elif key == SDL2C.SDLK_DELETE():
+      pal.deleteForward()
+      afterFieldEdit()
+    elif key == SDL2C.SDLK_LEFT():
+      pal.field.left(shift)
+    elif key == SDL2C.SDLK_RIGHT():
+      pal.field.right(shift)
+    elif key == SDL2C.SDLK_HOME():
+      pal.field.docStart(shift)
+    elif key == SDL2C.SDLK_END():
+      pal.field.docEnd(shift)
+    elif key == SDL2C.SDLK_F3() and pal.mode == Palette.findMode():
+      search.needle = pal.field.buf.text()
+      if shift == 1:
+        findAgain(0)
+      else
+        findAgain(1)
+      end
+    elif shortcut == 1 and key == 97:
+      pal.field.selectAll()
+    elif shortcut == 1 and key == 118:
+      pal.typeText(sdl.clipboard())
+      afterFieldEdit()
+    end
+  end
+
+  def Void onKey(Int key, Int shift, Int shortcut, Int alt):
+    was = armed
+    armed = ""
+    message = ""
+    if pal.isOpen() == 1:
+      paletteKey(key, shift, shortcut)
+    elif termFocus == 1:
+      terminalKey(key, shift, shortcut)
+    else
+      editorKey(key, shift, shortcut, alt)
+    end
+    wake()
+  end
+
+  # A key with the keyboard in the terminal: its own keys, else a command that does not
+  # touch the text.
+  def Void terminalKey(Int key, Int shift, Int shortcut):
+    Int done = TerminalKeys.apply(term, key, shift, shortcut, sdl.clipboard())
+    if done == 2:
+      termFocus = 0
+    elif done == 0:
+      String id = commands.lookup(shortcut, shift, key)
+      if TerminalKeys.global(id) == 1:
+        runCommand(id)
+      end
+    end
+  end
+
+  def Void onMouseDown(Int x, Int y):
+    pointerX = x
+    pointerY = y
+    wake()
+    message = ""
+    if pal.isOpen() == 0:
+      termFocus = 0
+    end
+    if pal.isOpen() == 1:
+      Int w = m.paletteWidth()
+      Int left = (m.width - w) / 2
+      Int row = y / m.rowHeight() - 2
+      if x >= left and x < left + w and row >= 0 and row < pal.results.len():
+        pal.selected = row
+        acceptPalette(0, 0)
+      elif y >= m.rowHeight() * (2 + pal.results.len()) or x < left or x >= left + w:
+        closePalette()
+      end
+    elif x < m.areaLeft() and y < m.height - m.rowHeight():
+      sidebarClick(y)
+    elif y < m.tabsHeight():
+      Int tab = ws.tabAt(x, m)
+      if tab >= 0:
+        if ws.onClose(x, tab, m) == 1:
+          switchTo(tab)
+          closeCurrent()
+        else
+          switchTo(tab)
+        end
+      end
+    elif panelMode == 1 and m.inPanel(x, y) == 1:
+      termFocus = 1
+    elif output.open == 1 and y >= m.tabsHeight() + m.viewHeight() + 1 and y < m.height - m.rowHeight():
+      Int i = output.top + (y - m.tabsHeight() - m.viewHeight() - 1) / m.rowHeight()
+      if i < output.size():
+        jumpTo(output.lineAt(i))
+      end
+    elif y < m.tabsHeight() + m.viewHeight():
+      Int row = m.rowAt(y, ed().top)
+      Int col = m.colAt(x, ed().buf.lines(), ws.active().scrollX)
+      ed().placeAt(row, col, 0)
+      if clicks.press(row, col, sdl.ticks()) == 1:
+        ed().selectWord(ed().cursor)
+      else
+        dragging = 1
+      end
+      reveal()
+    end
+  end
+
+  def Void onMouseMove(Int x, Int y):
+    pointerX = x
+    pointerY = y
+    if dragging == 1:
+      ed().placeAt(m.rowAt(y, ed().top), m.colAt(x, ed().buf.lines(), ws.active().scrollX), 1)
+      reveal()
+    end
+  end
+
+  # Go to the place a line of compiler output names.
+  def Void jumpTo(String line):
+    Int n = BuildLog.line(line)
+    if n < 1:
+      message = "that line names no place"
+    else
+      String file = BuildLog.file(line)
+      String mine = path()
+      Int slash = 0 - 1
+      Int i = 0
+      while i < mine.len():
+        if mine.at(i) == 47:
+          slash = i
+        end
+        i = i + 1
+      end
+      mine = mine.substr(slash + 1, mine.len())
+      if file.len() > 0 and file.equals(mine) == 0 and file.equals(path()) == 0:
+        message = "that is in ${file}"
+      else
+        ed().goToLine(n)
+        Int c = BuildLog.column(line)
+        if c > 1:
+          ed().placeAt(n - 1, c - 1, 0)
+        end
+        reveal()
+      end
+    end
+  end
+
+  def Void handle:
+    if sdl.isQuit() == 1:
+      was = armed
+      armed = ""
+      runCommand("quit")
+    elif sdl.isResize() == 1:
+      m.width = win.width()
+      m.height = win.height()
+      reveal()
+    elif sdl.isKeyDown() == 1:
+      onKey(sdl.key(), sdl.shift(), sdl.shortcut(), sdl.alt())
+    elif sdl.isText() == 1:
+      onText(sdl.text())
+    elif sdl.isMouseDown() == 1:
+      if sdl.mouseButton() == 1:
+        onMouseDown(sdl.mouseX(), sdl.mouseY())
+      end
+    elif sdl.isMouseUp() == 1:
+      dragging = 0
+    elif sdl.isMouseMove() == 1:
+      onMouseMove(sdl.mouseX(), sdl.mouseY())
+    elif sdl.isWheel() == 1:
+      if pointerX < m.areaLeft():
+        sidebarScroll(0 - sdl.wheel())
+      elif m.inPanel(pointerX, pointerY) == 1 and panelMode == 1:
+        term.screen.scrollBy(sdl.wheel())
+      elif m.inPanel(pointerX, pointerY) == 1:
+        output.scrollBy(sdl.wheel())
+      else
+        ed().scrollBy(0 - sdl.wheel() * 3)
+      end
+      dirty = 1
+    end
+  end
+
+  # ---- the loop -------------------------------------------------------------------------------
+
+  # How long the loop may sleep at time `now`: until the caret next changes, and
+  # while a build or a program is going only 30 ms, for its next line.
+  def Int waitTime(Int now):
+    Int wait = 500 - (now - lastBlink)
+    if wait < 1:
+      wait = 1
+    end
+    if runner.busy() == 1 and wait > 30:
+      wait = 30
+    elif term.running() == 1 and wait > 100:
+      wait = 100
+    end
+    return wait
+  end
+
+  # One turn of the loop: wait for an event, or the caret's next change, or a
+  # program's next line; deal with what came; draw if anything did. Nothing is drawn,
+  # and no time is used, while nothing happens.
+  def Void step:
+    Int got = sdl.wait(waitTime(sdl.ticks()))
+    while got == 1 and quitting == 0:
+      handle()
+      got = sdl.poll()
+    end
+    tick()
+    Int now = sdl.ticks()
+    if now - lastBlink >= 500:
+      lastBlink = now
+      if caretOn == 1:
+        caretOn = 0
+      else
+        caretOn = 1
+      end
+      dirty = 1
+    end
+    if dirty == 1:
+      draw()
+    end
+  end
+
+  def Void run:
+    sdl.startText()
+    lastBlink = sdl.ticks()
+    draw()
+    while quitting == 0:
+      step()
+    end
+    close()
+  end
+end
+
+class Main from IO
+  def main:
+    Options o = new Options()
+    o.parse()
+    Sdl sdl = new Sdl()
+    Window win = new Window(sdl, "pad", 960, 640)
+    win.resizable()
+    Renderer view = new Renderer(win)
+    Pad pad = new Pad(sdl, win, view)
+    pad.builder.compiler = o.compiler
+    pad.builder.includes = o.includes
+    if o.themes.len() > 0:
+      pad.themes.themeDir = o.themes
+    end
+    pad.themes.restore()
+    pad.fonts.locate(arg(0))
+    pad.fonts.restore()
+    if o.font.len() > 0:
+      pad.fonts.choose(o.font)
+    end
+    pad.restoreSidebar()
+    if pad.builder.compiler.len() == 0:
+      pad.builder.locate(arg(0))
+    end
+    if o.file.len() > 0:
+      pad.openPath(o.file)
+      pad.message = ""
+    end
+    if o.script.len() > 0:
+      PlayScript scripted = new PlayScript(pad)
+      scripted.play(o.script, o.frames, o.shot)
+    else
+      pad.run()
+    end
+  end
+end

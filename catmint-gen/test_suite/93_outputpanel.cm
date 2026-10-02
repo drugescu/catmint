@@ -1,0 +1,200 @@
+# The panel at the bottom of an editor, holding what a compiler or a program printed.
+# What is expected:
+#   - it starts empty, closed, showing from line 0, eight lines at a time;
+#   - for a compiler (begin(0)) it keeps the first 200 lines and shows from the top,
+#     because the first errors are the ones that matter, and wheeling never makes it
+#     follow;
+#   - for a program (begin(1)) it keeps the newest lines, dropping the oldest 1000
+#     when there are more than 2000, and follows the end: the first line shown is the
+#     one that makes the last eight show, 0 while there are fewer;
+#   - the wheel moves three lines a notch, up for a positive number, never past the
+#     first line nor past the position that shows the last; leaving the end stops the
+#     following and getting back to it starts it again (for a program);
+#   - scrolled up it stays where it is as lines arrive, and when 1000 are dropped it
+#     moves up with them so the same line is shown;
+#   - begin() throws away what was there and starts again from the top.
+
+using outputpanel
+
+class Main from IO
+  def String yn(Int b):
+    if b == 1:
+      return "yes"
+    end
+    return "no"
+  end
+
+  def Void fill(OutputPanel p, Int lo, Int hi):
+    Int i = lo
+    while i <= hi:
+      p.add("l${i}")
+      i = i + 1
+    end
+  end
+
+  def Void show(String label, OutputPanel p):
+    String first = "-"
+    String last = "-"
+    if p.size() > 0:
+      first = p.lineAt(0)
+      last = p.lineAt(p.size() - 1)
+    end
+    String at = "-"
+    if p.top < p.size():
+      at = p.lineAt(p.top)
+    end
+    out("${label}: size ${p.size()}, top ${p.top}, following ${p.following}, first ${first}, last ${last}, shown from ${at}\n")
+  end
+
+  def Void cleaned(String label, String s):
+    String c = OutputPanel.clean(s)
+    out("${label}: [${c}] ${c.len()}\n")
+  end
+
+  def String xs(Int n):
+    String s = "x"
+    while s.len() < n:
+      s = s + s
+    end
+    return s.substr(0, n)
+  end
+
+  def main:
+    OutputPanel p = new OutputPanel()
+    show("fresh", p)
+    out("open ${p.open}, rows ${p.rows}, most ${p.most()}\n")
+    p.show()
+    out("shown: open ${p.open}\n")
+    p.hide()
+    out("hidden: open ${p.open}\n")
+
+    # What a compiler said.
+    p.begin(0)
+    fill(p, 1, 250)
+    show("compiler 250", p)
+    p.scrollBy(0 - 1)
+    show("compiler down one notch", p)
+    fill(p, 251, 252)
+    show("compiler more", p)
+    p.scrollBy(0 - 100)
+    show("compiler to the end", p)
+    p.scrollBy(100)
+    show("compiler to the start", p)
+
+    # Ten lines are two more than fit, so the last position is 2 and one notch asks for
+    # 3; and starting again from there starts at the top.
+    p.begin(0)
+    fill(p, 1, 10)
+    p.scrollBy(0 - 1)
+    show("ten lines, one notch down", p)
+    p.begin(0)
+    fill(p, 1, 3)
+    show("begun again after scrolling", p)
+
+    # A program: fewer lines than fit, then more.
+    p.begin(1)
+    out("program begun: following ${p.following}\n")
+    fill(p, 1, 5)
+    show("program 5", p)
+    fill(p, 6, 8)
+    show("program 8", p)
+    fill(p, 9, 9)
+    show("program 9", p)
+    fill(p, 10, 20)
+    show("program 20", p)
+
+    # The wheel.
+    p.scrollBy(1)
+    show("up one notch", p)
+    fill(p, 21, 21)
+    show("a line arrives", p)
+    p.scrollBy(0 - 1)
+    show("down one notch", p)
+    p.scrollBy(0 - 1)
+    show("down another", p)
+    fill(p, 22, 22)
+    show("following again", p)
+    p.scrollBy(100)
+    show("far up", p)
+    p.scrollBy(0 - 100)
+    show("far down", p)
+    p.scrollBy(2)
+    out("up two notches then down one: ")
+    p.scrollBy(0 - 1)
+    show("", p)
+
+    # Short, so nothing to scroll.
+    p.begin(1)
+    fill(p, 1, 3)
+    p.scrollBy(1)
+    p.scrollBy(0 - 1)
+    show("three lines, wheeled", p)
+
+    # A long run: the oldest thousand are dropped past 2000.
+    p.begin(1)
+    fill(p, 1, 2000)
+    show("2000", p)
+    fill(p, 2001, 2001)
+    show("2001", p)
+    fill(p, 2002, 2500)
+    show("2500", p)
+
+    # Scrolled up while that happens, the same line stays on the top row.
+    p.begin(1)
+    fill(p, 1, 2000)
+    Int n = 0
+    while n < 164:
+      p.scrollBy(1)
+      n = n + 1
+    end
+    show("2000, up 164 notches", p)
+    fill(p, 2001, 2001)
+    show("2001 while scrolled", p)
+    p.begin(1)
+    fill(p, 1, 2000)
+    n = 0
+    while n < 400:
+      p.scrollBy(1)
+      n = n + 1
+    end
+    show("2000, up 400 notches", p)
+    fill(p, 2001, 2001)
+    show("2001 while near the start", p)
+
+    # What a line is cleaned of: escape sequences, what a carriage return overwrote,
+    # control characters; and tabs are spread to the next multiple of 8 columns.
+    String esc = String.chr(27)
+    String tab = String.chr(9)
+    cleaned("plain", "plain")
+    cleaned("colour", esc + "[31mred" + esc + "[0m")
+    cleaned("parameters", esc + "[1;32mgreen" + esc + "[0m ok")
+    cleaned("erase", "x" + esc + "[2Ky")
+    cleaned("title", esc + "]0;title" + String.chr(7) + "text")
+    cleaned("lone escape", "ab" + esc)
+    cleaned("escape and a letter", "a" + esc + "7b")
+    cleaned("tab", "a" + tab + "b")
+    cleaned("tab at eight", "abcdefgh" + tab + "x")
+    cleaned("leading tab", tab + "x")
+    cleaned("two tabs", "a" + tab + tab + "b")
+    cleaned("carriage return", "abc" + String.chr(13) + "XY")
+    cleaned("tab after a carriage return", "abc" + String.chr(13) + tab + "x")
+    cleaned("sequence ending in @", "a" + esc + "[3@b")
+    cleaned("sequence ending in ~", esc + "[3~x")
+    cleaned("bell and backspace", "a" + String.chr(7) + "b" + String.chr(8) + "c")
+    cleaned("delete", "a" + String.chr(127) + "b")
+    String long = xs(100000)
+    out("long: ${OutputPanel.clean(long).len()}\n")
+    p.begin(1)
+    p.add("a" + tab + "b")
+    out("added: [${p.lineAt(0)}]\n")
+    p.begin(0)
+    p.add(esc + "[1mbold" + esc + "[0m")
+    out("added to a compiler's: [${p.lineAt(0)}]\n")
+
+    # A fresh start.
+    p.begin(0)
+    show("begun again", p)
+    p.clear()
+    out("cleared: following ${p.following}, top ${p.top}\n")
+  end
+end

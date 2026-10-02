@@ -1,0 +1,508 @@
+# What an editor does with a text buffer: a cursor, a selection, and the usual
+# ways to move them and to change the text.
+#
+#   using editor
+#   Editor e = new Editor()
+#   e.load("one two\nthree")
+#   e.down(0)            # 0: move; 1: move and extend the selection
+#   e.typeText("x")
+#
+# There is no window in here, so all of it is tested without one (test 79). The
+# cursor and the other end of the selection (`anchor`) are byte offsets in the
+# buffer, always on a character; the selection is what lies between them, and is
+# empty when they are the same. A column is a count of characters, which is
+# what the font draws one cell for.
+#
+# Every change goes through the buffer's replace, so undo and redo are the
+# buffer's, and a run of typed characters is one step there. Moving the cursor
+# ends a run, so that typing somewhere else starts a new one.
+
+using textbuffer
+
+class Editor from Object
+  TextBuffer buf = null
+  Int cursor
+  Int anchor
+  # The column up and down are trying to keep, or -1.
+  Int want = 0 - 1
+  # The first line shown.
+  Int top
+
+  constructor():
+    buf = new TextBuffer()
+  end
+
+  def Void load(String text):
+    buf.load(text)
+    cursor = 0
+    anchor = 0
+    want = 0 - 1
+    top = 0
+  end
+
+  # ---- the selection ---------------------------------------------------------
+
+  def Int hasSelection:
+    if anchor != cursor:
+      return 1
+    end
+    return 0
+  end
+
+  def Int selStart:
+    if anchor < cursor:
+      return anchor
+    end
+    return cursor
+  end
+
+  def Int selEnd:
+    if anchor > cursor:
+      return anchor
+    end
+    return cursor
+  end
+
+  def String selected:
+    return buf.slice(selStart(), selEnd())
+  end
+
+  # ---- where things are -------------------------------------------------------
+
+  # Where a line's text ends: before the carriage return of a CRLF.
+  def Int textEnd(Int row):
+    Int stop = buf.lineEnd(row)
+    if stop > buf.lineStart(row) and buf.byteAt(stop - 1) == 13:
+      stop = stop - 1
+    end
+    return stop
+  end
+
+  # How many characters lie between the start of pos's line and pos.
+  def Int column(Int pos):
+    Int p = buf.lineStart(buf.lineOf(pos))
+    Int count = 0
+    while p < pos:
+      p = buf.next(p)
+      count = count + 1
+    end
+    return count
+  end
+
+  # The offset of the col'th character of a line, or the end of its text.
+  def Int offsetAt(Int row, Int col):
+    Int p = buf.lineStart(row)
+    Int stop = textEnd(row)
+    Int count = 0
+    while count < col and p < stop:
+      p = buf.next(p)
+      count = count + 1
+    end
+    if p > stop:
+      p = stop
+    end
+    return p
+  end
+
+  # The cursor's line and column, counted from 1, as a status line shows them.
+  def Int line:
+    return buf.lineOf(cursor) + 1
+  end
+
+  def Int col:
+    return column(cursor) + 1
+  end
+
+  static def Int isWordByte(Int c):
+    if c >= 128 or (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95:
+      return 1
+    end
+    return 0
+  end
+
+  # ---- moving -------------------------------------------------------------------
+
+  # Put the cursor at pos; unless extending, the selection collapses to it.
+  def Void moveTo(Int pos, Int extend):
+    cursor = pos
+    if extend == 0:
+      anchor = pos
+    end
+    want = 0 - 1
+    buf.breakUndo()
+  end
+
+  def Void left(Int extend):
+    if extend == 0 and hasSelection() == 1:
+      moveTo(selStart(), 0)
+    else
+      moveTo(buf.prev(cursor), extend)
+    end
+  end
+
+  def Void right(Int extend):
+    if extend == 0 and hasSelection() == 1:
+      moveTo(selEnd(), 0)
+    else
+      moveTo(buf.next(cursor), extend)
+    end
+  end
+
+  # Up or down by rows lines, keeping the column; past either end, to the end.
+  def Void vertical(Int rows, Int extend):
+    Int target = buf.lineOf(cursor) + rows
+    if target < 0:
+      moveTo(0, extend)
+    elif target >= buf.lines():
+      moveTo(buf.length(), extend)
+    else
+      Int w = want
+      if w < 0:
+        w = column(cursor)
+      end
+      moveTo(offsetAt(target, w), extend)
+      want = w
+    end
+  end
+
+  def Void up(Int extend):
+    vertical(0 - 1, extend)
+  end
+
+  def Void down(Int extend):
+    vertical(1, extend)
+  end
+
+  # To the first character that is not indentation, and from there to the
+  # start of the line.
+  def Void home(Int extend):
+    Int row = buf.lineOf(cursor)
+    Int start = buf.lineStart(row)
+    Int stop = textEnd(row)
+    Int first = start
+    while first < stop and (buf.byteAt(first) == 32 or buf.byteAt(first) == 9):
+      first = first + 1
+    end
+    if cursor == first:
+      moveTo(start, extend)
+    else
+      moveTo(first, extend)
+    end
+  end
+
+  def Void endOfLine(Int extend):
+    moveTo(textEnd(buf.lineOf(cursor)), extend)
+  end
+
+  def Void docStart(Int extend):
+    moveTo(0, extend)
+  end
+
+  def Void docEnd(Int extend):
+    moveTo(buf.length(), extend)
+  end
+
+  def Void wordLeft(Int extend):
+    Int p = cursor
+    while p > 0 and Editor.isWordByte(buf.byteAt(p - 1)) == 0:
+      p = p - 1
+    end
+    while p > 0 and Editor.isWordByte(buf.byteAt(p - 1)) == 1:
+      p = p - 1
+    end
+    moveTo(p, extend)
+  end
+
+  def Void wordRight(Int extend):
+    Int n = buf.length()
+    Int p = cursor
+    while p < n and Editor.isWordByte(buf.byteAt(p)) == 0:
+      p = p + 1
+    end
+    while p < n and Editor.isWordByte(buf.byteAt(p)) == 1:
+      p = p + 1
+    end
+    moveTo(p, extend)
+  end
+
+  # The cursor at a place on the screen, in lines and columns, clamped to the
+  # text: a click, or a drag when extending.
+  def Void placeAt(Int row, Int col, Int extend):
+    Int r = row
+    if r >= buf.lines():
+      r = buf.lines() - 1
+    end
+    if r < 0:
+      r = 0
+    end
+    Int c = col
+    if c < 0:
+      c = 0
+    end
+    moveTo(offsetAt(r, c), extend)
+  end
+
+  def Void goToLine(Int number):
+    placeAt(number - 1, 0, 0)
+  end
+
+  def Void selectAll:
+    anchor = 0
+    cursor = buf.length()
+    want = 0 - 1
+    buf.breakUndo()
+  end
+
+  # The word at pos; or, on anything else, that one character.
+  def Void selectWord(Int pos):
+    Int n = buf.length()
+    Int p = pos
+    if p > n:
+      p = n
+    end
+    Int a = p
+    Int b = p
+    if p < n and Editor.isWordByte(buf.byteAt(p)) == 1:
+      while a > 0 and Editor.isWordByte(buf.byteAt(a - 1)) == 1:
+        a = a - 1
+      end
+      while b < n and Editor.isWordByte(buf.byteAt(b)) == 1:
+        b = b + 1
+      end
+    elif p < n:
+      b = buf.next(p)
+    end
+    anchor = a
+    cursor = b
+    want = 0 - 1
+    buf.breakUndo()
+  end
+
+  # ---- changing the text -----------------------------------------------------------
+
+  # Type s over the selection, if there is one.
+  def Void typeText(String s):
+    Int a = selStart()
+    buf.replace(a, selEnd(), s)
+    cursor = a + s.len()
+    anchor = cursor
+    want = 0 - 1
+  end
+
+  def Void deleteSelection:
+    Int a = selStart()
+    buf.remove(a, selEnd())
+    cursor = a
+    anchor = a
+    want = 0 - 1
+  end
+
+  def Void backspace:
+    if hasSelection() == 1:
+      deleteSelection()
+    elif cursor > 0:
+      Int before = buf.prev(cursor)
+      buf.remove(before, cursor)
+      cursor = before
+      anchor = before
+      want = 0 - 1
+    end
+  end
+
+  def Void deleteForward:
+    if hasSelection() == 1:
+      deleteSelection()
+    elif cursor < buf.length():
+      buf.remove(cursor, buf.next(cursor))
+      want = 0 - 1
+    end
+  end
+
+  # A new line, as indented as this one, and a level deeper after a colon.
+  def Void newline:
+    Int a = selStart()
+    Int start = buf.lineStart(buf.lineOf(a))
+    Int spaces = 0
+    while start + spaces < a and buf.byteAt(start + spaces) == 32:
+      spaces = spaces + 1
+    end
+    String indent = ""
+    Int k = 0
+    while k < spaces:
+      indent = indent + " "
+      k = k + 1
+    end
+    String head = buf.slice(start, a).trim()
+    if head.len() > 0 and head.at(head.len() - 1) == 58:
+      indent = indent + "  "
+    end
+    typeText("\n" + indent)
+  end
+
+  def Void tab:
+    typeText("  ")
+  end
+
+  # Where a position goes when k characters are removed after `at`.
+  def Int shifted(Int p, Int at, Int k):
+    if p <= at:
+      return p
+    end
+    if p - k < at:
+      return at
+    end
+    return p - k
+  end
+
+  # Take up to two spaces of indentation off the cursor's line.
+  def Void untab:
+    Int ls = buf.lineStart(buf.lineOf(cursor))
+    Int k = 0
+    while k < 2 and ls + k < buf.length() and buf.byteAt(ls + k) == 32:
+      k = k + 1
+    end
+    if k > 0:
+      buf.remove(ls, ls + k)
+      cursor = shifted(cursor, ls, k)
+      anchor = shifted(anchor, ls, k)
+      want = 0 - 1
+    end
+  end
+
+  # Text from outside: line endings made newlines, NULs dropped.
+  def Void paste(String s):
+    typeText(s.replace("\r\n", "\n").replace("\r", "\n").replace(String.chr(0), ""))
+  end
+
+  def String copyText:
+    return selected()
+  end
+
+  def String cut:
+    String s = selected()
+    if hasSelection() == 1:
+      deleteSelection()
+    end
+    return s
+  end
+
+  # 1 if there was a step to undo, else 0.
+  def Int undo:
+    Int p = buf.undo()
+    if p < 0:
+      return 0
+    end
+    cursor = p
+    anchor = p
+    want = 0 - 1
+    return 1
+  end
+
+  def Int redo:
+    Int p = buf.redo()
+    if p < 0:
+      return 0
+    end
+    cursor = p
+    anchor = p
+    want = 0 - 1
+    return 1
+  end
+
+  # ---- searching ---------------------------------------------------------------------
+
+  # Select the next match after the selection (forward = 1) or the last one
+  # before it (0), going round the end of the text. 1 if there was one.
+  def Int find(String needle, Int forward):
+    Int at = 0 - 1
+    if forward == 1:
+      at = buf.find(needle, selEnd(), 1)
+      if at < 0:
+        at = buf.find(needle, 0, 1)
+      end
+    else
+      at = buf.find(needle, selStart() - 1, 0)
+      if at < 0:
+        at = buf.find(needle, buf.length(), 0)
+      end
+    end
+    if at < 0:
+      return 0
+    end
+    anchor = at
+    cursor = at + needle.len()
+    want = 0 - 1
+    buf.breakUndo()
+    return 1
+  end
+
+  # Replace every match, as one step that undo takes back whole; how many.
+  def Int replaceAll(String needle, String replacement):
+    if needle.len() == 0:
+      return 0
+    end
+    Int count = 0
+    Int p = buf.find(needle, 0, 1)
+    while p >= 0:
+      count = count + 1
+      p = buf.find(needle, p + needle.len(), 1)
+    end
+    if count > 0:
+      Int row = buf.lineOf(cursor)
+      Int col = column(cursor)
+      buf.replace(0, buf.length(), buf.text().replace(needle, replacement))
+      placeAt(row, col, 0)
+    end
+    return count
+  end
+
+  # If the selection is the match, replace it; then select the next one.
+  def Int replaceNext(String needle, String replacement):
+    if hasSelection() == 1 and selected().equals(needle):
+      typeText(replacement)
+    end
+    return find(needle, 1)
+  end
+
+  # ---- scrolling ------------------------------------------------------------------------
+
+  # Scroll just far enough that the cursor's line is among the rows shown.
+  def Void reveal(Int rows):
+    Int row = buf.lineOf(cursor)
+    if row < top:
+      top = row
+    elif row >= top + rows:
+      top = row - rows + 1
+    end
+  end
+
+  def Void scrollBy(Int rows):
+    top = top + rows
+    if top > buf.lines() - 1:
+      top = buf.lines() - 1
+    end
+    if top < 0:
+      top = 0
+    end
+  end
+
+  # ---- for tests -------------------------------------------------------------------------
+
+  # The text with the cursor and selection marked, and newlines as `/`:
+  # `ab|c`, or `a[bc|]` with the cursor at the end of a selection, `a[|bc]` at
+  # the start of one.
+  def String picture:
+    Int a = selStart()
+    Int b = selEnd()
+    String s = buf.slice(0, a)
+    if a == b:
+      s = s + "|"
+    elif cursor == b:
+      s = s + "[" + buf.slice(a, b) + "|]"
+    else
+      s = s + "[|" + buf.slice(a, b) + "]"
+    end
+    s = s + buf.slice(b, buf.length())
+    return s.replace("\n", "/")
+  end
+end

@@ -1,0 +1,9 @@
+# F5 while the compiler is still working says so, and does not start another.
+# files hello.cm=class Main from IO\n  def main:\n    out("hello\\n")\n  end\nend\n
+# open hello.cm
+# args --catmintc @ROOT@/catmintc
+# frames 3
+# expect message still building - Shift F5 stops it
+# expect runner 1
+1 key f5
+2 key f5

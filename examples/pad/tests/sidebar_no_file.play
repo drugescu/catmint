@@ -1,0 +1,8 @@
+# With no file open, so no path, the explorer still lists the folder, with nothing
+# on a band.
+# files a.txt=A
+# files sub/b.txt=B
+# frames 4
+# expect sidebar 1 2
+# pixels 0 0 223 618 58 72 100 none
+1 key b ctrl

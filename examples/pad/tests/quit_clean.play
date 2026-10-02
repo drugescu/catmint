@@ -1,0 +1,4 @@
+# Nothing unsaved: Ctrl Q quits at once.
+# frames 6
+# expect quit 1
+1 key q ctrl

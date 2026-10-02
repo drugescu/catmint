@@ -1,0 +1,9 @@
+# The palette opens over the terminal and takes what is typed.
+# files t.txt=abc
+# open t.txt
+# frames 4
+# expect palette 1 Toggle
+# expect termline []
+1 key ` ctrl
+2 key p ctrl
+3 text Toggle

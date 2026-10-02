@@ -1,0 +1,8 @@
+# A program that reads the keyboard finds it at its end, and does not wait for anyone.
+# files in.cm=class Main from IO\n  def main:\n    String s = readLine()\n    out("got ${s.len()}\\n")\n  end\nend\n
+# open in.cm
+# args --catmintc @ROOT@/catmintc
+# frames 4
+# expect panelall got 0|[finished]
+1 key f5
+2 wait idle

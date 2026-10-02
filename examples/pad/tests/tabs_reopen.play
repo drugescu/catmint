@@ -1,0 +1,13 @@
+# Opening a file that is already open goes to its tab and does not make another.
+# files a.txt=A
+# files b.txt=B
+# open a.txt
+# frames 8
+# expect tabs 2 0
+# expect file a.txt
+1 key o ctrl
+2 text b.t
+3 key enter
+4 key o ctrl
+5 text a.t
+6 key enter

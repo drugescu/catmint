@@ -1,0 +1,6 @@
+# Quitting with unsaved changes says so, and a second Ctrl Q goes ahead.
+# frames 6
+# expect quit 1
+1 text x
+2 key q ctrl
+3 key q ctrl

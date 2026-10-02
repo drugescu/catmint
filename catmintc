@@ -2,8 +2,9 @@
 # catmintc - compile a .cm program to a native executable.
 #
 #   ./catmintc examples/tour.cm            -> ./tour
-#   ./catmintc -I lib app.cm               -> also search ./lib for modules
-#   ./catmintc --separate -I lib app.cm    -> compile each module to its own
+#   ./catmintc -I mylibs app.cm            -> also search ./mylibs for modules (lib/ beside
+#                                             this script always is)
+#   ./catmintc --separate app.cm           -> compile each module to its own
 #                                             object and link them
 #   ./catmintc examples/tour.cm -o mytour  -> ./mytour
 #   ./catmintc --run examples/tour.cm      -> compile, then run it
@@ -85,6 +86,11 @@ while [ $# -gt 0 ]; do
     *)     SRC="$1"; shift ;;
   esac
 done
+
+# The standard library, lib/ beside this script, is searched last, after the source's own
+# folder and any -I; so `using files` or `using sdl` needs no flag. A module of the program's
+# own with the same name wins.
+[ -d "$ROOT/lib" ] && INCLUDES="$INCLUDES -I $ROOT/lib"
 
 if [ -z "$SRC" ]; then
   echo "usage: catmintc [--run] [--separate] [-g] [--asan] [-O0|-O1|-O2|-O3] [-o output] [-I moduledir]... [-l lib]... [-L dir]... <program.cm>" >&2
@@ -260,10 +266,18 @@ link_executable() {
                          echo "  (xcode-select --install)" >&2; exit 1; }
       SDKVER=$(xcrun --show-sdk-version 2>/dev/null || sw_vers -productVersion)
       case "$TRIPLE" in arm64*|aarch64*) ARCH=arm64 ;; *) ARCH=x86_64 ;; esac
+      # Homebrew keeps its libraries off the linker's default path (/opt/homebrew/lib on
+      # Apple silicon, /usr/local/lib on Intel), so a program that says `link "SDL2"` would
+      # not link without a -L that every caller had to know. They are searched last, after
+      # any -L given on the command line.
+      BREW=""
+      for dir in /opt/homebrew/lib /usr/local/lib; do
+        [ -d "$dir" ] && BREW="$BREW -L$dir"
+      done
       # macOS executables are position independent by default.
       # shellcheck disable=SC2086
       "$LD" -arch "$ARCH" -platform_version macos "$(sw_vers -productVersion)" "$SDKVER" \
-        -syslibroot "$SDK" -o "$OUT" "$obj" $LIBS -lSystem
+        -syslibroot "$SDK" -o "$OUT" "$obj" $LIBS $BREW -lSystem
       ;;
     Linux)
       LD=$(find_linker ld.lld) || true

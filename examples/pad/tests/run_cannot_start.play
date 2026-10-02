@@ -1,0 +1,11 @@
+# With nowhere to put the output a build cannot even start, and the panel says so
+# instead of the window waiting for something that is not there.
+# files t.cm=x
+# env TMPDIR=/no/such/folder
+# open t.cm
+# args --catmintc nosuch/catmintc
+# frames 3
+# expect message build failed
+# expect runner 0
+# expect panelall could not start nosuch/catmintc
+1 key f5

@@ -1,0 +1,5 @@
+# A dark theme with no light twin of its own toggles to the Catmint light one.
+# config-files settings=theme=Dracula\n
+# frames 4
+# expect theme Catmint Light
+1 key t ctrl

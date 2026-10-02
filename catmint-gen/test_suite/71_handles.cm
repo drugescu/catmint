@@ -1,0 +1,126 @@
+# Handles: how C holds a catmint object.
+#
+# C cannot be given an object's address. The first words of one are its type
+# information and its reference count, which C would read as data and write
+# through, and a pointer C keeps is a reference nobody counts. So C holds a
+# handle: a number, in a Ptr, naming a slot in a table in the runtime.
+# Handles.make puts an object in the table, which holds a reference of its own
+# until Handles.drop. Handles.get turns a handle back into the object, or null
+# if it is not (or no longer) one: a dropped handle, a handle from a slot since
+# reused, a null, a Ptr that never was a handle. A stale handle finds nothing;
+# a stale address would find freed memory.
+#
+# (Two Ptrs cannot be compared with each other, only with null, so all of this
+# is observed through get, the reference counts and the live-object count.)
+
+class Counter
+  Int n
+  constructor(Int start):
+    n = start
+  end
+end
+
+extern class Libc
+  def Ptr malloc(UInt64 size)
+  def Void free(Ptr block)
+end
+
+# A thousand handles to keep: a List holds objects, not Ptrs, so they go in C
+# memory, as C would hold them.
+extern struct Table
+  Ptr slots[1000]
+end
+
+class Main from IO
+  # The thousand in a method of their own, so that their temporaries are
+  # released when it returns and the live-object count means something: an
+  # object made in main waits for main's pool.
+  def Int thousand(Table table):
+    List things = new List()
+    Int i = 0
+    while i < 1000:
+      things.append(new Counter(i))
+      table.slots[i] = Handles.make(things.get(i))
+      i = i + 1
+    end
+    Int found = 0
+    i = 0
+    while i < 1000:
+      unsafe:
+        Counter each = Handles.get(table.slots[i])
+        if each != null and each.n == i:
+          found = found + 1
+        end
+      end
+      i = i + 1
+    end
+    i = 0
+    while i < 1000:
+      Handles.drop(table.slots[i])
+      i = i + 1
+    end
+    return found
+  end
+
+  def main:
+    Counter a = new Counter(7)
+    Int before = a.refs()
+    Ptr ha = Handles.make(a)
+    out("the table holds one reference: ${a.refs() == before + 1}\n")
+
+    unsafe:
+      Counter back = Handles.get(ha)
+      out("get gives the object back: ${back.n}\n")
+    end
+
+    Handles.drop(ha)
+    out("drop gives the reference back: ${a.refs() == before}\n")
+    unsafe:
+      Counter gone = Handles.get(ha)
+      out("a dropped handle finds nothing: ${gone == null}\n")
+    end
+
+    # The slot is free again and the next handle may well use it. The old
+    # handle must still find nothing, not the new object.
+    Counter c = new Counter(99)
+    Ptr hc = Handles.make(c)
+    unsafe:
+      Counter viaOld = Handles.get(ha)
+      Counter viaNew = Handles.get(hc)
+      out("a reused slot, the stale handle: ${viaOld == null}, the new one: ${viaNew.n}\n")
+    end
+
+    # Dropping a handle twice must not give the reference back twice.
+    Int held = c.refs()
+    Handles.drop(hc)
+    Int afterOne = c.refs()
+    Handles.drop(hc)
+    Int afterTwo = c.refs()
+    out("a second drop is harmless: ${afterOne == held - 1} ${afterTwo == afterOne}\n")
+
+    unsafe:
+      Ptr junk = Libc.malloc(16)
+      Counter fromJunk = Handles.get(junk)
+      Counter fromNull = Handles.get(null)
+      out("a Ptr that was never a handle, and a null: ${fromJunk == null} ${fromNull == null}\n")
+      Libc.free(junk)
+    end
+
+    # A thousand, all found, and nothing left alive afterwards.
+    Table table
+    Int baseline = allocated()
+    Int found = thousand(table)
+    # Read before anything is printed: the string out() is given is itself an
+    # object, alive until main's pool closes.
+    Int after = allocated()
+    out("a thousand handles, all found: ${found}\n")
+    out("nothing left alive: ${after == baseline}\n")
+
+    try:
+      Handles.make(null)
+      out("not caught\n")
+    catch e:
+      out("${e}\n")
+    end
+  end
+end

@@ -1,0 +1,9 @@
+written: 42, neighbours 0 0
+nested: 7 8, the other cells 0 0
+inner arrays: 0 9 5 0
+looped: 100 143 102
+a copy is a copy: 143 while the copy says 1000
+copied in: 1000 0 5
+raw: 100 9 143 5 232 3 5
+out of range: index out of range for the 3 elements of 'cells'
+count untouched: 0

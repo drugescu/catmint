@@ -1,0 +1,7 @@
+# A line of 130 characters is wider than the window shows (113 columns, 2 kept
+# clear at the edge): typing it scrolls 20 columns, and the caret, 2 pixels wide
+# and a row high, is at column 130 - 20 = 110, x = 56 + 110 * 8 = 936.
+# frames 4
+# expect scrollx 20
+# pixels 936 0 938 22 232 176 74 44
+1 text 0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789

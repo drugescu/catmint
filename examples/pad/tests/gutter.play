@@ -1,0 +1,11 @@
+# The line number of the line the cursor is on is in the text colour, the
+# others dim. The numbers are right-aligned in three cells that start at x = 16,
+# so a one-digit number is in the third, x = 32 to 40.
+# files t.cm=one\ntwo
+# open t.cm
+# frames 2
+# pixels 32 0 40 22 223 225 230 some
+# pixels 32 0 40 22 137 147 160 none
+# pixels 32 22 40 44 137 147 160 some
+# pixels 32 22 40 44 223 225 230 none
+1 key home

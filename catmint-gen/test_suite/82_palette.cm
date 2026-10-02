@@ -1,0 +1,123 @@
+# The command palette's behaviour, without a window. One text field, in one of
+# a few modes (commands, files, find, replace, go to line), over a list of names
+# that narrows as it is typed in. What is expected of it:
+#   - opening starts with an empty field, in the mode asked for, and shows the
+#     names in the order given (so the caller puts recent ones first);
+#   - typing narrows the list, best match first, and the best is selected;
+#     deleting widens it again;
+#   - up and down move the selection and stop at the ends;
+#   - the selection goes back to the best match whenever the text changes;
+#   - accepting gives the index of the selected name in the list it was given,
+#     or -1 when nothing matches;
+#   - it is one line: a newline typed or pasted is dropped;
+#   - closing and opening again forgets what was typed;
+#   - in go-to-line mode the field is a number, or it is not one.
+# Each line is "what happened: [the field] what the palette shows", with the
+# selected row marked `>`.
+
+using palette
+
+class Main from IO
+  Palette p = null
+
+  def show(String label):
+    String s = ""
+    Int i = 0
+    while i < p.results.len():
+      Int index = p.results.get(i)
+      String name = p.names.get(index)
+      if i == p.selected:
+        s = s + " >" + name
+      else
+        s = s + " " + name
+      end
+      i = i + 1
+    end
+    if p.results.len() == 0:
+      s = " (nothing)"
+    end
+    out("${label}: [${p.field.buf.text()}]${s}\n")
+  end
+
+  def main:
+    List names = new List()
+    names.append("Save")
+    names.append("Save as")
+    names.append("Find")
+    names.append("Find next")
+    names.append("Undo")
+    names.append("Quit")
+    List hints = new List()
+    hints.append("Ctrl S")
+    hints.append("")
+    hints.append("Ctrl F")
+    hints.append("F3")
+    hints.append("Ctrl Z")
+    hints.append("Ctrl Q")
+
+    p = new Palette()
+    out("closed to begin with: ${p.isOpen() == 0}\n")
+    p.open(Palette.commandMode(), "command", names, hints)
+    out("open, in command mode: ${p.isOpen() == 1 and p.mode == Palette.commandMode()}\n")
+    show("opened")
+    p.typeText("f")
+    show("typed f")
+    p.typeText("n")
+    show("typed n")
+    out("the selected one's hint: ${p.hint()}\n")
+    p.backspace()
+    show("backspace")
+    p.field.docStart(0)
+    p.typeText("s")
+    show("typed s before the f")
+    p.backspace()
+    show("backspace takes the s")
+    p.field.docEnd(0)
+    p.backspace()
+    show("and again")
+
+    p.down()
+    p.down()
+    show("down twice")
+    p.up()
+    show("up once")
+    p.up()
+    p.up()
+    p.up()
+    show("up past the top")
+    Int i = 0
+    while i < 20:
+      p.down()
+      i = i + 1
+    end
+    show("down past the bottom")
+
+    p.typeText("u")
+    show("typing puts the selection back")
+    out("accepts ${p.chosen()}\n")
+    p.typeText("zz")
+    show("typed zz")
+    out("accepts ${p.chosen()} and hint [${p.hint()}]\n")
+    p.typeText("a\nb\r\nc")
+    show("newlines dropped")
+
+    p.close()
+    out("closed: ${p.isOpen() == 0}\n")
+    p.open(Palette.fileMode(), "file", names, hints)
+    show("opened again, as files")
+    out("prompt: ${p.prompt}\n")
+    p.typeText("sa")
+    show("typed sa")
+
+    p.open(Palette.lineMode(), "line", new List(), new List())
+    show("go to line")
+    p.typeText("42")
+    out("reads as ${p.number()}\n")
+    p.typeText("x")
+    out("with a letter in it, ${p.number()}\n")
+    p.backspace()
+    p.backspace()
+    p.backspace()
+    out("emptied, ${p.number()}\n")
+  end
+end

@@ -1,0 +1,246 @@
+# A folder's files as a tree you can open and fold, for a list beside the text.
+#
+#   using filetree
+#   FileTree tree = new FileTree()
+#   tree.load(Files.list(".", 6, 5000))         # "src/lib/util.cm", ...
+#   tree.toggle(1)                              # open or fold the folder in row 1
+#   TreeNode n = tree.rowAt(0)                  # n.name, n.depth, n.isDir, n.expanded
+#
+# Built from the flat list of paths Files.list gives, which holds files only, so a
+# folder with nothing in it is not there. Folders come before files and each group
+# is in name order ignoring case. Everything starts folded. The rows are what is
+# showing now, numbered from 0; folding a folder keeps what was open inside it, so
+# opening it again finds it as it was left.
+
+using files
+
+class TreeNode from Object
+  String name = ""
+  # Where it is, from the folder the list came from: "src/lib/util.cm".
+  String path = ""
+  # The name in lower case, worked out once for the sort.
+  String key = ""
+  Int isDir
+  Int expanded
+  Int depth
+  List children = null
+
+  constructor():
+    children = new List()
+  end
+end
+
+class FileTree from Object
+  TreeNode root = null
+  List rows = null
+
+  constructor():
+    root = new TreeNode()
+    rows = new List()
+  end
+
+  def Int count:
+    return rows.len()
+  end
+
+  def TreeNode rowAt(Int i):
+    return rows.get(i)
+  end
+
+  # 1 if a sorts before b: folders first, then by name ignoring case.
+  static def Int less(TreeNode a, TreeNode b):
+    if a.isDir != b.isDir:
+      return a.isDir
+    end
+    Int i = 0
+    while i < a.key.len() and i < b.key.len():
+      Int x = a.key.at(i)
+      Int y = b.key.at(i)
+      if x != y:
+        if x < y:
+          return 1
+        end
+        return 0
+      end
+      i = i + 1
+    end
+    if a.key.len() < b.key.len():
+      return 1
+    end
+    return 0
+  end
+
+  # Merge sort; the nodes of equal rank keep the order they came in.
+  static def List sorted(List nodes):
+    if nodes.len() <= 1:
+      return nodes
+    end
+    Int middle = nodes.len() / 2
+    List left = FileTree.sorted(nodes.slice(0, middle))
+    List right = FileTree.sorted(nodes.slice(middle, nodes.len()))
+    List merged = new List()
+    Int i = 0
+    Int j = 0
+    while i < left.len() and j < right.len():
+      TreeNode a = left.get(i)
+      TreeNode b = right.get(j)
+      if FileTree.less(b, a) == 1:
+        merged.append(b)
+        j = j + 1
+      else
+        merged.append(a)
+        i = i + 1
+      end
+    end
+    while i < left.len():
+      merged.append(left.get(i))
+      i = i + 1
+    end
+    while j < right.len():
+      merged.append(right.get(j))
+      j = j + 1
+    end
+    return merged
+  end
+
+  # The child of a folder with this name, or null.
+  def TreeNode child(TreeNode folder, String name):
+    Int i = 0
+    while i < folder.children.len():
+      TreeNode c = folder.children.get(i)
+      if c.name.equals(name):
+        return c
+      end
+      i = i + 1
+    end
+    return null
+  end
+
+  def Void sortAll(TreeNode folder):
+    folder.children = FileTree.sorted(folder.children)
+    Int i = 0
+    while i < folder.children.len():
+      TreeNode c = folder.children.get(i)
+      if c.isDir == 1:
+        sortAll(c)
+      end
+      i = i + 1
+    end
+  end
+
+  # Build the tree from relative file paths, everything folded.
+  def Void load(List paths):
+    root = new TreeNode()
+    root.isDir = 1
+    root.expanded = 1
+    root.depth = 0 - 1
+    Int p = 0
+    while p < paths.len():
+      String full = paths.get(p)
+      List parts = full.split("/")
+      TreeNode at = root
+      String soFar = ""
+      Int k = 0
+      while k < parts.len():
+        String part = parts.get(k)
+        if part.len() > 0:
+          if soFar.len() > 0:
+            soFar = soFar + "/"
+          end
+          soFar = soFar + part
+          Int last = 0
+          if k == parts.len() - 1:
+            last = 1
+          end
+          TreeNode found = child(at, part)
+          if found == null:
+            found = new TreeNode()
+            found.name = part
+            found.key = part.lower()
+            found.path = soFar
+            found.isDir = 1 - last
+            found.depth = at.depth + 1
+            at.children.append(found)
+          end
+          at = found
+        end
+        k = k + 1
+      end
+      p = p + 1
+    end
+    sortAll(root)
+    rebuild()
+  end
+
+  # Work out the rows from what is open.
+  def Void rebuild:
+    rows = new List()
+    addRows(root)
+  end
+
+  def Void addRows(TreeNode folder):
+    Int i = 0
+    while i < folder.children.len():
+      TreeNode c = folder.children.get(i)
+      rows.append(c)
+      if c.isDir == 1 and c.expanded == 1:
+        addRows(c)
+      end
+      i = i + 1
+    end
+  end
+
+  # Open or fold the folder in a row. A file, or a row that is not there, does nothing.
+  def Void toggle(Int row):
+    if row >= 0 and row < rows.len():
+      TreeNode n = rows.get(row)
+      if n.isDir == 1:
+        n.expanded = 1 - n.expanded
+        rebuild()
+      end
+    end
+  end
+
+  # The row showing this path, or -1 (it is not there, or a folder above it is folded).
+  def Int indexOf(String path):
+    Int i = 0
+    while i < rows.len():
+      TreeNode n = rows.get(i)
+      if n.path.equals(path):
+        return i
+      end
+      i = i + 1
+    end
+    return 0 - 1
+  end
+
+  # Open every folder on the way to a path, and answer its row; -1 if it is not there.
+  def Int reveal(String path):
+    List parts = path.split("/")
+    TreeNode at = root
+    List folders = new List()
+    Int k = 0
+    while k < parts.len():
+      String part = parts.get(k)
+      if part.len() > 0:
+        TreeNode found = child(at, part)
+        if found == null:
+          return 0 - 1
+        end
+        if k < parts.len() - 1:
+          folders.append(found)
+        end
+        at = found
+      end
+      k = k + 1
+    end
+    Int i = 0
+    while i < folders.len():
+      TreeNode f = folders.get(i)
+      f.expanded = 1
+      i = i + 1
+    end
+    rebuild()
+    return indexOf(path)
+  end
+end

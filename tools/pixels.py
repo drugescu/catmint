@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """pixels.py FRAME.bmp X0 Y0 X1 Y1 R G B [N] - count pixels of colour (R, G, B)
-in the half-open rectangle [X0, X1) x [Y0, Y1) of a BMP saved by `rps --shot`.
+in the half-open rectangle [X0, X1) x [Y0, Y1) of a BMP saved by a program's --shot.
 Prints the count. N, if given, is ignored: play.sh passes the whole spec."""
 import struct
 import sys

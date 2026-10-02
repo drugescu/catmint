@@ -1,0 +1,15 @@
+# A program that was stopped does not make the next one a stopped one: the first run
+# leaves seen.txt and loops until it is stopped; the second finds seen.txt, prints, and
+# ends by itself, and says so.
+# files once.cm=class Main from IO\n  def main:\n    if File.exists("seen.txt") == 0:\n      File f = new File()\n      f.open("seen.txt", "w")\n      f.write("x")\n      f.close()\n      while 1 == 1:\n        sleep(50)\n      end\n    end\n    out("done\\n")\n  end\nend\n
+# open once.cm
+# args --catmintc @ROOT@/catmintc
+# frames 8
+# expect message once finished
+# expect panelall done|[finished]
+1 key f5
+2 wait file seen.txt
+3 key f5 shift
+4 wait idle
+5 key f5
+6 wait idle

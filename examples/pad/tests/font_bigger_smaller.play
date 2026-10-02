@@ -1,0 +1,12 @@
+# Bigger and Smaller step a TrueType font up and down the sizes (14 16 18 20), and the size is
+# written to the settings (font_size_remembered reads it back). Ctrl = is bigger, Ctrl - smaller.
+# font default
+# files t.txt=abc
+# open t.txt
+# frames 6
+# expect | 14
+1 key = ctrl
+2 key = ctrl
+3 key - ctrl
+4 key - ctrl
+5 key - ctrl

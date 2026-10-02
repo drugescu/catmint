@@ -1,0 +1,9 @@
+# Ctrl ` again takes the panel away and gives the keyboard back to the text; the shell
+# goes on running behind it.
+# files t.txt=abc
+# open t.txt
+# frames 4
+# expect term 1 0 1 0
+# expect panel 0 0
+1 key ` ctrl
+2 key ` ctrl

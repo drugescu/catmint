@@ -1,0 +1,9 @@
+before:     5 3 9 1 7 2 
+ascending:  1 2 3 5 7 9 
+descending: 9 7 5 3 2 1 
+sorted by the counting comparator: 1 2 3 5 7 9 
+qsort calls it more than three times: 1
+caught: the comparator gave up on its third call
+the method ran 3 times
+nothing left alive by the error: 1
+afterwards: 1 2 3 5 7 9 

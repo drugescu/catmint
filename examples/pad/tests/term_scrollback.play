@@ -1,0 +1,10 @@
+# Thirty lines and the echo of the command are 31; seven rows show, so the scrollback
+# starts at the 25th (index 24), following the end.
+# files t.txt=abc
+# open t.txt
+# frames 5
+# expect termtop 24
+1 key ` ctrl
+2 text seq 1 30
+3 key enter
+4 wait term 30

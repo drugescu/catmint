@@ -70,6 +70,19 @@ const char *sample_name(int32_t id);            /* static text, or NULL */
 char *sample_dup(const char *s);                /* malloc'd: stays a Ptr */
 void sample_release(char *p);
 
+/* Callbacks. A typedef; a function pointer written out in a parameter; one
+ * that cannot be bound because it takes a struct by value; and atexit, which
+ * installs a handler C runs when the process exits and is never bound. */
+typedef int32_t (*SampleVisit)(void *userdata, int32_t index);
+typedef void (*SampleSpoiled)(SamplePoint point);
+void sample_each(int32_t n, SampleVisit fn, void *userdata);
+int32_t sample_largest(const int64_t *values, int32_t count,
+                       int32_t (*better)(int64_t candidate, int64_t current));
+void sample_spoiled(SampleSpoiled handler);
+typedef void (*SampleTick)(void *userdata);     /* called from a thread of the library's */
+void sample_every(SampleTick fn, void *userdata);
+int atexit(void (*function)(void));
+
 int sample_printf(const char *fmt, ...);        /* variadic */
 int sample_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 SamplePoint sample_origin(void);                /* a struct by value */

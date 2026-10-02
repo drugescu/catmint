@@ -124,6 +124,10 @@ struct ClassInfo {
   /// view -- so Object.copy of either is still right, and a field access
   /// picks the bytes with one select.
   bool IsCStruct = false;
+  /// `extern def Compare(...) Int`: the type of a C function pointer. No
+  /// layout and nothing emitted; it is the signature of the function the
+  /// compiler writes for C to call.
+  bool IsCallback = false;
   bool CUnion = false;
   bool COpaque = false;
   bool CLaidOut = false;
@@ -350,6 +354,8 @@ private:
   llvm::Value *emitNullConstant(NullConstant *NC);
   llvm::Value *emitSymbol(Symbol *S);
   llvm::Value *emitLocalDefinition(LocalDefinition *LD);
+  bool initialiserFits(const std::string &From, const std::string &To,
+                       ClassInfo *ToClass);
   llvm::Value *emitAssignment(Assignment *A);
   llvm::Value *emitBinaryOperator(BinaryOperator *BO);
   /// The pieces of a chain of string concatenations, left to right. `"a" + b
@@ -375,6 +381,10 @@ private:
   /// A call to a C function declared in an `extern class`.
   llvm::Value *emitExternCall(Method *M, const std::vector<Expression *> &Args,
                               int Line);
+  /// The function C calls when a static method is passed for a callback
+  /// type: written once per method and type, with C's calling convention.
+  llvm::Function *callbackTrampoline(ClassInfo *Callback, Expression *Arg,
+                                     int Line);
   /// String.fromC(source, max): a copy of C's text, bounded.
   llvm::Value *emitFromC(const std::vector<Expression *> &Args, int Line);
 
@@ -384,6 +394,14 @@ private:
   /// The address of the field \p FA names. A chain through fields held by
   /// value is one offset from the outermost object's bytes.
   llvm::Value *cFieldAddress(FieldAccess *FA, ClassInfo::CField &Out);
+  /// The bytes of the extern struct an expression denotes. A struct held by
+  /// value in another, or an element of an array of structs, is a *place*: its
+  /// address is inside the one it is part of, so that a write reaches the
+  /// original. Anything else (a variable, a call, a view) is an object whose
+  /// bytes are found through it.
+  llvm::Value *cStructAddress(Expression *E);
+  /// The address of s.array[i], index checked against the declared length.
+  llvm::Value *cElementAddress(Dispatch *D, ClassInfo::CField &Out);
   /// The array field a subscript indexes, or null when it is not one.
   ClassInfo *cArrayField(Dispatch *D, ClassInfo::CField &Out);
   llvm::Value *loadCScalar(llvm::Value *Addr, const std::string &CType);

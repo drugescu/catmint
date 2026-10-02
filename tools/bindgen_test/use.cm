@@ -8,6 +8,32 @@ extern struct Count
   Int32 value
 end
 
+class Counter
+  Int n
+  Int last
+end
+
+# SampleVisit: int32_t (void *, int32_t). The generator named the callback type
+# for the typedef, and a function pointer written out in a parameter
+# (sample_largest's `better`) got one named after the function and parameter.
+class Handlers
+  static def Int visit(Ptr userdata, Int index):
+    unsafe:
+      Counter counter = Handles.get(userdata)
+      counter.n = counter.n + 1
+      counter.last = index
+    end
+    return index
+  end
+
+  static def Int bigger(Int64 candidate, Int64 current):
+    if candidate > current:
+      return 1
+    end
+    return 0
+  end
+end
+
 class Main from IO
   def main:
     SampleRecord r
@@ -87,5 +113,25 @@ class Main from IO
     out("wide ${wide}\n")
     out("name ${one} none-is-null ${none == null} dup ${copied}\n")
     out("other ${SampleC.OTHER_VALUE()}\n")
+
+    Counter counter = new Counter()
+    Ptr handle = Handles.make(counter)
+    unsafe:
+      Sample.sample_each(5, Handlers.visit, handle)
+    end
+    out("visited ${counter.n}, last ${counter.last}\n")
+    Handles.drop(handle)
+
+    Ints values = new Ints(5)
+    values.set(0, 3)
+    values.set(1, 8)
+    values.set(2, 4)
+    values.set(3, 1)
+    values.set(4, 6)
+    Int at = 0
+    unsafe:
+      at = Sample.sample_largest(values, 5, Handlers.bigger)
+    end
+    out("largest at index ${at}\n")
   end
 end

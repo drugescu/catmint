@@ -1,0 +1,11 @@
+# A click below the last row of the explorer does nothing: two rows, and the click is
+# on the third, y 44 to 66.
+# files a.txt=A
+# files sub/b.txt=B
+# open a.txt
+# frames 4
+# expect tabs 1 0
+# expect file a.txt
+# expect sidebar 1 2
+1 key b ctrl
+2 click 60 50

@@ -1,0 +1,11 @@
+# Ctrl O lists the files below here; "notes" matches only sub/notes.cm, which
+# Enter opens. There is no file dialog.
+# files a.txt=first\nline
+# files sub/notes.cm=hello\nworld\n
+# frames 8
+# expect file sub/notes.cm
+# expect text hello\nworld\n
+# expect palette 0
+1 key o ctrl
+2 text notes
+3 key enter

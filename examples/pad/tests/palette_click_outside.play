@@ -1,0 +1,6 @@
+# A click outside the box closes it and runs nothing.
+# frames 4
+# expect palette 0
+# expect theme Catmint Dark
+1 key p ctrl
+2 click 50 300

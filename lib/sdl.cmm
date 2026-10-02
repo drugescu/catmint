@@ -162,6 +162,158 @@ class Sdl from Object
     end
   end
 
+  # ---- text, modifiers, the wheel, the window, the clipboard ----------
+
+  # Text input is off until asked for: with it on, SDL turns key presses into
+  # SDL_TEXTINPUT events carrying what was typed (an accented letter arrives as
+  # text, not as the keys that made it), and may show an on-screen keyboard.
+  def Void startText:
+    unsafe:
+      SDL2.SDL_StartTextInput()
+    end
+  end
+
+  def Int isText:
+    if event.type == SDL2C.SDL_TEXTINPUT():
+      return 1
+    end
+    return 0
+  end
+
+  # What a text-input event carries, as UTF-8 in a String. SDL puts at most 31
+  # bytes in one event and ends them with a NUL.
+  def String text:
+    String s = ""
+    Int i = 0
+    while i < 32:
+      Int b = event.text.text[i] & 255
+      if b == 0:
+        break
+      end
+      s = s + String.chr(b)
+      i = i + 1
+    end
+    return s
+  end
+
+  # The keyboard modifiers held at the last key event: bits, KMOD_*.
+  def Int mods:
+    return event.key.keysym.mod
+  end
+
+  def Int shift:
+    if (mods() & SDL2C.KMOD_SHIFT()) != 0:
+      return 1
+    end
+    return 0
+  end
+
+  def Int alt:
+    if (mods() & SDL2C.KMOD_ALT()) != 0:
+      return 1
+    end
+    return 0
+  end
+
+  # The shortcut key: Control, or Command on a Mac, so one program has one set
+  # of shortcuts everywhere.
+  def Int shortcut:
+    if (mods() & (SDL2C.KMOD_CTRL() | SDL2C.KMOD_GUI())) != 0:
+      return 1
+    end
+    return 0
+  end
+
+  def Int isWheel:
+    if event.type == SDL2C.SDL_MOUSEWHEEL():
+      return 1
+    end
+    return 0
+  end
+
+  # Lines scrolled: positive away from the user. SDL counts whole ticks in y;
+  # sdl2-compat leaves y at 0 for an event that was pushed rather than made by a
+  # device, and keeps the amount in preciseY, so a whole tick or more there
+  # counts when y says nothing. A fraction of a tick is not a line.
+  def Int wheel:
+    Int ticks = event.wheel.y
+    if ticks == 0:
+      Float precise = event.wheel.preciseY
+      if precise >= 1.0 or precise <= 0.0 - 1.0:
+        ticks = precise
+      end
+    end
+    return ticks
+  end
+
+  def Int isResize:
+    if event.type == SDL2C.SDL_WINDOWEVENT() and event.window.event == SDL2C.SDL_WINDOWEVENT_SIZE_CHANGED():
+      return 1
+    end
+    return 0
+  end
+
+  # Wait up to ms for an event: 1 and it is the current one, 0 and none came.
+  # A program that only needs to redraw when something happens waits here and
+  # uses no time while idle.
+  def Int wait(Int ms):
+    unsafe:
+      return SDL2.SDL_WaitEventTimeout(event, ms)
+    end
+  end
+
+  # The clipboard as text, empty when it holds none. SDL hands back a
+  # malloc'd string that has to be given back; it is copied out first, bounded.
+  def String clipboard:
+    Ptr raw = null
+    String text = null
+    unsafe:
+      raw = SDL2.SDL_GetClipboardText()
+      text = String.fromC(raw, 1048576)
+      if raw != null:
+        SDL2.SDL_free(raw)
+      end
+    end
+    if text == null:
+      return ""
+    end
+    return text
+  end
+
+  def Void setClipboard(String text):
+    unsafe:
+      SDL2.SDL_SetClipboardText(text)
+    end
+  end
+
+  # Queue what a person would have done with the wheel or with a key and a
+  # modifier, so a script can drive the same code a person does. There is no
+  # pushText: sdl2-compat, which is SDL2 on Homebrew, cannot convert a pushed
+  # SDL_TEXTINPUT event and crashes in SDL_PushEvent. A script hands typed
+  # text to the program's own text handler instead.
+  def Int pushWheel(Int lines):
+    SDL_Event e = new SDL_Event()
+    e.type = SDL2C.SDL_MOUSEWHEEL()
+    e.wheel.y = lines
+    # sdl2-compat builds the event it queues from the precise value, not the
+    # whole one; a real wheel event carries both.
+    e.wheel.preciseY = lines * 1.0
+    unsafe:
+      return SDL2.SDL_PushEvent(e)
+    end
+  end
+
+  def Int pushKeyWith(Int key, Int modifiers):
+    SDL_Event e = new SDL_Event()
+    e.type = SDL2C.SDL_KEYDOWN()
+    e.key.state = SDL2C.SDL_PRESSED()
+    e.key.keysym.sym = key
+    e.key.keysym.mod = modifiers
+    unsafe:
+      return SDL2.SDL_PushEvent(e)
+    end
+  end
+
   def Void delay(Int ms):
     unsafe:
       SDL2.SDL_Delay(ms)
@@ -196,6 +348,36 @@ class Window from Object
     if handle == null:
       throw "could not create window: ${Sdl.error()}"
     end
+  end
+
+  def Void resizable:
+    unsafe:
+      SDL2.SDL_SetWindowResizable(handle, 1)
+    end
+  end
+
+  def Void title(String text):
+    unsafe:
+      SDL2.SDL_SetWindowTitle(handle, text)
+    end
+  end
+
+  def Int width:
+    SdlInt w
+    SdlInt h
+    unsafe:
+      SDL2.SDL_GetWindowSize(handle, w, h)
+    end
+    return w.value
+  end
+
+  def Int height:
+    SdlInt w
+    SdlInt h
+    unsafe:
+      SDL2.SDL_GetWindowSize(handle, w, h)
+    end
+    return h.value
   end
 
   def Void finalize:
@@ -278,6 +460,23 @@ class Renderer from Object
     end
   end
 
+  # Drawing is confined to this rectangle until unclip.
+  def Void clip(Int x, Int y, Int w, Int h):
+    rect.x = x
+    rect.y = y
+    rect.w = w
+    rect.h = h
+    unsafe:
+      SDL2.SDL_RenderSetClipRect(handle, rect)
+    end
+  end
+
+  def Void unclip:
+    unsafe:
+      SDL2.SDL_RenderSetClipRect(handle, null)
+    end
+  end
+
   # Where edge (ax, ay)-(bx, by) crosses row y, folded into the row's span.
   # The range is half-open, [ay, by), so a row through a shared corner is
   # not counted twice; a flat edge crosses nothing.
@@ -355,6 +554,80 @@ class Renderer from Object
     if handle != null:
       unsafe:
         SDL2.SDL_DestroyRenderer(handle)
+      end
+    end
+  end
+end
+
+# An image the renderer draws from. Made from pixels the program supplies --
+# four bytes a pixel, in memory blue, green, red, alpha (SDL's ARGB8888 on a
+# little-endian machine, which every machine catmint runs on is) -- so there is
+# no file to find and no image library to load. It holds the renderer it
+# belongs to, so a texture is destroyed before the renderer it was made for
+# whatever order the program lets go in: texture, then renderer, then window,
+# then SDL.
+class Texture from Object
+  Renderer renderer = null
+  SDL_Texture handle = null
+  SDL_Rect source
+  SDL_Rect target
+  Int width
+  Int height
+
+  constructor(Renderer r, Int w, Int h, Bytes pixels):
+    renderer = r
+    width = w
+    height = h
+    if w < 1 or h < 1 or pixels.len() < w * h * 4:
+      throw "a ${w} x ${h} texture needs ${w * h * 4} bytes of pixels, and was given ${pixels.len()}"
+    end
+    unsafe:
+      handle = SDL2.SDL_CreateTexture(r.handle, SDL2C.SDL_PIXELFORMAT_ARGB8888(),
+                                      SDL2C.SDL_TEXTUREACCESS_STATIC(), w, h)
+    end
+    if handle == null:
+      throw "could not create texture: ${Sdl.error()}"
+    end
+    unsafe:
+      SDL2.SDL_UpdateTexture(handle, null, pixels, w * 4)
+      SDL2.SDL_SetTextureBlendMode(handle, SDL2C.SDL_BLENDMODE_BLEND())
+    end
+  end
+
+  # Draw the rectangle (sx, sy, sw, sh) of the image into (dx, dy, dw, dh) of
+  # the window, scaled to fit.
+  def Void draw(Int sx, Int sy, Int sw, Int sh, Int dx, Int dy, Int dw, Int dh):
+    source.x = sx
+    source.y = sy
+    source.w = sw
+    source.h = sh
+    target.x = dx
+    target.y = dy
+    target.w = dw
+    target.h = dh
+    unsafe:
+      SDL2.SDL_RenderCopy(renderer.handle, handle, source, target)
+    end
+  end
+
+  # What the image is multiplied by as it is drawn: white leaves it as it is,
+  # so a white-on-clear glyph atlas becomes any colour.
+  def Void tint(Int r, Int g, Int b):
+    unsafe:
+      SDL2.SDL_SetTextureColorMod(handle, r, g, b)
+    end
+  end
+
+  def Void opacity(Int a):
+    unsafe:
+      SDL2.SDL_SetTextureAlphaMod(handle, a)
+    end
+  end
+
+  def Void finalize:
+    if handle != null:
+      unsafe:
+        SDL2.SDL_DestroyTexture(handle)
       end
     end
   end

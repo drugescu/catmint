@@ -1,0 +1,10 @@
+# Ctrl O with nothing typed lists what was opened before everything else, so
+# the first row is the file being edited, whatever order the files come in.
+# files a.txt=first
+# files b.txt=second
+# files c.txt=third
+# open b.txt
+# frames 3
+# expect first b.txt
+# expect results 3
+1 key o ctrl

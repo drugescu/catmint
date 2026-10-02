@@ -1,0 +1,13 @@
+# Shift F5 during the build stops the compiler: the panel says so, nothing is left running,
+# and the program is not run. The "compiler" is a script that waits half a minute, so the
+# build is certainly still going when it is stopped.
+# files hello.cm=x
+# exec catmintc=#!/bin/sh\nsleep 30\n
+# open hello.cm
+# frames 4
+# expect message build stopped
+# expect panelall [stopped]
+# expect runner 0
+1 key f5
+2 key f5 shift
+3 wait idle

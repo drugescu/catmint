@@ -1,0 +1,9 @@
+# While a program runs the loop looks every 30 ms, not every half second: a turn that
+# would otherwise wait the whole 500 ms for the caret waits 30.
+# files loop.cm=class Main from IO\n  def main:\n    while 1 == 1:\n      sleep(50)\n    end\n  end\nend\n
+# open loop.cm
+# args --catmintc @ROOT@/catmintc
+# frames 4
+# expect wait 30
+1 key f5
+2 wait running

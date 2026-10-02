@@ -1,0 +1,13 @@
+# "Color theme..." in the palette lists every theme; typing narrows the list, Enter
+# takes the one at the top, and it is kept for next time. Nord's ground is #2e3440
+# = (46, 52, 64); a region with no text is all ground.
+# frames 8
+# expect theme Nord
+# expect palette 0
+# config-file settings=theme=Nord\n
+# pixels 400 200 500 300 46 52 64 10000
+1 key p ctrl
+2 text color
+3 key enter
+4 text nord
+5 key enter

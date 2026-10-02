@@ -1,0 +1,18 @@
+# Opening a second file makes a second tab and the strip appears: a row at the top,
+# one tab for each file. A tab is two cells of margin, the name, two cells, a
+# closing x and a cell: "a.txt" is 5 cells and so (5 + 6) * 8 = 88 pixels wide.
+# The one being edited is underlined in the accent colour, all 88 pixels of it on
+# the last row of the strip; the other is on the panel's colour.
+# files a.txt=A
+# files b.txt=B
+# open a.txt
+# frames 6
+# expect tabs 2 1
+# expect tabnames a.txt|b.txt
+# expect file b.txt
+# expect text B
+# pixels 88 21 176 22 232 176 74 88
+# pixels 0 0 88 21 35 40 48 some
+1 key o ctrl
+2 text b.t
+3 key enter

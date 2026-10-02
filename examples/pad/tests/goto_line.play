@@ -1,0 +1,9 @@
+# Ctrl L, 3, Enter: the start of line 3.
+# files t.txt=a\nb\nc\nd\n
+# open t.txt
+# frames 6
+# expect cursor 3 1
+# expect palette 0
+1 key l ctrl
+2 text 3
+3 key enter

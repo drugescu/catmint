@@ -1,0 +1,11 @@
+# Started in a folder with no compiler in it and none on the PATH, pad finds the
+# repository's catmintc from where its own program is (two folders up), and it is
+# the real one: a syntax error comes back as the compiler's two lines.
+# files bad.cm=class Main from IO\n  def main:\n    Int x = \n  end\nend\n
+# open bad.cm
+# frames 4
+# expect message build failed
+# expect panel 1 2
+# pixels 0 464 960 486 232 120 128 some
+1 key f7
+2 wait idle

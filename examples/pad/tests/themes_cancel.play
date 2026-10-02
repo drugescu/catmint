@@ -1,0 +1,10 @@
+# Esc puts back the theme that was in use before the list was opened.
+# frames 8
+# expect theme Catmint Dark
+# expect palette 0
+# pixels 400 200 500 300 30 34 41 10000
+1 key p ctrl
+2 text color
+3 key enter
+4 text dracula
+5 key esc

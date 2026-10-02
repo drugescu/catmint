@@ -1,0 +1,13 @@
+# The line has the editing keys of the other one-line fields: here, left and backspace
+# take out the b, home puts the cursor at the start for an X, and delete takes out the a.
+# files t.txt=abc
+# open t.txt
+# frames 8
+# expect termline [Xc]
+1 key ` ctrl
+2 text abc
+3 key left
+4 key backspace
+5 key home
+6 text X
+7 key delete

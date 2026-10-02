@@ -1,0 +1,415 @@
+# Driving pad from a script, for tests: `pad file --play script --frames N --shot out.bmp`.
+#
+# A script is lines of `frame command arguments`:
+#
+#   3 key s ctrl           a key, with any of shift ctrl alt
+#   4 text hello world     typed text
+#   5 click 100 200        a click; move x y; drag x1 y1 x2 y2; wheel n; clip some text
+#   6 wait idle            until the build or program has ended (wait running: until a
+#                          program is running; wait lines N: until the panel has N lines;
+#                          wait file NAME: until the file has something in it; wait panel
+#                          LINE: until the panel has that line; wait term LINE: until the terminal has printed
+#                          that line; wait ms N: N ms of letting things go on; wait ctrlc LINE: ^C in the
+#                          terminal until that line is printed)
+#   7 loop idle            turns of pad's own loop, as a session makes them, until the
+#                          build or program has ended
+#   8 run                  pad's own loop until it is quit, then leaving as a session does
+#   9 draw / peek          draw now / note whether the window wants drawing (peeked)
+#
+# Each frame pushes what is due as the events a person would make, lets pad
+# handle them, and draws; at the end the last frame is saved and the state
+# printed, which is what examples/pad/play.sh checks.
+#
+# Typed text is the one thing not pushed as an SDL event: sdl2-compat, which is SDL2
+# on Homebrew, crashes in SDL_PushEvent given a text-input event (see lib/sdl.cmm).
+# It is handed to pad's own text handler instead, after everything before it
+# has been handled, so the order the script wrote is the order things happen in.
+
+using sdl
+using files
+
+# One thing a script does at one frame.
+class Cue from Object
+  Int frame
+  String cmd = ""
+  List words = null
+end
+
+class PlayScript from Object
+  Pad pad = null
+  # What `peek` saw: whether the window wanted drawing.
+  Int peeked
+
+  constructor(Pad p):
+    pad = p
+  end
+
+  def Int keyCode(String name):
+    if name == "enter":
+      return SDL2C.SDLK_RETURN()
+    elif name == "esc":
+      return SDL2C.SDLK_ESCAPE()
+    elif name == "tab":
+      return SDL2C.SDLK_TAB()
+    elif name == "backspace":
+      return SDL2C.SDLK_BACKSPACE()
+    elif name == "delete":
+      return SDL2C.SDLK_DELETE()
+    elif name == "left":
+      return SDL2C.SDLK_LEFT()
+    elif name == "right":
+      return SDL2C.SDLK_RIGHT()
+    elif name == "up":
+      return SDL2C.SDLK_UP()
+    elif name == "down":
+      return SDL2C.SDLK_DOWN()
+    elif name == "home":
+      return SDL2C.SDLK_HOME()
+    elif name == "end":
+      return SDL2C.SDLK_END()
+    elif name == "pageup":
+      return SDL2C.SDLK_PAGEUP()
+    elif name == "pagedown":
+      return SDL2C.SDLK_PAGEDOWN()
+    elif name == "f3":
+      return SDL2C.SDLK_F3()
+    elif name == "f5":
+      return SDL2C.SDLK_F5()
+    elif name == "f7":
+      return SDL2C.SDLK_F7()
+    elif name.len() == 1:
+      return name.at(0)
+    end
+    throw "unknown key '${name}' in the script"
+  end
+
+  def Int number(Cue c, Int index):
+    String w = c.words.get(index)
+    return w.toInt()
+  end
+
+  # Everything after the first n words, as one string.
+  def String rest(Cue c, Int n):
+    String s = ""
+    Int i = n
+    while i < c.words.len():
+      if i > n:
+        s = s + " "
+      end
+      String w = c.words.get(i)
+      s = s + w
+      i = i + 1
+    end
+    return s
+  end
+
+  # 1 if the terminal's scrollback has this line.
+  def Int termHas(String want):
+    Int ti = 0
+    while ti < pad.term.screen.size():
+      if pad.term.screen.lineAt(ti).equals(want):
+        return 1
+      end
+      ti = ti + 1
+    end
+    return 0
+  end
+
+  # ^C in the terminal until a line appears: the shell starts what it was told a moment
+  # after saying so, and a ^C before that stops nothing.
+  def Void interruptUntil(String want):
+    Int n = 0
+    while n < 50 and termHas(want) == 0:
+      pad.term.interrupt()
+      Int until = pad.sdl.ticks() + 200
+      while pad.sdl.ticks() < until and termHas(want) == 0:
+        pad.tick()
+        pad.sleep(5)
+      end
+      n = n + 1
+    end
+  end
+
+  # 1 if what a `wait` cue is for has happened.
+  def Int arrived(Cue c):
+    String what = c.words.get(0)
+    if what == "idle":
+      return 1 - pad.runner.busy()
+    elif what == "running":
+      if pad.runner.busy() == 0:
+        throw "wait running: nothing is running"
+      end
+      if pad.runner.phase == 2:
+        return 1
+      end
+      return 0
+    elif what == "lines":
+      if pad.output.size() >= number(c, 1):
+        return 1
+      end
+      return 0
+    elif what == "panel":
+      String line = rest(c, 1)
+      Int pj = 0
+      while pj < pad.output.size():
+        if pad.output.lineAt(pj).equals(line):
+          return 1
+        end
+        pj = pj + 1
+      end
+      return 0
+    elif what == "term":
+      return termHas(rest(c, 1))
+    elif what == "file":
+      String name = c.words.get(1)
+      String text = Files.read(name, 100)
+      if text != null and text.len() > 0:
+        return 1
+      end
+      return 0
+    end
+    throw "unknown wait '${what}' in the script"
+  end
+
+  # Let the build or program go on, a frame at a time, until the cue is satisfied.
+  def Void waitFor(Cue c):
+    if c.words.get(0) == "ctrlc":
+      interruptUntil(rest(c, 1))
+    elif c.words.get(0) == "ms":
+      Int until = pad.sdl.ticks() + number(c, 1)
+      while pad.sdl.ticks() < until:
+        pad.tick()
+        pad.sleep(5)
+      end
+    else
+      Int tries = 0
+      while arrived(c) == 0:
+        pad.tick()
+        pad.sleep(5)
+        tries = tries + 1
+        if tries > 24000:
+          throw "waited two minutes for '${c.words.get(0)}'"
+        end
+      end
+      pad.tick()
+    end
+  end
+
+  # Turns of the real loop, the one pad.run() makes, until the build or program is over.
+  def Void loopUntilIdle:
+    Int began = pad.sdl.ticks()
+    pad.step()
+    while pad.runner.busy() == 1 and pad.quitting == 0:
+      pad.step()
+      if pad.sdl.ticks() - began > 20000:
+        throw "the loop did not see the end in twenty seconds"
+      end
+    end
+  end
+
+  def Void send(Cue c):
+    if c.cmd == "key":
+      String name = c.words.get(0)
+      Int mods = 0
+      Int i = 1
+      while i < c.words.len():
+        String m = c.words.get(i)
+        if m == "shift":
+          mods = mods | SDL2C.KMOD_LSHIFT()
+        elif m == "ctrl":
+          mods = mods | SDL2C.KMOD_LCTRL()
+        elif m == "alt":
+          mods = mods | SDL2C.KMOD_LALT()
+        end
+        i = i + 1
+      end
+      pad.sdl.pushKeyWith(keyCode(name), mods)
+    elif c.cmd == "text":
+      while pad.sdl.poll() == 1:
+        pad.handle()
+      end
+      pad.onText(rest(c, 0))
+    elif c.cmd == "click":
+      pad.sdl.pushMouse(0, number(c, 0), number(c, 1), 1)
+      pad.sdl.pushMouse(1, number(c, 0), number(c, 1), 1)
+    elif c.cmd == "drag":
+      pad.sdl.pushMouse(0, number(c, 0), number(c, 1), 1)
+      pad.sdl.pushMouse(2, number(c, 2), number(c, 3), 1)
+      pad.sdl.pushMouse(1, number(c, 2), number(c, 3), 1)
+    elif c.cmd == "move":
+      pad.sdl.pushMouse(2, number(c, 0), number(c, 1), 0)
+    elif c.cmd == "wheel":
+      pad.sdl.pushWheel(number(c, 0))
+    elif c.cmd == "clip":
+      pad.sdl.setClipboard(rest(c, 0))
+    elif c.cmd == "wait":
+      waitFor(c)
+    elif c.cmd == "loop":
+      loopUntilIdle()
+    elif c.cmd == "run":
+      pad.run()
+    elif c.cmd == "draw":
+      pad.draw()
+    elif c.cmd == "peek":
+      peeked = pad.dirty
+    else
+      throw "unknown command '${c.cmd}' in the script"
+    end
+  end
+
+  def List read(String file):
+    List cues = new List()
+    File f = new File()
+    if f.open(file, "r") == 0:
+      throw "cannot open ${file}"
+    end
+    while f.eof() == 0:
+      String line = f.readLine().trim()
+      if line.len() > 0 and line.at(0) != 35:
+        List words = line.split(" ")
+        Cue c = new Cue()
+        String first = words.get(0)
+        c.frame = first.toInt()
+        c.cmd = words.get(1)
+        c.words = new List()
+        Int i = 2
+        while i < words.len():
+          c.words.append(words.get(i))
+          i = i + 1
+        end
+        cues.append(c)
+      end
+    end
+    f.close()
+    return cues
+  end
+
+  # Run a script: each frame pushes what is due, handles every event, draws.
+  def Void play(String file, Int frames, String shot):
+    List cues = read(file)
+    Int next = 0
+    Int frame = 0
+    pad.sdl.startText()
+    while frame < frames and pad.quitting == 0:
+      while next < cues.len():
+        Cue c = cues.get(next)
+        if c.frame <= frame:
+          send(c)
+          next = next + 1
+        else
+          break
+        end
+      end
+      while pad.sdl.poll() == 1:
+        pad.handle()
+      end
+      pad.draw()
+      frame = frame + 1
+    end
+    if shot.len() > 0:
+      pad.view.saveBMP(shot)
+    end
+    Report r = new Report(pad)
+    r.peeked = peeked
+    r.print()
+    if pad.quitting == 0:
+      pad.close()
+    end
+  end
+end
+
+# The state a script's test can ask about, one fact to a line.
+class Report from IO
+  Pad pad = null
+  Int peeked
+
+  constructor(Pad p):
+    pad = p
+  end
+
+  # Backslashes and newlines written out, so a state line is one line.
+  def String escaped(String s):
+    return s.replace("\\", "\\\\").replace("\n", "\\n")
+  end
+
+  def Void print:
+    Editor ed = pad.ed()
+    Palette pal = pad.pal
+    out("file ${pad.path()}\n")
+    out("text ${escaped(ed.buf.text())}\n")
+    out("cursor ${ed.line()} ${ed.col()}\n")
+    out("selection ${escaped(ed.selected())}\n")
+    out("modified ${ed.buf.modified()}\n")
+    out("message ${pad.message}\n")
+    out("palette ${pal.mode} ${pal.field.buf.text()}\n")
+    String first = "-"
+    if pal.chosen() >= 0:
+      String named = pal.names.get(pal.chosen())
+      first = named
+    end
+    out("results ${pal.results.len()} first ${first}\n")
+    String names = ""
+    Int di = 0
+    while di < pad.ws.count():
+      if di > 0:
+        names = names + "|"
+      end
+      names = names + pad.ws.at(di).label()
+      di = di + 1
+    end
+    out("tabs ${pad.ws.count()} ${pad.ws.current}\n")
+    out("tabnames ${names}\n")
+    out("sidebar ${pad.sidebarOn} ${pad.tree.count()} first ${pad.treeFirst}\n")
+    out("panel ${pad.output.open} ${pad.output.size()}\n")
+    out("paneltop ${pad.output.top}\n")
+    String all = ""
+    Int pi = 0
+    while pi < pad.output.size():
+      if pi > 0:
+        all = all + "|"
+      end
+      all = all + pad.output.lineAt(pi)
+      pi = pi + 1
+    end
+    out("panelall ${all}\n")
+    out("runner ${pad.runner.phase}\n")
+    out("term ${pad.panelMode} ${pad.termFocus} ${pad.term.running()} ${pad.term.screen.size()}\n")
+    out("termline [${pad.term.line.buf.text()}]\n")
+    out("termtop ${pad.term.screen.top}\n")
+    String tall = ""
+    Int tj = 0
+    while tj < pad.term.screen.size():
+      if tj > 0:
+        tall = tall + "|"
+      end
+      tall = tall + pad.term.screen.lineAt(tj)
+      tj = tj + 1
+    end
+    out("termall ${tall}\n")
+    out("status [${pad.statusText()}]\n")
+    out("wait ${pad.waitTime(pad.lastBlink)}\n")
+    out("peeked ${peeked}\n")
+    String last = "-"
+    if pad.output.size() > 0:
+      String tail = pad.output.lineAt(pad.output.size() - 1)
+      last = tail
+    end
+    out("panellast ${last}\n")
+    out("top ${ed.top} scrollx ${pad.ws.active().scrollX}\n")
+    out("scale ${pad.m.scale}\n")
+    out("font ${pad.fonts.name} | ${pad.fonts.id} | ${pad.fonts.size}\n")
+    out("cell ${pad.m.cell()} ${pad.m.rowHeight()}\n")
+    String fl = ""
+    Int fi = 0
+    while fi < pad.fonts.names.len():
+      if fi > 0:
+        fl = fl + "|"
+      end
+      fl = fl + pad.fonts.names.get(fi)
+      fi = fi + 1
+    end
+    out("fonts ${fl}\n")
+    out("quit ${pad.quitting}\n")
+    out("theme ${pad.themes.t.name}\n")
+  end
+end

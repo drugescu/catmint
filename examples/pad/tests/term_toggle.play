@@ -1,0 +1,9 @@
+# Ctrl ` shows the terminal in the bottom panel and puts the keyboard in it: the panel is
+# open, it holds the terminal and not the compiler's output, a shell is running, and
+# nothing has been printed.
+# files t.txt=abc
+# open t.txt
+# frames 3
+# expect term 1 1 1 0
+# expect panel 1 0
+1 key ` ctrl

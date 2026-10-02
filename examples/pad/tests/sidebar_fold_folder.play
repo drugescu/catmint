@@ -1,0 +1,9 @@
+# Clicking a folder opens it and clicking it again folds it.
+# files a.txt=A
+# files sub/b.txt=B
+# open a.txt
+# frames 6
+# expect sidebar 1 2
+1 key b ctrl
+2 click 60 10
+3 click 60 10

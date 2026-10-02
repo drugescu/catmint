@@ -1,0 +1,13 @@
+# Select a line with shift+Home, copy, go to the end, paste: the line twice.
+# Select all, cut, paste: the same text back, through the clipboard both ways.
+# frames 12
+# expect text hello worldhello world
+# expect cursor 1 23
+1 text hello world
+2 key home shift
+3 key c ctrl
+4 key end
+5 key v ctrl
+6 key a ctrl
+7 key x ctrl
+8 key v ctrl

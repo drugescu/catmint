@@ -1,0 +1,40 @@
+# Finding text in the file being edited: what is being looked for, and where the
+# looking began. The matching itself is lib/editor.cmm's (find, replaceNext,
+# replaceAll); this is the memory around it, so that a search typed a letter at a
+# time keeps starting from the same place, and F3 has something to repeat.
+
+using editor
+
+class Search from Object
+  String needle = ""
+  Int origin
+
+  # A search begins where the selection does.
+  def Void begin(Editor ed):
+    origin = ed.selStart()
+  end
+
+  def Int has:
+    if needle.len() > 0:
+      return 1
+    end
+    return 0
+  end
+
+  # The text changed: look again from where this search began, so that the match
+  # under the cursor stays put while it still matches. 1 if found (or nothing
+  # is wanted), 0 if not.
+  def Int typed(Editor ed, String text):
+    needle = text
+    ed.moveTo(origin, 0)
+    if needle.len() == 0:
+      return 1
+    end
+    return ed.find(needle, 1)
+  end
+
+  # The next match (forward = 1) or the one before; 0 if there is none.
+  def Int again(Editor ed, Int forward):
+    return ed.find(needle, forward)
+  end
+end

@@ -1,0 +1,13 @@
+# The last row is the status line, in the panel colour (35, 40, 48) across the
+# whole window: the file's name at the left in the text colour, with " *" when it
+# has been changed, and line:column at the right in the dim colour.
+# files t.cm=one\ntwo
+# open t.cm
+# frames 4
+# pixels 0 618 960 640 35 40 48 some
+# pixels 8 618 400 640 223 225 230 some
+# pixels 880 618 960 640 137 147 160 some
+# pixels 0 596 960 618 35 40 48 none
+# expect cursor 2 2
+1 key down
+2 key right

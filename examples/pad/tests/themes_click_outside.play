@@ -1,0 +1,11 @@
+# A click outside the list dismisses it, like Esc: the theme in use before it was
+# opened comes back.
+# frames 8
+# expect theme Catmint Dark
+# expect palette 0
+# pixels 400 200 500 300 30 34 41 10000
+1 key p ctrl
+2 text color
+3 key enter
+4 text dracula
+5 click 50 300

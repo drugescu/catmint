@@ -1,0 +1,606 @@
+# A program running in the background, for a window that cannot wait for it.
+#
+#   using job
+#   Job j = new Job()
+#   List argv = new List()
+#   argv.append("make")
+#   argv.append("all")
+#   j.start(argv, "")                 # 1 if it started; "" is the folder we are in
+#   ...                               # once a frame:
+#   List lines = j.poll()             # what has been printed since; never waits
+#   if j.running() == 0: ... j.code() # the exit status, once it is over
+#   j.stop()                          # ask it to end; ask again and it is killed
+#
+# The program is started without a shell reading its arguments (a file name is
+# only ever a name; see Process.startArgs), in the folder given, with no input at
+# all, and its standard output and standard error go, in the order they happen,
+# to one file in a folder made for it that only the user can enter. poll() reads
+# what has been added to that file. A file never blocks a read at its end, which
+# a pipe does, and that is the whole reason for it: the window goes on.
+#
+# A relative program name ("./app") is looked for from the folder given, not from
+# where we are.
+#
+# What comes back is lines: the last one, if the program ended without a newline,
+# when it ends; a NUL is a ?; a trailing carriage return is dropped; a line longer
+# than 64 KB is given in pieces. poll() reads at most 256 KB, so a program that
+# prints as fast as it can does not hold the window for long, and a program that
+# has printed `limit` bytes (8 MB) is stopped, and the last line says so, so
+# a loop with a print in it cannot fill the disk.
+#
+# stop() reaches what the program started as well as the program: a shell running
+# a pipeline is stopped with the pipeline. They are found with `ps`, and signalled
+# together, so a loop that prints has no child left to go on printing after it.
+# A program that has hit the limit and ignores being asked is killed about a second
+# (sixty polls) later.
+#
+# With `interactive = 1` set before start(), the program's input is a named pipe in the
+# same folder instead of nothing, and the window can type into it:
+#
+#   j.send("ls\n")        # queue text for the program; 0 if it cannot be taken
+#   j.interrupt()         # ^C: signal what the program started, not the program
+#   j.closeInput()        # ^D: the end of the input, once what was sent has gone in
+#
+# send() never waits. The text is queued, and poll() writes as much of it as the pipe
+# will take, which is not waiting because the pipe is opened non-blocking, so a program
+# that is not reading holds up nothing but its own input. At most a megabyte
+# may be waiting. The pipe is opened for reading and writing here, so the program
+# can open it for reading at once and never sees the end of its input until
+# closeInput().
+#
+# The status is what the shell would report: 128 and the signal if a signal ended
+# it (143 for stop(), 137 for the second), 127 if there is no such program, and 1
+# if the folder is not there. -1 until it is known.
+#
+# The status word that waitpid fills in is read as its first two bytes, which is
+# little-endian, as on every machine this runs on.
+
+using files
+
+extern class JobC
+  def Ptr mkdtemp(Bytes template)
+  def Int rmdir(String path)
+  def Int open_read = open(String path, Int flags, ... Int mode)
+  def Int64 read(Int fd, Bytes buffer, UInt64 count)
+  def Int64 write(Int fd, Bytes buffer, UInt64 count)
+  def Int mkfifo(String path, Int mode)
+  def Int close(Int fd)
+  def Int waitpid(Int pid, Bytes status, Int options)
+  def Int kill(Int pid, Int signal)
+  def String getenv(String name)
+  def Ptr signal(Int number, Ptr handler)
+end
+
+class Job from Object
+  # The most the program may print before it is stopped.
+  Int limit = 8 * 1024 * 1024
+  # How much of it has been read.
+  Int total
+  # Where the output is, and the folder it is in; gone when the job is over.
+  String dir = ""
+  String file = ""
+  Int pid
+  Int fd = 0 - 1
+  Int started
+  Int exited
+  Int finished
+  Int capped
+  Int asked
+  Int status = 0 - 1
+  String pending = ""
+  Bytes chunk = null
+  Bytes word = null
+  # 1 to give the program a pipe to read, which send() writes to.
+  Int interactive
+  # The pipe's path and descriptor, when there is one.
+  String input = ""
+  # Made by the launcher once it has the pipe open: until then the pipe cannot be
+  # closed, or the program, finding no one on the other end, waits for ever.
+  String ready = ""
+  Int inFd = 0 - 1
+  # What send() has been given and not yet written: outbox from outAt on.
+  String outbox = ""
+  Int outAt
+  Int closing
+
+  constructor():
+    chunk = new Bytes(16384)
+    word = new Bytes(4)
+  end
+
+  def Int running:
+    if started == 1 and finished == 0:
+      return 1
+    end
+    return 0
+  end
+
+  # How it ended; -1 if it has not.
+  def Int code:
+    return status
+  end
+
+  # Where temporary things go: $TMPDIR, else /tmp, with no slash on the end.
+  def String tempBase:
+    String base = ""
+    unsafe:
+      base = JobC.getenv("TMPDIR")
+    end
+    if base == null or base.len() == 0:
+      base = "/tmp"
+    end
+    while base.len() > 1 and base.at(base.len() - 1) == 47:
+      base = base.substr(0, base.len() - 1)
+    end
+    return base
+  end
+
+  # A new folder for the output, 0700, or "" if it could not be made.
+  def String makeDir:
+    String pattern = tempBase() + "/catmint-job-XXXXXX"
+    Bytes template = new Bytes(pattern.len() + 1)
+    Int i = 0
+    while i < pattern.len():
+      template.set(i, pattern.at(i))
+      i = i + 1
+    end
+    template.set(pattern.len(), 0)
+    Ptr made = null
+    unsafe:
+      made = JobC.mkdtemp(template)
+    end
+    if made == null:
+      return ""
+    end
+    String name = ""
+    unsafe:
+      name = String.fromC(template, pattern.len() + 1)
+    end
+    return name
+  end
+
+  # O_NONBLOCK, which is 0x800 on Linux and 4 on macOS. The pipe is written without
+  # waiting: a write that finds no room says so instead of holding the window up. (poll
+  # said there was room when there was less than a piece on macOS, and the write then
+  # waited for the program to read.)
+  def Int nonBlocking:
+    if File.exists("/proc/self") == 1:
+      return 2048
+    end
+    return 4
+  end
+
+  # Give back the descriptors, the files and the folder.
+  def Void tidy:
+    if inFd >= 0:
+      unsafe:
+        JobC.close(inFd)
+      end
+      inFd = 0 - 1
+    end
+    if input.len() > 0:
+      File.remove(input)
+      input = ""
+    end
+    if ready.len() > 0:
+      File.remove(ready)
+      ready = ""
+    end
+    outbox = ""
+    outAt = 0
+    if fd >= 0:
+      unsafe:
+        JobC.close(fd)
+      end
+      fd = 0 - 1
+    end
+    if file.len() > 0:
+      File.remove(file)
+    end
+    if dir.len() > 0:
+      unsafe:
+        JobC.rmdir(dir)
+      end
+    end
+  end
+
+  # Start argv, a List of Strings, in the folder `where` ("" for this one).
+  # 0 if it did not start: nothing to run, one already running, or no room for the
+  # output.
+  def Int start(List argv, String where):
+    if running() == 1 or argv.len() == 0:
+      return 0
+    end
+    total = 0
+    exited = 0
+    finished = 0
+    capped = 0
+    asked = 0
+    status = 0 - 1
+    closing = 0
+    dir = makeDir()
+    if dir.len() == 0:
+      return 0
+    end
+    file = dir + "/output"
+    String feed = "/dev/null"
+    String signal = "/dev/null"
+    if interactive == 1:
+      input = dir + "/input"
+      ready = dir + "/ready"
+      signal = ready
+      Int fifo = 0 - 1
+      unsafe:
+        fifo = JobC.mkfifo(input, 448)
+        if fifo == 0:
+          inFd = JobC.open_read(input, 2 + nonBlocking(), 0)
+        end
+      end
+      if inFd < 0:
+        tidy()
+        return 0
+      end
+      feed = input
+    end
+    File made = new File()
+    if made.open(file, "w") == 0:
+      tidy()
+      return 0
+    end
+    made.close()
+    String folder = where
+    if folder.len() == 0:
+      folder = "."
+    end
+    List launch = new List()
+    # The shell is only here to set things up and then become the program: the output
+    # file, no input, the folder, and a program that is not there said so with 127
+    # whatever the shell would have said (macOS's sh says 126 for a path with a slash).
+    launch.append("/bin/sh")
+    launch.append("-c")
+    launch.append("exec >\"$1\" 2>&1 <\"$3\"; : >\"$4\"; cd -- \"$2\" || exit 1; shift 4; case \"$1\" in */*) [ -e \"$1\" ] || { echo \"$1: not found\"; exit 127; };; esac; exec \"$@\"")
+    launch.append("job")
+    launch.append(file)
+    launch.append(folder)
+    launch.append(feed)
+    launch.append(signal)
+    Int i = 0
+    while i < argv.len():
+      launch.append(argv.get(i))
+      i = i + 1
+    end
+    # A program started from a script's background job has SIGINT ignored, and so would
+    # everything started here, and ^C (interrupt()) could stop nothing; and a process started
+    # by a CI runner has SIGPIPE ignored, so `yes | head` makes `yes` print "Broken pipe"
+    # instead of quietly stopping, which put an extra line in the output. The program is
+    # started with both at their default, and this process gets back what it had.
+    Ptr beforeInt = null
+    Ptr beforePipe = null
+    unsafe:
+      beforeInt = JobC.signal(2, null)
+      beforePipe = JobC.signal(13, null)
+    end
+    pid = Process.startArgs(launch)
+    unsafe:
+      JobC.signal(2, beforeInt)
+      JobC.signal(13, beforePipe)
+    end
+    if pid <= 0:
+      tidy()
+      return 0
+    end
+    unsafe:
+      fd = JobC.open_read(file, 0, 0)
+    end
+    if fd < 0:
+      unsafe:
+        JobC.kill(pid, 9)
+      end
+      Process.wait(pid)
+      tidy()
+      return 0
+    end
+    started = 1
+    return 1
+  end
+
+  # The number at the given place (0, 1, ...) of a line of numbers, or -1.
+  static def Int field(String line, Int which):
+    Int seen = 0 - 1
+    Int value = 0 - 1
+    Int i = 0
+    while i < line.len():
+      Int c = line.at(i)
+      if c >= 48 and c <= 57:
+        if value < 0:
+          seen = seen + 1
+          value = 0
+        end
+        if seen == which:
+          value = value * 10 + c - 48
+        end
+      else
+        if seen == which and value >= 0:
+          return value
+        end
+        value = 0 - 1
+      end
+      i = i + 1
+    end
+    if seen == which:
+      return value
+    end
+    return 0 - 1
+  end
+
+  # 1 if the first `count` numbers of list include value.
+  static def Int has(Ints list, Int count, Int value):
+    Int i = 0
+    while i < count:
+      if list.get(i) == value:
+        return 1
+      end
+      i = i + 1
+    end
+    return 0
+  end
+
+  # root and everything below it, from lines of "pid ppid" as `ps` prints them. A line
+  # that is not two numbers adds nothing, and nothing is found twice, so a table that
+  # loops back on itself ends. Never a number below 1 comes out: kill(0) and kill(-1)
+  # mean whole groups of processes.
+  static def Ints descendants(List table, Int root):
+    Ints pids = new Ints(table.len())
+    Ints parents = new Ints(table.len())
+    Int i = 0
+    while i < table.len():
+      String line = table.get(i)
+      pids.set(i, Job.field(line, 0))
+      parents.set(i, Job.field(line, 1))
+      i = i + 1
+    end
+    Ints found = new Ints(table.len() + 1)
+    found.set(0, root)
+    Int count = 1
+    Int at = 0
+    while at < count:
+      Int j = 0
+      while j < table.len():
+        if parents.get(j) == found.get(at) and pids.get(j) > 0 and Job.has(found, count, pids.get(j)) == 0:
+          found.set(count, pids.get(j))
+          count = count + 1
+        end
+        j = j + 1
+      end
+      at = at + 1
+    end
+    Ints result = new Ints(count)
+    i = 0
+    while i < count:
+      result.set(i, found.get(i))
+      i = i + 1
+    end
+    return result
+  end
+
+  # The program and everything it started, as process numbers, from `ps`.
+  def Ints family:
+    List table = new List()
+    List ask = new List()
+    ask.append("ps")
+    ask.append("-A")
+    ask.append("-o")
+    ask.append("pid=,ppid=")
+    Process q = new Process()
+    q.openArgs(ask)
+    while q.eof() == 0:
+      table.append(q.readLine())
+    end
+    q.finish()
+    return Job.descendants(table, pid)
+  end
+
+  # Ask the program to end (SIGTERM); asked again, make it (SIGKILL).
+  def Void stop:
+    if running() == 1 and exited == 0:
+      asked = asked + 1
+      Int signal = 15
+      if asked > 1:
+        signal = 9
+      end
+      Ints all = family()
+      Int i = 0
+      while i < all.len():
+        unsafe:
+          JobC.kill(all.get(i), signal)
+        end
+        i = i + 1
+      end
+    end
+  end
+
+  # Hand the pipe as much of what is waiting as it has room for, 512 bytes at a time;
+  # and when the end of the input has been asked for and all has gone, close it.
+  def Void flush:
+    if inFd >= 0:
+      while outAt < outbox.len():
+        Int stop = outAt + 4096
+        if stop > outbox.len():
+          stop = outbox.len()
+        end
+        String piece = outbox.substr(outAt, stop)
+        Bytes data = piece.toBytes()
+        Int64 wrote = 0
+        unsafe:
+          wrote = JobC.write(inFd, data, piece.len())
+        end
+        if wrote <= 0:
+          break
+        end
+        outAt = outAt + wrote
+      end
+      if outAt >= outbox.len():
+        outbox = ""
+        outAt = 0
+        if closing == 1 and File.exists(ready) == 1:
+          unsafe:
+            JobC.close(inFd)
+          end
+          inFd = 0 - 1
+        end
+      end
+    end
+  end
+
+  # Queue text for the program to read. 1 if it is taken; 0 if the program is not running
+  # or takes no input, or there is a megabyte waiting already.
+  def Int send(String text):
+    if inFd < 0 or closing == 1:
+      return 0
+    end
+    if outbox.len() - outAt + text.len() > 1048576:
+      return 0
+    end
+    outbox = outbox.substr(outAt, outbox.len()) + text
+    outAt = 0
+    flush()
+    return 1
+  end
+
+  # The end of the program's input, once what was sent has gone in: ^D.
+  def Void closeInput:
+    if inFd >= 0:
+      closing = 1
+      flush()
+    end
+  end
+
+  # ^C: signal what the program started, and not the program, which goes on to its next
+  # command if it is a shell.
+  def Void interrupt:
+    if running() == 1 and exited == 0:
+      Ints all = family()
+      Int i = 1
+      while i < all.len():
+        unsafe:
+          JobC.kill(all.get(i), 2)
+        end
+        i = i + 1
+      end
+    end
+  end
+
+  # Has it ended? Finds out without waiting, and keeps how.
+  def Void reap:
+    Int r = 0
+    unsafe:
+      r = JobC.waitpid(pid, word, 1)
+    end
+    if r == pid:
+      # The status word: the signal in the low seven bits, else the exit code above.
+      Int signal = word.get(0) & 127
+      if signal == 0:
+        status = word.get(1)
+      else
+        status = 128 + signal
+      end
+      exited = 1
+    elif r < 0:
+      exited = 1
+    end
+  end
+
+  # The lines in a piece of the output, the last part of a line kept for next time.
+  def Void split(String piece, List lines):
+    List parts = (pending + piece).split("\n")
+    Int i = 0
+    while i < parts.len() - 1:
+      String line = parts.get(i)
+      lines.append(trimmed(line))
+      i = i + 1
+    end
+    String rest = parts.get(parts.len() - 1)
+    pending = rest
+    if pending.len() > 65536:
+      lines.append(pending)
+      pending = ""
+    end
+  end
+
+  def String trimmed(String line):
+    if line.len() > 0 and line.at(line.len() - 1) == 13:
+      return line.substr(0, line.len() - 1)
+    end
+    return line
+  end
+
+  # Read what has been added, up to 256 KB. 1 if that was all there is.
+  def Int fill(List lines):
+    Int reads = 0
+    while reads < 16 and capped == 0:
+      Int n = 0
+      unsafe:
+        n = JobC.read(fd, chunk, 16384)
+      end
+      if n <= 0:
+        return 1
+      end
+      Int i = 0
+      while i < n:
+        if chunk.get(i) == 0:
+          chunk.set(i, 63)
+        end
+        i = i + 1
+      end
+      String piece = ""
+      unsafe:
+        piece = String.fromC(chunk, n)
+      end
+      split(piece, lines)
+      total = total + n
+      if total >= limit:
+        capped = 1
+        stop()
+      end
+      reads = reads + 1
+    end
+    return 0
+  end
+
+  # What the program has printed since the last call, as whole lines. Never waits.
+  def List poll:
+    List lines = new List()
+    if running() == 0:
+      return lines
+    end
+    flush()
+    # Look for the end first and read after: a program seen to have ended before the
+    # read has written everything the read can find, and reading to the end of the file
+    # then is reading all of it. The other way round, what it writes in between is lost.
+    reap()
+    Int drained = fill(lines)
+    if capped > 0:
+      capped = capped + 1
+      if capped == 60:
+        stop()
+      end
+      if pending.len() > 0:
+        lines.append(pending)
+        pending = ""
+      end
+      if exited == 1:
+        lines.append("[output limit reached - stopped]")
+        finished = 1
+        tidy()
+      end
+    elif exited == 1 and drained == 1:
+      if pending.len() > 0:
+        lines.append(trimmed(pending))
+        pending = ""
+      end
+      finished = 1
+      tidy()
+    end
+    return lines
+  end
+end

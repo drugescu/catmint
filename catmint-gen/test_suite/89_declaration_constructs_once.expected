@@ -1,0 +1,20 @@
+the one that is held:
+  [constructed]
+a bare declaration makes one:
+  [constructed]
+  usable: 5
+a declaration with new makes one:
+  [constructed]
+a declaration from a field makes none, and is that object:
+  same: 1
+  and changing it changes the held one: 1
+a declaration from a call makes only what the call makes:
+  [constructed]
+a declaration from an Object makes none:
+  same: 1
+a declaration from null makes none:
+  null: 1
+several names, one declaration, one object each:
+  [constructed]
+  [constructed]
+  1 2

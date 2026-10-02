@@ -1,0 +1,10 @@
+# A folder that is folded shows ">" before its name and a file shows nothing: the
+# glyph ">" is 18 pixels in Unscii and sits in the cell at x = 8 to 16. The file "a.txt"
+# is the second row, y 22 to 44.
+# files a.txt=A
+# files sub/b.txt=B
+# open a.txt
+# frames 4
+# pixels 8 0 16 22 223 225 230 18
+# pixels 8 22 16 44 223 225 230 none
+1 key b ctrl

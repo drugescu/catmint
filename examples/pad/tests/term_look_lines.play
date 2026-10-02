@@ -1,0 +1,13 @@
+# The scrollback is drawn from the panel's first row, y = 442, 22 a row, in the text
+# colour (223, 225, 230): "$ echo hi" on the first row (206 pixels) and "hi" under it (59).
+# Nothing is drawn on the second row below that.
+# files t.txt=abc
+# open t.txt
+# frames 5
+# pixels 8 442 960 464 223 225 230 206
+# pixels 8 464 960 486 223 225 230 59
+# pixels 8 486 960 508 223 225 230 none
+1 key ` ctrl
+2 text echo hi
+3 key enter
+4 wait term hi

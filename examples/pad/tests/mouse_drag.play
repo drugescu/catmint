@@ -1,0 +1,7 @@
+# The drag alone.
+# files t.txt=hello world\nsecond line\n
+# open t.txt
+# frames 6
+# expect cursor 1 8
+# expect selection llo w
+1 drag 72 10 112 10

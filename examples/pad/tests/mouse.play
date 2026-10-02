@@ -1,0 +1,13 @@
+# The text starts at x = 56 (two cells of margin, three of line number, two of
+# gap) and a cell is 8 wide, a row 22 high. A click at x = 96 is column 5; a
+# drag from x = 72 to x = 112 takes columns 2 to 7, "llo w"; two clicks in one
+# place select the word under them; a click on the second row goes there.
+# files t.txt=hello world\nsecond line\n
+# open t.txt
+# frames 12
+# expect cursor 2 2
+1 click 96 10
+2 drag 72 10 112 10
+3 click 114 10
+4 click 114 10
+5 click 60 27

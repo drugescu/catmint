@@ -1,0 +1,10 @@
+# The list opens on the themes in order with the one in use selected, so what is
+# in front of you is what is highlighted. Nord is the fourth of thirteen; with
+# the list showing ten, the highlighted row is the one in use.
+# config-files settings=theme=Nord\n
+# frames 4
+# expect palette 7 
+# expect first Nord
+1 key p ctrl
+2 text color
+3 key enter

@@ -1,0 +1,208 @@
+# The editor's text buffer against the simplest thing that could be right: the
+# whole text held in one String and edited by cutting and joining. A gap buffer
+# with a line index kept up to date by hand is exactly where an off-by-one
+# hides for months, so thousands of random edits (inserts, removals, undo and
+# redo, with newlines and two-byte characters among them) must leave both
+# agreeing after every step, on the text, on how many lines there are, and on
+# where each starts and ends.
+
+using textbuffer
+using random
+
+class Main from IO
+  # The model's answers, by scanning.
+  def lineCountOf(String m):
+    Int n = 1
+    Int i = 0
+    while i < m.len():
+      if m.at(i) == 10:
+        n = n + 1
+      end
+      i = i + 1
+    end
+    return n
+  end
+
+  def startOf(String m, Int line):
+    Int seen = 0
+    Int i = 0
+    while seen < line and i < m.len():
+      if m.at(i) == 10:
+        seen = seen + 1
+      end
+      i = i + 1
+    end
+    return i
+  end
+
+  def endOf(String m, Int line):
+    Int i = startOf(m, line)
+    while i < m.len() and m.at(i) != 10:
+      i = i + 1
+    end
+    return i
+  end
+
+  # 0 when the buffer agrees with the model on everything asked of it.
+  def disagreement(TextBuffer b, String m, Random rng):
+    if b.length() != m.len():
+      return 1
+    end
+    if b.text() != m:
+      return 2
+    end
+    Int lines = lineCountOf(m)
+    if b.lines() != lines:
+      return 3
+    end
+    Int probes = 0
+    while probes < 3:
+      Int line = rng.below(lines)
+      if b.lineStart(line) != startOf(m, line):
+        return 4
+      end
+      if b.lineEnd(line) != endOf(m, line):
+        return 5
+      end
+      probes = probes + 1
+    end
+    Int pos = rng.below(m.len() + 1)
+    Int expected = 0
+    Int i = 0
+    while i < pos:
+      if m.at(i) == 10:
+        expected = expected + 1
+      end
+      i = i + 1
+    end
+    if b.lineOf(pos) != expected:
+      return 6
+    end
+    return 0
+  end
+
+  def main:
+    List pieces = new List()
+    pieces.append("a")
+    pieces.append("bc")
+    pieces.append("\n")
+    pieces.append("xy\nz")
+    pieces.append(String.chr(195) + String.chr(169))
+    pieces.append(" ")
+    pieces.append("hello world")
+    pieces.append("\n\n")
+
+    Random rng = new Random()
+    rng.seed(7)
+    TextBuffer b = new TextBuffer()
+    String model = ""
+    List undo = new List()
+    List redo = new List()
+    Int edits = 0
+    Int step = 0
+    Int bad = 0
+    Int firstBad = 0
+    while step < 4000:
+      Int what = rng.below(10)
+      if what < 6:
+        String piece = pieces.get(rng.below(8))
+        Int pos = rng.below(model.len() + 1)
+        undo.append(model)
+        redo = new List()
+        model = model.substr(0, pos) + piece + model.substr(pos, model.len())
+        b.insert(pos, piece)
+        edits = edits + 1
+      elif what < 8:
+        Int a = rng.below(model.len() + 1)
+        Int span = rng.below(12)
+        Int z = a + span
+        if z > model.len():
+          z = model.len()
+        end
+        if z > a:
+          undo.append(model)
+          redo = new List()
+          model = model.substr(0, a) + model.substr(z, model.len())
+          b.remove(a, z)
+          edits = edits + 1
+        end
+      elif what == 8:
+        Int moved = b.undo()
+        if undo.len() > 0:
+          redo.append(model)
+          model = undo.get(undo.len() - 1)
+          undo = undo.slice(0, undo.len() - 1)
+          if moved < 0:
+            bad = bad + 1
+          end
+        elif moved >= 0:
+          bad = bad + 1
+        end
+      else
+        Int moved = b.redo()
+        if redo.len() > 0:
+          undo.append(model)
+          model = redo.get(redo.len() - 1)
+          redo = redo.slice(0, redo.len() - 1)
+          if moved < 0:
+            bad = bad + 1
+          end
+        elif moved >= 0:
+          bad = bad + 1
+        end
+      end
+      b.breakUndo()
+      Int why = disagreement(b, model, rng)
+      if why != 0:
+        if bad == 0:
+          firstBad = step * 10 + why
+        end
+        bad = bad + 1
+      end
+      step = step + 1
+    end
+    out("${edits} edits among ${step} steps agree with the model, undo and redo included: ${bad == 0}\n")
+    if bad != 0:
+      out("first disagreement at step*10+reason ${firstBad}\n")
+    end
+
+    # Code points: a step lands on a character, not in the middle of one.
+    TextBuffer u = new TextBuffer()
+    u.load("a" + String.chr(195) + String.chr(169) + "b")
+    out("next ${u.next(0)} ${u.next(1)} ${u.next(3)}, prev ${u.prev(4)} ${u.prev(3)} ${u.prev(1)}\n")
+
+    # Lines: an empty buffer has one empty line; a CR before the newline is not
+    # part of the line's text but is kept in the text.
+    TextBuffer e = new TextBuffer()
+    out("empty: ${e.lines()} line, '${e.lineText(0)}', length ${e.length()}\n")
+    TextBuffer c = new TextBuffer()
+    c.load("one\r\ntwo\n")
+    out("crlf: ${c.lines()} lines, '${c.lineText(0)}' '${c.lineText(1)}' '${c.lineText(2)}', length ${c.length()}\n")
+
+    # Searching, forwards and backwards, against indexOf.
+    TextBuffer f = new TextBuffer()
+    f.load("one two one two one")
+    out("find: ${f.find("one", 0, 1)} ${f.find("one", 1, 1)} ${f.find("one", 9, 1)} ${f.find("one", 17, 1)} ${f.find("zzz", 0, 1)}\n")
+    out("find back: ${f.find("one", 19, 0)} ${f.find("one", 15, 0)} ${f.find("one", 7, 0)} ${f.find("one", 0, 0)} ${f.find("zzz", 19, 0)}\n")
+
+    # A large buffer: a hundred thousand lines, edited at both ends.
+    String chunk = "0123456789\n"
+    String big = chunk
+    Int doublings = 0
+    while doublings < 13:
+      big = big + big
+      doublings = doublings + 1
+    end
+    TextBuffer g = new TextBuffer()
+    g.load(big)
+    Int lines = g.lines()
+    g.insert(0, "X")
+    g.insert(g.length(), "Y")
+    g.insert(g.lineStart(lines - 1), "\n")
+    out("large: ${big.len()} bytes, ${lines} lines; after three edits ${g.lines()} lines, line 1 '${g.lineText(1)}', first '${g.lineText(0)}', last '${g.lineText(g.lines() - 1)}'\n")
+    g.undo()
+    g.undo()
+    g.undo()
+    out("large, undone: ${g.length() == big.len()} ${g.text() == big} ${g.lines() == lines}\n")
+  end
+end

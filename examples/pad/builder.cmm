@@ -1,0 +1,81 @@
+# Running catmintc on the file being edited: finding the compiler, and what to give it.
+#
+# Where the compiler is, when --catmintc did not say: started from the repository,
+# it is ./catmintc; started as examples/pad/pad from anywhere, it is two folders up
+# from this program; otherwise whatever is on the PATH. The compiler finds the library
+# beside itself, so a program that says `using sdl` builds without being told where sdl is.
+# The program is built next to its source,
+# with its name less the .cm. It only says what to run; running it, a build or the
+# program, is the Runner's (runner.cmm).
+
+using files
+
+class Builder from Object
+  String compiler = ""
+  List includes = null
+
+  constructor():
+    includes = new List()
+  end
+
+  def Void locate(String argv0):
+    String found = ""
+    if File.exists("catmintc") == 1 and Files.isDirectory("catmintc") == 0:
+      found = "./catmintc"
+    else
+      Int slash = 0 - 1
+      Int i = 0
+      while i < argv0.len():
+        if argv0.at(i) == 47:
+          slash = i
+        end
+        i = i + 1
+      end
+      if slash >= 0:
+        String near = argv0.substr(0, slash) + "/../../catmintc"
+        if File.exists(near) == 1:
+          found = near
+        end
+      end
+    end
+    if found.len() == 0:
+      found = "catmintc"
+    end
+    compiler = found
+  end
+
+  # Where a build of this file is put: its name less the extension.
+  def String outputFor(String path):
+    if path.len() > 3 and path.substr(path.len() - 3, path.len()).equals(".cm"):
+      return path.substr(0, path.len() - 3)
+    end
+    return path + ".out"
+  end
+
+  # What to run to build path: the compiler, the library folders, the file, and
+  # where the program goes.
+  def List command(String path):
+    List args = new List()
+    args.append(compiler)
+    Int i = 0
+    while i < includes.len():
+      args.append("-I")
+      args.append(includes.get(i))
+      i = i + 1
+    end
+    args.append(path)
+    args.append("-o")
+    args.append(outputFor(path))
+    return args
+  end
+
+  # What to run to run the program built from path. A name with no slash in it would
+  # be looked for on the PATH, so it is made to say it is here; a whole path is as it is.
+  def String program(String path):
+    String built = outputFor(path)
+    if built.at(0) == 47:
+      return built
+    end
+    return "./" + built
+  end
+end

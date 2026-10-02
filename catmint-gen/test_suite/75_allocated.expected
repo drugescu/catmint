@@ -1,0 +1,11 @@
+one, held by a variable: 1
+let go: 0
+a list of a thousand: 1001
+let go: 0
+a holder and what it holds: 2
+let go: 0
+still held by the second holder: 2
+both gone: 0
+made by a method and kept: 1
+let go: 0
+a cycle is still alive: 2

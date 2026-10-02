@@ -1,0 +1,27 @@
+closed to begin with: 1
+open, in command mode: 1
+opened: [] >Save Save as Find Find next Undo Quit
+typed f: [f] >Find Find next
+typed n: [fn] >Find next Find
+the selected one's hint: F3
+backspace: [f] >Find Find next
+typed s before the f: [sf] (nothing)
+backspace takes the s: [f] >Find Find next
+and again: [] >Save Save as Find Find next Undo Quit
+down twice: [] Save Save as >Find Find next Undo Quit
+up once: [] Save >Save as Find Find next Undo Quit
+up past the top: [] >Save Save as Find Find next Undo Quit
+down past the bottom: [] Save Save as Find Find next Undo >Quit
+typing puts the selection back: [u] >Undo Quit
+accepts 4
+typed zz: [uzz] (nothing)
+accepts -1 and hint []
+newlines dropped: [uzzabc] (nothing)
+closed: 1
+opened again, as files: [] >Save Save as Find Find next Undo Quit
+prompt: file
+typed sa: [sa] >Save Save as
+go to line: [] (nothing)
+reads as 42
+with a letter in it, -1
+emptied, -1

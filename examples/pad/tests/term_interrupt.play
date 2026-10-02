@@ -1,0 +1,15 @@
+# Ctrl C stops what the shell is running and not the shell: sleep is stopped (SIGINT, so
+# its status is 130), the command after it runs, and the shell takes the next line.
+# files t.txt=abc
+# open t.txt
+# frames 9
+# expect term 1 1 1
+# expect termall $ echo started; sleep 30; echo status $?|started|status 130|$ echo alive|alive
+1 key ` ctrl
+2 text echo started; sleep 30; echo status $?
+3 key enter
+4 wait term started
+5 wait ctrlc status 130
+6 text echo alive
+7 key enter
+8 wait term alive

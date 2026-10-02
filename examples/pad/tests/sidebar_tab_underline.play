@@ -1,0 +1,13 @@
+# The same, looked at before the click: the tab in front is the second, and its
+# underline is at x = 312 to 400, not at 88 to 176.
+# files a.txt=A
+# files b.txt=B
+# open a.txt
+# frames 6
+# expect tabs 2 1
+# pixels 312 21 400 22 232 176 74 88
+# pixels 88 21 176 22 232 176 74 none
+1 key b ctrl
+2 key o ctrl
+3 text b.t
+4 key enter

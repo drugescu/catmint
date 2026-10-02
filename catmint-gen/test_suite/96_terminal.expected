@@ -1,0 +1,27 @@
+unstarted: yes, screen $ echo x|x
+before: running 0, prompt [$ ]
+start: 1, running 1, lines 0
+echo: yes, screen $ echo hi|hi, line []
+empty: $ echo hi|hi|$ |$ echo next|next
+state: yes yes
+environment: yes
+colour: yes
+tab: yes
+history: 2; back [echo two] [echo one] [echo one]; forward [echo two] [ec] [ec]
+forward again: [ec]
+recalled, then typed: [echo two!]
+cap: 100 kept, newest [: 149], oldest [: 50]
+start folder: yes
+scrolled up: following 0, top 22
+entered: following 1, top 26
+interrupt: stopped by SIGINT yes, alive yes, running 1
+eof: yes, running 0
+eof said 1 time
+restart: new shell yes, again yes
+exit: yes, running 0
+exit said 1 time, tick reported every change: yes
+typed: [ab]
+clear: 0 lines, line [keep], follows 1, keeps the newest 1
+stop: running 0, folder after no
+stubborn: running 0, quick yes
+no room: 0, [could not start a shell]

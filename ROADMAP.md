@@ -719,7 +719,47 @@ Still to do: an aarch64 Linux job in CI (`ubuntu-24.04-arm`), so the Linux file
 is run, not only compared, on both architectures on every push; locally the
 arm64 container does that today.
 
-### A. Callbacks
+### A. Callbacks — **done**, on the `callbacks` branch
+
+Built as designed below, with these departures, each for a reason found while
+building it:
+
+- **No `callback` keyword, no `extern callback`.** `callback` is a field and a
+  parameter name all through the generated `sdl2.cmm` and the obvious name of a
+  variable; reserving it would have broken those and invited more. The type is
+  declared `extern def Compare(Ptr left, Ptr right) Int` (existing keywords,
+  reads like a C typedef), and a method is passed by *naming* it,
+  `Libc.qsort(buf, n, 8, Order.ascending)`, which the parser already reads as a
+  field access on a class name. No new token, no new AST node, and the grammar's
+  conflict count did not move (12 and 1). `&Order.ascending` was considered and
+  would have added a conflict.
+- **The foreign-thread kind stays deferred, as planned, and the generator
+  steers around it.** `bindgen --foreign-thread REGEX` keeps a function-pointer
+  type a `Ptr` when the library calls it from threads of its own, and says so;
+  SDL's audio, timer, thread, event-filter, log and allocator types are listed
+  that way. Without that, the generated bindings would have invited a program to
+  pass a method that stops it the first time SDL calls it from SDL's thread.
+- **Handles are guarded too.** `Handles.get` needs `unsafe` (it turns a Ptr into
+  an object, though it validates what it is given), and every `Handles` call
+  checks the thread, so the table cannot be reached from a foreign thread even
+  by code that is not a callback.
+- **Three things the work turned up were fixed afterwards** (tests 73 to 75,
+  details in `CLAUDE.md`): a write through an element of an array of structs
+  went to a copy and was lost silently; assigning an `Object` to a
+  subclass-typed variable retyped it, because the symbol table never closed a
+  scope and so could not tell an assignment from a declaration; and
+  `allocated()` counted objects only a pool was holding. Fixing the second
+  meant fixing the scoping underneath it.
+
+What proved it, each with a mutation that made it fail: the skip after an error
+(the method ran 6 times instead of 3 without it), the thread refusal, unsigned
+widening (`4000000000` read as negative with a sign extension), and the table's
+own reference. One test was wrong in a way worth recording: the first version
+counted calls through `getenv`/`setenv` and passed with the skip *removed*,
+because every extern call, including one inside a callback body, rethrows a
+pending error, so the body died at its first one. The test now counts through a
+handle, with no extern call in any comparator.
+
 
 #### What rule 7 says, and what it should say
 
@@ -1011,9 +1051,18 @@ How it is verified, since there is no Windows machine here:
   verified through the headless route (saved frames and pixel assertions), as
   on macOS today.
 
-### D. Textures and text
+### D. Textures and text — **done**, on the `editor` branch
 
 Both phases after this want them, so they are built here, in `lib/sdl.cmm`.
+
+**As built:** `Texture` is made from a `Bytes` of pixels (no BMP loader was
+needed), with `draw`, `tint` and `opacity`; `Font` builds its atlas in catmint
+from the 95 printable ASCII glyphs of Unscii (public domain, 8 x 16;
+`tools/make_font.py` turns `unscii-16.hex` into `lib/fontdata.cmm`), and draws a
+character of several UTF-8 bytes as one `?`. `tools/sdl_test` checks glyphs at
+two sizes, tint, opacity, the clip and the `?`, pixel for pixel. Latin-1 was
+not done; the editor has not needed it. The design that follows is kept as it
+was written.
 
 - **`Texture`**: from a BMP file (`SDL_LoadBMP_RW`, in SDL itself, so no new
   library) or from a `Bytes` of pixels; `copy(source rect, destination rect)`,
@@ -1028,7 +1077,43 @@ Both phases after this want them, so they are built here, in `lib/sdl.cmm`.
 - **Headless**: textures render under the software renderer, so a saved frame
   has real pixels to assert on.
 
-### E. The GUI toolkit, and the application
+### E. The GUI toolkit, and the application — **built**, on the `editor` branch
+
+**Status.** `examples/pad` exists and is tested (CLAUDE.md, "The editor"): the
+text buffer, the editor core, highlighting from the lexer's own keywords, the
+theme, the fuzzy palette (commands, open by path fragment, find, replace, go to
+line, save as), safe save, F5 build-and-run (F7 only builds, Shift F5 stops; the
+build and the program run in the background, their lines arriving in the panel as
+they are printed) with click-to-jump, tabs for several files,
+a file explorer down the left, thirteen colour themes and any Base16 scheme file
+(the tinted-theming format) with the choice remembered, and sizes by whole
+numbers. It is not built on a general toolkit as designed below:
+the design's own argument was that rationing leaves very little (a label, a
+list, one field, an editor), and all of that is drawn directly by `pad.cm`
+because there is only one program to want it. A toolkit would be extracted when
+a second program asks. **Measured, as the design said:** every theme colour's
+contrast ratio (`77_theme`), idle CPU (`examples/pad/idle.py`, 0.09 s in 5
+against 1.0 for a loop that polls), the palette's ranking for typed fragments
+(`80_fuzzy`), the pixels of the syntax colours, the palette and the panel
+(`examples/pad/tests`).
+
+**What it does not do, and why.** Text outside printable ASCII (drawn as `?`; fonts are
+JetBrains Mono through SDL_ttf, with the bitmap Unscii kept as a choice). A terminal exists (Ctrl `) but without a
+pseudo-terminal, so it is for commands and not for programs that draw on a screen.
+*Running*
+was missing for want of a read that does not wait; `lib/job.cmm` has one, by
+sending the program's output to a file and reading the file. Block indentation of a multi-line selection.
+Wrapping. Focus mode. Windows (6C was skipped). A 5 MB file is checked at the
+buffer (`84_bigtext`: 150,000 lines opened, searched, edited in the middle and
+undone in well under a second, and the memory comes back); scrolling it in the
+window was not timed, though only the rows on screen are drawn.
+
+**What building it found:** an FFI miscompile (a narrow unsigned argument
+reached C with the register's other bits set: the whole window came out cyan);
+that sdl2-compat cannot take a pushed text event and misreads a pushed wheel
+event; that a string literal could not end in an escaped backslash (the lexer);
+and that `Font` counted bytes where an editor needs characters. The first,
+third and fourth are fixed and tested.
 
 **The application is an editor for catmint programs**, `examples/pad`:
 open, edit, save, run. Chosen because it is the canonical GUI program, so it

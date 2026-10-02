@@ -53,6 +53,7 @@ const auto File = "File";
 const auto Math = "Math";
 const auto Process = "Process";
 const auto Worker = "Worker";
+const auto Handles = "Handles";
 const auto Bytes = "Bytes";
 /// An opaque machine pointer: what a C function hands back and takes again.
 /// A value, not an object -- no run-time type information, no reference

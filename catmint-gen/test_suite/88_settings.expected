@@ -1,0 +1,21 @@
+a missing folder gives the fallback: plain
+put makes the folders and the file: 1
+and it reads back: Nord
+a key that is not there: 14
+a second key keeps the first: Nord Menlo
+a key put again changes in place: Dracula Menlo
+the file, in order: theme=Dracula|font=Menlo|
+a value with = in it: a=b=c
+a newline in a value becomes a space: one two
+a key with = is refused: 0
+a key with a newline is refused: 0
+and wrote nothing: no
+an empty key is refused: 0
+lines it does not understand stay: # written by hand|theme=Nord|this is not a setting|size=16|font=Hack|
+and the rest still reads: Nord 16 Hack
+PAD_CONFIG is the folder: /somewhere/else
+else under HOME: /home/someone/.config/catmint-pad
+else nowhere: []
+and putting there does nothing: 0
+and nothing turned up at the root (it would, as root, if the guard went): 1
+cleaned up: 1

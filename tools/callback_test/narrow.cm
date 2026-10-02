@@ -1,0 +1,39 @@
+# Arguments to C that are narrower than an int, computed the way a program
+# computes a colour or a byte of a word: shifted down and masked. The optimizer
+# knows only the low bits of the result are wanted, so it drops the mask and
+# leaves the shift, and the register holds the byte with other bits above it.
+# A UInt8 or UInt16 parameter must still reach C as just the byte or the two
+# bytes, because C does not look at the rest. (Passing a constant, or a number
+# loaded from memory a byte at a time, would never show it.)
+#
+# The expected value is worked out by division, a different expression, so the
+# compiler cannot share the clean copy it needs for the comparison with the one
+# it passes.
+
+link "cb"
+
+extern class CbNarrow
+  def UInt32 cb_narrow(UInt8 a, UInt16 b, UInt8 c)
+end
+
+class Main from IO
+  def main:
+    Int wrong = 0
+    Int n = 0
+    while n < 2000:
+      Int x = entropy()
+      Int y = entropy()
+      Int z = entropy()
+      Int64 got = 0
+      unsafe:
+        got = CbNarrow.cb_narrow((x >> 8) & 255, (y >> 8) & 65535, (z >> 16) & 255)
+      end
+      Int want = (x / 256 - x / 65536 * 256) + (y / 256 - y / 16777216 * 65536) + (z / 65536 - z / 16777216 * 256)
+      if got != want:
+        wrong = wrong + 1
+      end
+      n = n + 1
+    end
+    out("2000 calls, narrow arguments that arrived wrong: ${wrong}\n")
+  end
+end

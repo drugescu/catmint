@@ -1,0 +1,8 @@
+# Clicks in the text still land on the right column with the explorer there: at
+# x = 304 the third character, 24 pixels into text that begins at 280.
+# files t.txt=abcdef
+# open t.txt
+# frames 4
+# expect cursor 1 4
+1 key b ctrl
+2 click 304 10

@@ -1,0 +1,206 @@
+# The model of a terminal panel: a shell running in the background, the lines it has
+# printed, and the line being typed.
+#
+#   using terminal
+#   Terminal t = new Terminal()
+#   t.start("")                  # a shell, in this folder
+#   t.typeText("ls -l")  t.enter()   # "$ ls -l" in the scrollback, and sent to the shell
+#   ...                          # once a frame:
+#   if t.tick() == 1: ...        # what it printed has arrived: redraw
+#   t.previous()  t.next()       # the history; t.interrupt() is ^C and t.endInput() ^D
+#   t.stop()                     # when leaving
+#
+# There is no pseudo-terminal. The shell reads what is sent as a script, from a pipe
+# (lib/job.cmm), and writes to a file, so a program that wants a screen -- an editor, a
+# pager that waits for a key, a password prompt -- does not work here, and everything that
+# only reads lines and writes lines does. TERM is "dumb", and CATMINT_LINEBUF is 1 so
+# that a catmint program run from here prints line by line instead of at its end.
+#
+# The scrollback is an OutputPanel following its end (lib/outputpanel.cmm), which also
+# takes colour sequences and tabs out of what it is given. The line being typed is an
+# Editor, so it has the editing keys of the other single-line fields.
+
+using job
+using editor
+using outputpanel
+
+class Terminal from IO
+  Job shell = null
+  OutputPanel screen = null
+  Editor line = null
+  # The commands entered, oldest first, and where in them previous() and next() are: at
+  # history.len() when it is the line being typed, which is kept in `draft` meanwhile.
+  List history = null
+  Int recall
+  String draft = ""
+  String folder = ""
+  # 1 from starting a shell until its end has been reported.
+  Int alive
+  # 1 once a shell has been started, so that the next after its end is a new one.
+  Int started
+
+  constructor():
+    shell = new Job()
+    screen = new OutputPanel()
+    screen.begin(1)
+    line = new Editor()
+    history = new List()
+  end
+
+  def String prompt:
+    return "$ "
+  end
+
+  def Int running:
+    return shell.running()
+  end
+
+  # Start a shell in this folder ("" for the one we are in). 1 if it started.
+  def Int start(String where):
+    folder = where
+    shell = new Job()
+    shell.interactive = 1
+    List argv = new List()
+    argv.append("env")
+    argv.append("TERM=dumb")
+    argv.append("CATMINT_LINEBUF=1")
+    argv.append("sh")
+    if shell.start(argv, where) == 0:
+      screen.add("[could not start a shell]")
+      return 0
+    end
+    started = 1
+    alive = 1
+    return 1
+  end
+
+  # Type into the line; a line end is dropped, since it is one line.
+  def Void typeText(String text):
+    line.typeText(text.replace("\r", "").replace("\n", ""))
+  end
+
+  def Void putLine(String text):
+    line.load(text)
+    line.docEnd(0)
+  end
+
+  def Void remember(String command):
+    Int n = history.len()
+    Int same = 0
+    if n > 0:
+      String last = history.get(n - 1)
+      if last.equals(command):
+        same = 1
+      end
+    end
+    if same == 0:
+      history.append(command)
+    end
+    if history.len() > 100:
+      List kept = new List()
+      Int i = 1
+      while i < history.len():
+        kept.append(history.get(i))
+        i = i + 1
+      end
+      history = kept
+    end
+  end
+
+  # Enter: the line is echoed under the prompt and sent. An empty line is echoed only.
+  def Void enter:
+    String command = line.buf.text()
+    screen.add(prompt() + command)
+    putLine("")
+    if command.len() > 0:
+      remember(command)
+      if shell.running() == 0:
+        Int again = started
+        if start(folder) == 1 and again == 1:
+          screen.add("[new shell]")
+        end
+      end
+      shell.send(command + "\n")
+    end
+    recall = history.len()
+    screen.scrollBy(0 - 1000)
+  end
+
+  # An older command into the line; the first step away from the line being typed keeps
+  # it for next() to give back.
+  def Void previous:
+    if recall == history.len():
+      draft = line.buf.text()
+    end
+    if recall > 0:
+      recall = recall - 1
+      String command = history.get(recall)
+      putLine(command)
+    end
+  end
+
+  def Void next:
+    if recall < history.len():
+      recall = recall + 1
+      if recall == history.len():
+        putLine(draft)
+      else
+        String command = history.get(recall)
+        putLine(command)
+      end
+    end
+  end
+
+  # What the shell has printed since the last look goes in the scrollback, and its end
+  # is said. 1 if there is anything new.
+  def Int tick:
+    List got = shell.poll()
+    Int i = 0
+    while i < got.len():
+      screen.add(got.get(i))
+      i = i + 1
+    end
+    Int changed = got.len()
+    if alive == 1 and shell.running() == 0:
+      alive = 0
+      screen.add("[shell exited ${shell.code()}]")
+      changed = 1
+    end
+    if changed > 0:
+      return 1
+    end
+    return 0
+  end
+
+  # ^C: stop what the shell is running, not the shell.
+  def Void interrupt:
+    shell.interrupt()
+  end
+
+  # ^D: the end of the shell's input.
+  def Void endInput:
+    shell.closeInput()
+  end
+
+  def Void clear:
+    screen.begin(1)
+  end
+
+  # Leaving: end the shell and what it started, and wait a little for them to be gone.
+  def Void stop:
+    if shell.running() == 1:
+      shell.stop()
+      Int waited = 0
+      while shell.running() == 1 and waited < 200:
+        shell.poll()
+        if shell.running() == 1:
+          sleep(10)
+          waited = waited + 1
+          if waited == 30:
+            shell.stop()
+          end
+        end
+      end
+    end
+  end
+end

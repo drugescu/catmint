@@ -1,0 +1,36 @@
+# Eight tabs of 184 pixels do not fit in 960. The strip scrolls to keep the tab
+# being edited in view: the last five show, and the eighth is the fifth of them,
+# x = 4 * 184 = 736 to 920, underlined.
+# files file_number_1.txt=x
+# files file_number_2.txt=x
+# files file_number_3.txt=x
+# files file_number_4.txt=x
+# files file_number_5.txt=x
+# files file_number_6.txt=x
+# files file_number_7.txt=x
+# files file_number_8.txt=x
+# open file_number_1.txt
+# frames 26
+# expect tabs 8 7
+# pixels 736 21 920 22 232 176 74 184
+1 key o ctrl
+2 text number_2
+3 key enter
+4 key o ctrl
+5 text number_3
+6 key enter
+7 key o ctrl
+8 text number_4
+9 key enter
+10 key o ctrl
+11 text number_5
+12 key enter
+13 key o ctrl
+14 text number_6
+15 key enter
+16 key o ctrl
+17 text number_7
+18 key enter
+19 key o ctrl
+20 text number_8
+21 key enter

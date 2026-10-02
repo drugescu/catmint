@@ -1,0 +1,12 @@
+# Building twice starts the panel afresh each time: the compiler's one line is one line
+# after the second build as after the first.
+# files t.cm=x
+# exec catmintc=#!/bin/sh\necho compiled\n
+# open t.cm
+# frames 5
+# expect panelall compiled
+# expect panel 1 1
+1 key f7
+2 wait idle
+3 key f7
+4 wait idle

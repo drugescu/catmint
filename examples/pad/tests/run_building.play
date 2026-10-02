@@ -1,0 +1,9 @@
+# While the compiler is working the window is not: two frames after F5 the build is still
+# going, the status line says so, and ending the editor ends the build.
+# files hello.cm=class Main from IO\n  def main:\n    out("hello\\n")\n  end\nend\n
+# open hello.cm
+# args --catmintc @ROOT@/catmintc
+# frames 2
+# expect runner 1
+# expect status [building...]
+1 key f5

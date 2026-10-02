@@ -1,0 +1,336 @@
+# Which font the editor draws with, how it is chosen, and that it is remembered.
+#
+# The choices are the monospaced TrueType fonts found in three places -- a `fonts` folder
+# beside the program (the one that ships is JetBrains Mono), the settings folder's `fonts`
+# folder, and a few that systems come with -- and the bitmap font (Unscii) the editor was
+# first written with, which is also what is used when no TrueType font will load. Choosing
+# is a list in the palette that shows the highlighted font as it moves, as the theme list
+# does; dismissing it puts back what was there. The font and its size are written to the
+# settings file as `font` (a path, or `pixel`) and `fontsize`, and a font that can no longer
+# be found is the default, not an error.
+#
+# A face is rebuilt whenever the font or the size changes: a texture of every glyph
+# (lib/ttf.cmm), so changing is quick but not free, and not done more than it has to be.
+
+using sdl
+using ttf
+using files
+using settings
+using palette
+
+class FontChooser from Object
+  Renderer view = null
+  # What is in use: a path, or "pixel"; its name; the pixel size of a TrueType font.
+  String id = "pixel"
+  String name = "Pixel (Unscii)"
+  Int size = 16
+  # The face, or null for the bitmap font.
+  TrueType face = null
+  # The choices, side by side: path or "pixel", name, kind.
+  List ids = null
+  List names = null
+  List kinds = null
+  String configDir = ""
+  String bundledDir = ""
+  # What was in use when the list was opened.
+  String beforeId = ""
+  Int beforeSize
+
+  constructor(Renderer r):
+    view = r
+    configDir = Settings.dir()
+    ids = new List()
+    names = new List()
+    kinds = new List()
+  end
+
+  def String idAt(Int i):
+    String s = ids.get(i)
+    return s
+  end
+
+  def String nameAt(Int i):
+    String s = names.get(i)
+    return s
+  end
+
+  def String kindAt(Int i):
+    String s = kinds.get(i)
+    return s
+  end
+
+  # Where the fonts that came with the program are: a `fonts` folder beside it if it was
+  # started by a path, else the one in this folder or in examples/pad.
+  def Void locate(String argv0):
+    Int slash = 0 - 1
+    Int i = 0
+    while i < argv0.len():
+      if argv0.at(i) == 47:
+        slash = i
+      end
+      i = i + 1
+    end
+    if slash >= 0 and Files.isDirectory(argv0.substr(0, slash) + "/fonts") == 1:
+      bundledDir = argv0.substr(0, slash) + "/fonts"
+    elif Files.isDirectory("fonts") == 1:
+      bundledDir = "fonts"
+    elif Files.isDirectory("examples/pad/fonts") == 1:
+      bundledDir = "examples/pad/fonts"
+    end
+  end
+
+  # The name of a font file: its base name less the extension.
+  static def String nameOf(String path):
+    String base = Files.baseName(path)
+    Int dot = 0 - 1
+    Int i = 0
+    while i < base.len():
+      if base.at(i) == 46:
+        dot = i
+      end
+      i = i + 1
+    end
+    if dot > 0:
+      return base.substr(0, dot)
+    end
+    return base
+  end
+
+  # 1 if the file's extension is one of a font's.
+  static def Int isFont(String path):
+    String lower = path.lower()
+    if lower.len() > 4:
+      String ext = lower.substr(lower.len() - 4, lower.len())
+      if ext.equals(".ttf") or ext.equals(".otf") or ext.equals(".ttc"):
+        return 1
+      end
+    end
+    return 0
+  end
+
+  def Void add(String path, String kind):
+    if File.exists(path) == 1 and TrueType.monospaced(path) == 1:
+      Int dup = 0
+      Int i = 0
+      while i < ids.len():
+        if idAt(i).equals(path):
+          dup = 1
+        end
+        i = i + 1
+      end
+      if dup == 0:
+        ids.append(path)
+        names.append(FontChooser.nameOf(path))
+        kinds.append(kind)
+      end
+    end
+  end
+
+  def Void addFolder(String dir, String kind):
+    if dir.len() > 0 and Files.isDirectory(dir) == 1:
+      List found = Files.list(dir, 1, 100)
+      Int i = 0
+      while i < found.len():
+        String file = found.get(i)
+        if FontChooser.isFont(file) == 1:
+          add(dir + "/" + file, kind)
+        end
+        i = i + 1
+      end
+    end
+  end
+
+  # Make the list of choices.
+  def Void scan:
+    ids = new List()
+    names = new List()
+    kinds = new List()
+    addFolder(bundledDir, "bundled")
+    if configDir.len() > 0:
+      addFolder(configDir + "/fonts", "yours")
+    end
+    add("/System/Library/Fonts/Menlo.ttc", "system")
+    add("/System/Library/Fonts/Monaco.ttf", "system")
+    add("/System/Library/Fonts/SFNSMono.ttf", "system")
+    add("/Library/Fonts/Courier New.ttf", "system")
+    add("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", "system")
+    add("/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf", "system")
+    add("/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf", "system")
+    add("/usr/share/fonts/TTF/DejaVuSansMono.ttf", "system")
+    add("/usr/share/fonts/dejavu/DejaVuSansMono.ttf", "system")
+    ids.append("pixel")
+    names.append("Pixel (Unscii)")
+    kinds.append("bitmap")
+  end
+
+  # Use the font with this path, or "pixel", at the current size. 1 if it is in use; if it
+  # will not load, nothing changes and 0 is answered.
+  def Int use(String wanted):
+    if wanted.equals("pixel") == 1:
+      face = null
+      id = "pixel"
+      name = "Pixel (Unscii)"
+      return 1
+    end
+    TrueType built = null
+    try:
+      built = new TrueType(view, wanted, size)
+    catch e:
+      built = null
+    end
+    if built == null:
+      return 0
+    end
+    face = built
+    id = wanted
+    name = FontChooser.nameOf(wanted)
+    return 1
+  end
+
+  # Start: the list of fonts, and the one the settings name -- failing that, the first that
+  # shipped, failing that the bitmap font.
+  def Void restore:
+    scan()
+    String sizeText = Settings.get(configDir, "fontsize", "")
+    if sizeText.len() > 0 and sizeText.toInt() >= 8 and sizeText.toInt() <= 64:
+      size = sizeText.toInt()
+    end
+    String wanted = Settings.get(configDir, "font", "")
+    Int found = 0
+    if wanted.len() > 0 and has(wanted) == 1:
+      found = use(wanted)
+    end
+    if found == 0 and ids.len() > 1 and kindAt(0).equals("bundled"):
+      found = use(idAt(0))
+    end
+    if found == 0:
+      use("pixel")
+    end
+  end
+
+  def Int has(String wanted):
+    Int i = 0
+    while i < ids.len():
+      if idAt(i).equals(wanted):
+        return 1
+      end
+      i = i + 1
+    end
+    return 0
+  end
+
+  # A font named on the command line: a path, "pixel", or the name of a choice.
+  def Int choose(String wanted):
+    if has(wanted) == 1:
+      return use(wanted)
+    end
+    Int i = 0
+    while i < names.len():
+      if nameAt(i).equals(wanted):
+        return use(idAt(i))
+      end
+      i = i + 1
+    end
+    if File.exists(wanted) == 1:
+      return use(wanted)
+    end
+    return 0
+  end
+
+  def Void remember:
+    Settings.put(configDir, "font", id)
+    Settings.put(configDir, "fontsize", "${size}")
+  end
+
+  # The size of a cell of the TrueType font in use; 0 for the bitmap font.
+  def Int cellW:
+    if face == null:
+      return 0
+    end
+    return face.cellW
+  end
+
+  def Int cellH:
+    if face == null:
+      return 0
+    end
+    return face.cellH
+  end
+
+  # The next size up or down the ladder of sizes, for a TrueType font. 1 if it was one; 0 for
+  # the bitmap font, whose size the caller changes.
+  def Int step(Int by):
+    if face == null:
+      return 0
+    end
+    List ladder = "11 12 13 14 16 18 20 22 24 28 32".split(" ")
+    Int at = 0
+    Int i = 0
+    while i < ladder.len():
+      String rung = ladder.get(i)
+      if rung.toInt() <= size:
+        at = i
+      end
+      i = i + 1
+    end
+    at = at + by
+    if at < 0:
+      at = 0
+    end
+    if at >= ladder.len():
+      at = ladder.len() - 1
+    end
+    String chosen = ladder.get(at)
+    if chosen.toInt() != size:
+      size = chosen.toInt()
+      use(id)
+      remember()
+    end
+    return 1
+  end
+
+  # The list of fonts, with the one in use highlighted.
+  def Void open(Palette pal):
+    beforeId = id
+    beforeSize = size
+    scan()
+    pal.open(Palette.fontMode(), "font", names, kinds)
+    pal.rows = 12
+    pal.refresh()
+    Int i = 0
+    while i < pal.results.len():
+      Int which = pal.results.get(i)
+      if idAt(which).equals(id):
+        pal.selected = i
+      end
+      i = i + 1
+    end
+  end
+
+  # While the list is open, the highlighted font is the one on screen.
+  def Void preview(Palette pal):
+    if pal.mode == Palette.fontMode():
+      Int which = pal.chosen()
+      if which >= 0:
+        String path = idAt(which)
+        if path.equals(id) == 0:
+          use(path)
+        end
+      end
+    end
+  end
+
+  # The list was dismissed: put back what was in use.
+  def Void cancel:
+    size = beforeSize
+    use(beforeId)
+  end
+
+  # Enter on the list: keep what is shown, or put back if nothing matched.
+  def Void accept(Palette pal):
+    if pal.chosen() < 0:
+      cancel()
+    end
+    remember()
+  end
+end

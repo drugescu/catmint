@@ -1,0 +1,13 @@
+# Shift F5 stops a program that does not end. It is killed, the panel says it was
+# stopped, and the status line does.
+# files loop.cm=class Main from IO\n  def main:\n    while 1 == 1:\n      sleep(50)\n    end\n  end\nend\n
+# open loop.cm
+# args --catmintc @ROOT@/catmintc
+# frames 6
+# expect message loop stopped
+# expect runner 0
+# expect panelall [stopped]
+1 key f5
+2 wait running
+3 key f5 shift
+4 wait idle

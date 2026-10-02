@@ -1,0 +1,109 @@
+# The commands an editor offers and the keys that run them, in one table.
+#
+#   using commands
+#   Commands c = new Commands()
+#   c.command("save", "Save", 1, 0, 115, "")        # Ctrl S   (115 is the key's code)
+#   c.command("redo", "Redo", 1, 1, 122, "")        # Ctrl Shift Z
+#   c.command("build", "Build", 0, 0, 1073741884, "F5")
+#   c.alias("redo", 1, 0, 121)                      # Ctrl Y does the same
+#   String id = c.lookup(1, 0, 115)                 # "save"
+#   c.names / c.hints / c.ids                       # for the palette, in step
+#
+# The palette's names, the hint beside each (the key that does the same thing) and
+# the lookup from a key press all come from the same lines, so they cannot
+# disagree about what Ctrl S does. The hint is written from the binding: "Ctrl",
+# then "Shift", then the key, which is its letter in capitals or, for a key that
+# is not a letter, the name given when the command is added ("Tab", "F5", "=").
+#
+# A key press matches a binding with the same Ctrl and Shift; failing that, the
+# one with the same Ctrl and no Shift, so Ctrl Shift S saves when only Ctrl S is
+# bound, but Ctrl S never does Ctrl Shift Z. A binding made without Ctrl is a key
+# on its own, and does not answer when Ctrl is held. The first binding of a key
+# wins. A key of 0 means no key: the command is in the palette and nothing runs it.
+
+class Commands from Object
+  # The palette's entries, in order.
+  List ids = null
+  List names = null
+  List hints = null
+  # The bindings, in order: an id, then the keys that run it.
+  List bindIds = null
+  List bindCtrl = null
+  List bindShift = null
+  List bindKey = null
+
+  constructor():
+    ids = new List()
+    names = new List()
+    hints = new List()
+    bindIds = new List()
+    bindCtrl = new List()
+    bindShift = new List()
+    bindKey = new List()
+  end
+
+  # What a key is called in a hint: a letter in capitals, else the name given.
+  static def String keyName(Int key, String label):
+    if label.len() > 0:
+      return label
+    end
+    if key >= 97 and key <= 122:
+      return String.chr(key - 32)
+    end
+    return String.chr(key)
+  end
+
+  def Void bind(String id, Int ctrl, Int shift, Int key):
+    if key != 0:
+      bindIds.append(id)
+      bindCtrl.append(ctrl)
+      bindShift.append(shift)
+      bindKey.append(key)
+    end
+  end
+
+  # Another key for a command; the hint stays the first key's.
+  def Void alias(String id, Int ctrl, Int shift, Int key):
+    bind(id, ctrl, shift, key)
+  end
+
+  # A command in the palette, with its key if it has one (key 0 for none).
+  def Void command(String id, String name, Int ctrl, Int shift, Int key, String label):
+    String hint = ""
+    if key != 0:
+      if ctrl == 1:
+        hint = "Ctrl "
+      end
+      if shift == 1:
+        hint = hint + "Shift "
+      end
+      hint = hint + Commands.keyName(key, label)
+    end
+    ids.append(id)
+    names.append(name)
+    hints.append(hint)
+    bind(id, ctrl, shift, key)
+  end
+
+  # The command a key press runs, or "".
+  def String lookup(Int ctrl, Int shift, Int key):
+    String fallback = ""
+    Int i = 0
+    while i < bindIds.len():
+      Int k = bindKey.get(i)
+      Int c = bindCtrl.get(i)
+      Int s = bindShift.get(i)
+      if k == key and c == ctrl:
+        String id = bindIds.get(i)
+        if s == shift:
+          return id
+        end
+        if s == 0 and fallback.len() == 0:
+          fallback = id
+        end
+      end
+      i = i + 1
+    end
+    return fallback
+  end
+end

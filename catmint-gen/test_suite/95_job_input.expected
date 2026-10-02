@@ -1,0 +1,21 @@
+started: running 1
+sent: 1
+hello: yes
+state kept: yes yes
+errors too: yes
+end of input: code 0
+exit: code 3
+cat: yes yes, code 0
+interrupt: stopped by SIGINT yes, alive yes, running 1
+big: accepted 1, quick yes
+big: 100003 characters came back, end yes, code 0
+megabyte: 1 then 0
+send after closeInput: 0
+reused: send 1, saw yes
+two megabytes: 0
+after the end: 0
+never started: 0
+not interactive: 0
+files: pipe was there yes, private yes, folder after no, pipe after no
+not closed twice: yes
+80 shells: started 80, ended well 80

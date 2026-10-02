@@ -1,0 +1,9 @@
+built, 150001 lines, 1 over 5 MB: 1
+found near the end where the index says: 1, in a fair time: 1
+the line there: line 149999: the quick brown fox jumps over it
+a line in the middle: line 75000: the quick brown fox jumps over it
+typed in the middle, the line index follows: 1, in a fair time: 1
+the line after it: Xline 100000: the quick brown fox jumps over it
+undone: line 100000: the quick brown fox jumps over it, in a fair time: 1
+the whole text out again: 1, in a fair time: 1
+memory back to where it was: 1

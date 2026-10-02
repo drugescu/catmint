@@ -1,0 +1,9 @@
+# With no name, Ctrl S asks for one in the palette; Enter saves under it.
+# frames 8
+# file out.txt=hello
+# expect file out.txt
+# expect modified 0
+1 text hello
+2 key s ctrl
+3 text out.txt
+4 key enter

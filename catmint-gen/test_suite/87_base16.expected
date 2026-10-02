@@ -1,0 +1,37 @@
+dracula: Dracula (dark, toggles to Catmint Light)
+  282a36 21222c 21222c 44475a f8f8f2 9ea8c7 6272a4 bd93f9 ff79c6 50fa7b ffb86c ff5555
+gruvbox dark: Gruvbox dark, hard (dark, toggles to Catmint Light)
+  1d2021 3c3836 3c3836 504945 d5c4a1 bdae93 665c54 83a598 d3869b b8bb26 fe8019 fb4934
+gruvbox light: Gruvbox light, hard (light, toggles to Catmint Dark)
+  f9f5d7 ebdbb2 ebdbb2 d5c4a1 504945 665c54 bdae93 076678 8f3f71 79740e af3a03 9d0006
+ayu, the older format: Ayu Dark (dark, toggles to Catmint Light)
+  0f1419 131721 131721 272d38 e6e1cf bfbdb6 3e4b59 59c2ff d2a6ff b8cc52 ff8f40 f07178
+one colour missing: not a scheme
+not a scheme: not a scheme
+empty: not a scheme
+every style, no name: unnamed (dark, toggles to Catmint Light)
+  000000 111111 111111 aabbcc ffffff 444444 333333 0000dd ee00ee 00bb00 990000 880000
+variant says light: unnamed (light, toggles to Catmint Dark)
+  000000 111111 111111 aabbcc ffffff 444444 333333 0000dd ee00ee 00bb00 990000 880000
+variant says dark: unnamed (dark, toggles to Catmint Light)
+  ffffff eeeeee eeeeee dddddd 000000 999999 cccccc 0000dd ee00ee 00bb00 990000 880000
+light by its colours: unnamed (light, toggles to Catmint Dark)
+  ffffff eeeeee eeeeee dddddd 000000 999999 cccccc 0000dd ee00ee 00bb00 990000 880000
+windows line endings: unnamed (dark, toggles to Catmint Light)
+  000000 111111 111111 aabbcc ffffff 444444 333333 0000dd ee00ee 00bb00 990000 880000
+a colour that is not hex: not a scheme
+a colour of three digits: not a scheme
+another system: not a scheme
+base24 is read by its first sixteen: unnamed (dark, toggles to Catmint Light)
+  000000 111111 111111 aabbcc ffffff 444444 333333 0000dd ee00ee 00bb00 990000 880000
+a folder: 5 schemes
+  Ayu Dark
+  Dracula
+  Gruvbox dark, hard
+  Gruvbox light, hard
+  Zenburn
+a folder that is not there: 0 schemes
+built in and from the folder: 18
+the built-in Dracula keeps its name, the scheme's is made distinct: 1 1
+the built-in themes come first: Catmint Dark
+and the folder's after them, in name order: Ayu Dark

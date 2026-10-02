@@ -1,0 +1,12 @@
+# Ctrl L empties the scrollback and keeps what is being typed.
+# files t.txt=abc
+# open t.txt
+# frames 7
+# expect term 1 1 1 0
+# expect termline [keep]
+1 key ` ctrl
+2 text echo hi
+3 key enter
+4 wait term hi
+5 text keep
+6 key l ctrl

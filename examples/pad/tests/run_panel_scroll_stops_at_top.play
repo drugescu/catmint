@@ -1,0 +1,15 @@
+# Scrolling up stops at the first line.
+# files many.cm=class Main from IO\n  def main:\n    Int i = 1\n    while i <= 20:\n      out("line ${i}\\n")\n      i = i + 1\n    end\n  end\nend\n
+# open many.cm
+# args --catmintc @ROOT@/catmintc
+# frames 12
+# expect paneltop 0
+1 key f5
+2 wait idle
+3 move 300 500
+4 wheel 1
+5 wheel 1
+6 wheel 1
+7 wheel 1
+8 wheel 1
+9 wheel 1

@@ -1,0 +1,7 @@
+# Showing or hiding the explorer is remembered between runs, in the settings.
+# files a.txt=A
+# open a.txt
+# frames 3
+# expect sidebar 1 1
+# config-file settings=sidebar=1\n
+1 key b ctrl

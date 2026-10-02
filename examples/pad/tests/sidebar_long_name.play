@@ -1,0 +1,10 @@
+# A name too long for the explorer is cut off at its edge instead of running on
+# into the editor: the second row is a file whose name is 60 characters, and to
+# the right of the explorer that row, which the editor has nothing on, stays empty.
+# files a.txt=A
+# files this_file_has_a_name_much_longer_than_the_explorer_could_ever_show.txt=B
+# open a.txt
+# frames 4
+# pixels 8 22 223 44 223 225 230 some
+# pixels 224 22 960 44 223 225 230 none
+1 key b ctrl

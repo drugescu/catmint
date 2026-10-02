@@ -1,0 +1,8 @@
+# Started with the setting on, pad starts with the explorer showing.
+# config-files settings=sidebar=1\n
+# files a.txt=A
+# open a.txt
+# frames 3
+# expect sidebar 1 1
+# pixels 223 0 224 618 137 147 160 618
+1 key down

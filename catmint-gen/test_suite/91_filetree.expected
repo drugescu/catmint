@@ -1,0 +1,71 @@
+folded: 4 rows
+  > docs/
+  > src/
+    a.txt
+    README.md
+src opened: 6 rows
+  > docs/
+  v src/
+    > lib/
+      main.cm
+    a.txt
+    README.md
+src/lib opened: 8 rows
+  > docs/
+  v src/
+    v lib/
+        util.cm
+        ZZZ.cm
+      main.cm
+    a.txt
+    README.md
+a file toggled: 8 rows
+  > docs/
+  v src/
+    v lib/
+        util.cm
+        ZZZ.cm
+      main.cm
+    a.txt
+    README.md
+a file stays unexpanded when toggled: 0
+src folded: 4 rows
+  > docs/
+  > src/
+    a.txt
+    README.md
+src opened again, lib still open: 8 rows
+  > docs/
+  v src/
+    v lib/
+        util.cm
+        ZZZ.cm
+      main.cm
+    a.txt
+    README.md
+row of src/lib/util.cm: 3
+row of docs/guide.md while docs is folded: -1
+revealing docs/guide.md: 1
+after reveal: 9 rows
+  v docs/
+      guide.md
+  v src/
+    v lib/
+        util.cm
+        ZZZ.cm
+      main.cm
+    a.txt
+    README.md
+a path two folders down, from all folded: row 3 of 8
+revealing what is not there: -1
+the path of row 0: docs
+the path of the last row: README.md
+5200 paths load in a fair time: 1
+folded: 201 rows, the first four data pkg0 pkg1 pkg10
+the last file is at row 4445 of 5201
+and the first three files are file0.txt file1.txt file10.txt
+no files: 0 rows
+one file: 1 rows
+    only.txt
+rows that are not there are ignored: 1 rows
+    only.txt

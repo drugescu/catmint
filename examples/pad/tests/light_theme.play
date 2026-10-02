@@ -1,0 +1,10 @@
+# The light theme: ground (250, 248, 243), text (38, 42, 50), keyword
+# (103, 50, 154). Draw "def" in it and the keyword colour is there, the dark
+# theme's is not.
+# files s.cm=def f:
+# open s.cm
+# frames 4
+# pixels 56 0 960 22 103 50 154 some
+# pixels 56 0 960 22 204 168 239 none
+# pixels 400 200 500 300 250 248 243 10000
+1 key t ctrl

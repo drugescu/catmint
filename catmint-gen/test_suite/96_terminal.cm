@@ -1,0 +1,280 @@
+# The model of a terminal panel: a shell run in the background, the lines it printed, and
+# the line being typed. There is no pseudo-terminal -- the shell reads what is sent as a
+# script and writes to a file -- so nothing that needs a screen works, and everything
+# else does. What is expected:
+#   - a command is echoed as "$ command" in the scrollback, then sent; an empty line is
+#     echoed and sent nowhere;
+#   - the shell is one shell: its variables and folder stay from one line to the next, it
+#     starts in the folder it was given, and TERM is "dumb" and CATMINT_LINEBUF is 1 for
+#     everything it runs, so a program's output arrives line by line;
+#   - colour sequences are gone from what it prints and tabs are spread;
+#   - the history keeps the last 100 distinct-from-the-previous commands; previous() and
+#     next() walk it, stopping at the ends, and next() past the newest gives back what was
+#     being typed;
+#   - interrupt() stops what the shell is running and not the shell; eof() ends the
+#     shell, which says so, as does exit; a command typed after that starts a new shell;
+#   - typing drops line ends, and clear() empties the scrollback and nothing else;
+#   - shutdown() ends the shell and removes its folder.
+
+using terminal
+using files
+
+extern class Limits
+  def Int setenv(String name, String value, Int overwrite)
+end
+
+class Main from IO
+  Terminal t = null
+  # How many times tick() said "nothing new" when the scrollback had grown.
+  Int silent
+
+  def String yn(Int b):
+    if b == 1:
+      return "yes"
+    end
+    return "no"
+  end
+
+  # Take what has arrived into the scrollback; 1 if there was anything.
+  def Int pump:
+    Int before = t.screen.size()
+    Int said = t.tick()
+    if t.screen.size() > before and said == 0:
+      silent = silent + 1
+    end
+    return said
+  end
+
+  # How many lines of the scrollback are equal to `want`.
+  def Int times(String want):
+    Int n = 0
+    Int i = 0
+    while i < t.screen.size():
+      if t.screen.lineAt(i).equals(want):
+        n = n + 1
+      end
+      i = i + 1
+    end
+    return n
+  end
+
+  # 1 if a line equal to `want` is in the scrollback from `from` on, within five seconds.
+  def Int await(String want, Int lo):
+    Int began = ticks()
+    while ticks() - began < 5000:
+      Int i = lo
+      while i < t.screen.size():
+        if t.screen.lineAt(i).equals(want):
+          return 1
+        end
+        i = i + 1
+      end
+      if pump() == 0:
+        sleep(5)
+      end
+    end
+    return 0
+  end
+
+  # Type a command and press Enter.
+  def Void run(String command):
+    t.typeText(command)
+    t.enter()
+  end
+
+  def String all:
+    String s = ""
+    Int i = 0
+    while i < t.screen.size():
+      if i > 0:
+        s = s + "|"
+      end
+      s = s + t.screen.lineAt(i)
+      i = i + 1
+    end
+    return s
+  end
+
+  def main:
+    # The first command starts the shell by itself, and says nothing about it.
+    t = new Terminal()
+    run("echo x")
+    out("unstarted: ${yn(await("x", 0))}, screen ${all()}\n")
+    t.stop()
+
+    t = new Terminal()
+    out("before: running ${t.running()}, prompt [${t.prompt()}]\n")
+    out("start: ${t.start("")}, running ${t.running()}, lines ${t.screen.size()}\n")
+
+    run("echo hi")
+    out("echo: ${yn(await("hi", 0))}, screen ${all()}, line [${t.line.buf.text()}]\n")
+
+    # An empty line is echoed and goes nowhere.
+    t.enter()
+    run("echo next")
+    await("next", 0)
+    out("empty: ${all()}\n")
+
+    # Variables and folders stay.
+    run("X=5; cd /")
+    run("echo $X")
+    run("pwd")
+    Int n = t.screen.size()
+    out("state: ${yn(await("5", 0))} ${yn(await("/", n - 1))}\n")
+
+    run("echo $TERM $CATMINT_LINEBUF")
+    out("environment: ${yn(await("dumb 1", 0))}\n")
+
+    # Escapes and tabs.
+    n = t.screen.size()
+    run("printf '\\033[31mred\\033[0m\\n'")
+    out("colour: ${yn(await("red", n))}\n")
+    n = t.screen.size()
+    run("printf 'a\\tb\\n'")
+    out("tab: ${yn(await("a       b", n))}\n")
+
+    # History.
+    t.stop()
+    t = new Terminal()
+    t.start("")
+    run("echo one")
+    run("echo two")
+    run("echo two")
+    t.typeText("ec")
+    t.previous()
+    String p1 = t.line.buf.text()
+    t.previous()
+    String p2 = t.line.buf.text()
+    t.previous()
+    String p3 = t.line.buf.text()
+    t.next()
+    String n1 = t.line.buf.text()
+    t.next()
+    String n2 = t.line.buf.text()
+    t.next()
+    String n3 = t.line.buf.text()
+    out("history: ${t.history.len()}; back [${p1}] [${p2}] [${p3}]; forward [${n1}] [${n2}] [${n3}]\n")
+    t.next()
+    out("forward again: [${t.line.buf.text()}]\n")
+    t.previous()
+    t.typeText("!")
+    out("recalled, then typed: [${t.line.buf.text()}]\n")
+    t.line.load("")
+    n = t.screen.size()
+    Int i = 0
+    while i < 150:
+      t.typeText(": ${i}")
+      t.enter()
+      i = i + 1
+    end
+    t.previous()
+    String newest = t.line.buf.text()
+    i = 0
+    while i < 200:
+      t.previous()
+      i = i + 1
+    end
+    out("cap: ${t.history.len()} kept, newest [${newest}], oldest [${t.line.buf.text()}]\n")
+
+    # The folder it starts in.
+    t.stop()
+    t = new Terminal()
+    t.start("/")
+    run("pwd")
+    out("start folder: ${yn(await("/", 0))}\n")
+
+    # Entering takes the scrollback back to its end.
+    run("seq 1 30")
+    await("30", 0)
+    t.screen.scrollBy(1)
+    out("scrolled up: following ${t.screen.following}, top ${t.screen.top}\n")
+    run("echo z")
+    out("entered: following ${t.screen.following}, top ${t.screen.top}\n")
+    await("z", 0)
+
+    # ^C stops what is running and not the shell.
+    run("echo started; sleep 30; echo status $?")
+    await("started", 0)
+    Int woke = 0
+    Int tries = 0
+    while woke == 0 and tries < 50:
+      t.interrupt()
+      Int mark = ticks()
+      while woke == 0 and ticks() - mark < 200:
+        if times("status 130") > 0:
+          woke = 1
+        end
+        if pump() == 0:
+          sleep(5)
+        end
+      end
+      tries = tries + 1
+    end
+    run("echo alive")
+    out("interrupt: stopped by SIGINT ${yn(woke)}, alive ${yn(await("alive", 0))}, running ${t.running()}\n")
+
+    # The end of the input ends the shell.
+    t.endInput()
+    Int ended = await("[shell exited 0]", 0)
+    out("eof: ${yn(ended)}, running ${t.running()}\n")
+    Int k = 0
+    while k < 30:
+      pump()
+      sleep(5)
+      k = k + 1
+    end
+    out("eof said ${times("[shell exited 0]")} time\n")
+
+    # A command after the end starts a new shell, which says so; exit ends one.
+    n = t.screen.size()
+    run("echo again")
+    Int fresh = await("[new shell]", n)
+    Int again = await("again", n)
+    out("restart: new shell ${yn(fresh)}, again ${yn(again)}\n")
+    run("exit 4")
+    out("exit: ${yn(await("[shell exited 4]", 0))}, running ${t.running()}\n")
+    k = 0
+    while k < 30:
+      pump()
+      sleep(5)
+      k = k + 1
+    end
+    out("exit said ${times("[shell exited 4]")} time, tick reported every change: ${yn(silent == 0)}\n")
+
+    # Typing drops line ends; clear() empties the scrollback and keeps the line.
+    t.typeText("a" + "\n" + "b" + String.chr(13))
+    out("typed: [${t.line.buf.text()}]\n")
+    t.line.load("")
+    t.typeText("keep")
+    t.clear()
+    out("clear: ${t.screen.size()} lines, line [${t.line.buf.text()}], follows ${t.screen.following}, keeps the newest ${t.screen.tail}\n")
+
+    # Leaving takes the shell and its folder with it.
+    t.stop()
+    t = new Terminal()
+    t.start("")
+    String folder = t.shell.dir
+    t.stop()
+    out("stop: running ${t.running()}, folder after ${yn(Files.isDirectory(folder))}\n")
+
+    # A shell that ignores being asked is killed.
+    t = new Terminal()
+    t.start("")
+    run("trap '' TERM")
+    sleep(300)
+    Int began2 = ticks()
+    t.stop()
+    Int fast = 0
+    if ticks() - began2 < 3000:
+      fast = 1
+    end
+    out("stubborn: running ${t.running()}, quick ${yn(fast)}\n")
+
+    # No room for the shell's folder: it does not start, and the scrollback says so.
+    unsafe:
+      Limits.setenv("TMPDIR", "/no/such/folder", 1)
+    end
+    Terminal u = new Terminal()
+    out("no room: ${u.start("")}, ${u.screen.lineAt(0)}\n")
+  end
+end

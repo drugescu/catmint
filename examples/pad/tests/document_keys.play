@@ -1,0 +1,9 @@
+# Ctrl+End is the end of the text, Ctrl+Home the start; with shift the text
+# between is selected.
+# files t.txt=one\ntwo\nthree
+# open t.txt
+# frames 6
+# expect cursor 1 1
+# expect selection one\ntwo\nthree
+1 key end ctrl
+2 key home ctrl shift

@@ -1,0 +1,102 @@
+# Reading colour schemes in the Base16 format, the standard that
+# github.com/tinted-theming/schemes publishes 352 of (and 210 more in Base24, which
+# keeps the same first sixteen). A scheme is a YAML file: a name, sometimes a
+# variant, and sixteen colours base00..base0F, each with a defined job
+# (github.com/tinted-theming/home, styling.md):
+#   base00 background           base01 lighter background (status bars)
+#   base02 selection            base03 comments
+#   base04 dark foreground      base05 default foreground
+#   base08 red: variables, errors   base09 orange: numbers
+#   base0B green: strings       base0D blue: functions, the caret/accent
+#   base0E purple: keywords
+# which are the twelve colours the editor draws with. What is held here:
+#   - the three real files copied from that repository, one light, and the older
+#     format with the colours at the top level, are read to exactly the colours
+#     their files say (worked out here by hand, from the files);
+#   - the forms a value takes in the wild -- quoted either way, a leading #,
+#     none, upper case, a comment after it, Windows line endings -- all read;
+#   - what is not a complete scheme is refused, not guessed at: a colour missing,
+#     a colour that is not six hex digits, a system that is not base16 or base24;
+#   - `variant` decides light or dark when there is one, and the colours do when
+#     there is not;
+#   - a folder is read to the schemes in it, whatever depth, in name order, and
+#     merged after the built-in themes, with a name already taken made distinct.
+
+using base16
+
+class Main from IO
+  def show(String label, Theme t):
+    if t == null:
+      out("${label}: not a scheme\n")
+    else
+      String kind = "light"
+      if t.isDark == 1:
+        kind = "dark"
+      end
+      out("${label}: ${t.name} (${kind}, toggles to ${t.pair})\n")
+      out("  ${Theme.hexOf(t.ground)} ${Theme.hexOf(t.line)} ${Theme.hexOf(t.panel)} ${Theme.hexOf(t.selection)} ${Theme.hexOf(t.text)} ${Theme.hexOf(t.dim)} ${Theme.hexOf(t.comment)} ${Theme.hexOf(t.accent)} ${Theme.hexOf(t.keyword)} ${Theme.hexOf(t.string)} ${Theme.hexOf(t.number)} ${Theme.hexOf(t.error)}\n")
+    end
+  end
+
+  def file(String name):
+    return Files.read("test_suite/data/schemes/${name}", 100000)
+  end
+
+  # Sixteen colours as lines, in whatever style the caller likes, for a scheme
+  # made up in the test.
+  def sixteen(String b0, String b1, String b2, String b3, String b4, String b5, String b6, String b7):
+    return "base00: ${b0}\nbase01: ${b1}\nbase02: ${b2}\nbase03: ${b3}\nbase04: ${b4}\nbase05: ${b5}\nbase06: ${b6}\nbase07: ${b7}\nbase08: 880000\nbase09: 990000\nbase0A: AA0000\nbase0B: 00BB00\nbase0C: 00CC00\nbase0D: 0000DD\nbase0E: EE00EE\nbase0F: FF0000\n"
+  end
+
+  def main:
+    show("dracula", Base16.parse(file("dracula.yaml"), "x"))
+    show("gruvbox dark", Base16.parse(file("gruvbox-dark-hard.yaml"), "x"))
+    show("gruvbox light", Base16.parse(file("gruvbox-light-hard.yaml"), "x"))
+    show("ayu, the older format", Base16.parse(file("ayu-dark-legacy.yaml"), "x"))
+    show("one colour missing", Base16.parse(file("broken.yaml"), "x"))
+    show("not a scheme", Base16.parse(file("notes.txt"), "x"))
+    show("empty", Base16.parse("", "x"))
+
+    String styles = sixteen("000000", "#111111", "'AABBCC'", "\"#333333\"", "444444 # four", "FFFFFF", "666666", "777777")
+    show("every style, no name", Base16.parse(styles, "unnamed"))
+    show("variant says light", Base16.parse("variant: \"light\"\n" + styles, "unnamed"))
+    show("variant says dark", Base16.parse("variant: dark\n" + sixteen("ffffff", "eeeeee", "dddddd", "cccccc", "999999", "000000", "111111", "222222"), "unnamed"))
+    show("light by its colours", Base16.parse(sixteen("ffffff", "eeeeee", "dddddd", "cccccc", "999999", "000000", "111111", "222222"), "unnamed"))
+    show("windows line endings", Base16.parse(styles.replace("\n", "\r\n"), "unnamed"))
+    show("a colour that is not hex", Base16.parse(sixteen("000000", "111111", "222222", "333333", "444444", "zzzzzz", "666666", "777777"), "unnamed"))
+    show("a colour of three digits", Base16.parse(sixteen("000000", "111111", "222222", "333333", "444444", "fff", "666666", "777777"), "unnamed"))
+    show("another system", Base16.parse("system: \"tinted8\"\n" + styles, "unnamed"))
+    show("base24 is read by its first sixteen", Base16.parse("system: \"base24\"\n" + styles + "base10: 010101\nbase11: 020202\n", "unnamed"))
+
+    List found = Base16.loadDir("test_suite/data/schemes")
+    out("a folder: ${found.len()} schemes\n")
+    Int i = 0
+    while i < found.len():
+      Theme t = found.get(i)
+      out("  ${t.name}\n")
+      i = i + 1
+    end
+    out("a folder that is not there: ${Base16.loadDir("test_suite/data/nothing").len()} schemes\n")
+
+    List merged = Base16.withFolder("test_suite/data/schemes")
+    out("built in and from the folder: ${merged.len()}\n")
+    Int taken = 0
+    Int first = 0
+    Int j = 0
+    while j < merged.len():
+      Theme t = merged.get(j)
+      if t.name.equals("Dracula (base16)"):
+        taken = taken + 1
+      end
+      if t.name.equals("Dracula"):
+        first = first + 1
+      end
+      j = j + 1
+    end
+    out("the built-in Dracula keeps its name, the scheme's is made distinct: ${first} ${taken}\n")
+    Theme built = merged.get(0)
+    out("the built-in themes come first: ${built.name}\n")
+    Theme dist = merged.get(13)
+    out("and the folder's after them, in name order: ${dist.name}\n")
+  end
+end

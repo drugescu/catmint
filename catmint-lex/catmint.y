@@ -69,7 +69,7 @@
 		       name == "Null" || name == "Object" || name == "String" ||
 		       name == "IO" || name == "List" || name == "Integer" ||
 		       name == "File" || name == "Math" || name == "Process" ||
-		       name == "Worker" || name == "Bytes" ||
+		       name == "Worker" || name == "Handles" || name == "Bytes" ||
 		       name == "Ints" || name == "Floats" || name == "Ptr" ||
 		       name == "auto" || name.rfind("_uuid_generic_", 0) == 0;
 	}
@@ -130,6 +130,41 @@
 	static catmint::Class *rememberClass(catmint::Class *c) {
 		gDeclaredClasses.insert(c->getName());
 		c->setFile(gCurrentFile);
+		return c;
+	}
+
+	// `extern def Name(params) Result`. The class holds one method, "call",
+	// whose signature is the function pointer's; the C widths (UInt32 and the
+	// like) are kept on the nodes and catmint's integers put in their place,
+	// exactly as for an extern function.
+	static catmint::Class *makeCallbackType(int line, const std::string &name,
+	                                        std::vector<catmint::Feature*> *params,
+	                                        const std::string &result) {
+		std::vector<catmint::Attribute*> arguments;
+		if (params) {
+			for (auto feature : *params) {
+				arguments.push_back(dynamic_cast<catmint::Attribute*>(feature));
+			}
+			delete params;
+		}
+		auto call = new catmint::Method(line, "call", result, nullptr, arguments);
+		call->setStatic(true);
+		if (cBoundaryType(result) != result) {
+			call->setCReturnType(result);
+			call->setReturnType(cBoundaryType(result));
+		}
+		for (auto param : *call) {
+			const std::string t = param->getType();
+			if (cBoundaryType(t) != t) {
+				param->setCType(t);
+				param->setType(cBoundaryType(t));
+			}
+		}
+		std::vector<catmint::Feature*> features;
+		features.push_back(call);
+		auto c = rememberClass(new catmint::Class(line, qualifyTypeName(name), "", features));
+		c->setExtern(true);
+		c->setCallbackType(true);
 		return c;
 	}
 
@@ -346,6 +381,20 @@ catmint_class
 		}
 	// `extern struct` and `extern union`: a C layout, fields only. `@ n`
 	// after the name asserts the size, after a field its offset.
+	// `extern def Compare(Ptr left, Ptr right) Int` declares the type of a C
+	// function pointer, as a typedef does in a header. It is a class with no
+	// instances whose one feature, "call", holds the signature; a static
+	// method is passed where a parameter has the type. The C widths stay on the
+	// nodes, as for an extern function, since the function the compiler writes
+	// for C to call must take and return exactly those.
+	| KW_EXTERN KW_DEF IDENTIFIER OP_OPAREN OP_CPAREN type_name {
+			$$ = makeCallbackType(@1.first_line, *$3, nullptr, *$6);
+			delete $3; delete $6;
+		}
+	| KW_EXTERN KW_DEF IDENTIFIER OP_OPAREN method_arguments OP_CPAREN type_name {
+			$$ = makeCallbackType(@1.first_line, *$3, $5, *$7);
+			delete $3; delete $7;
+		}
 	| KW_EXTERN KW_STRUCT IDENTIFIER c_size c_fields KW_END {
 			$$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$3), "", *$5));
 			$$->setCKind(1);

@@ -82,6 +82,11 @@ public:
   bool isCUnion() const { return cKind == 2; }
   void setCKind(int kind) { cKind = kind; }
   int getCKind() const { return cKind; }
+  /// `extern def Name(params) Result`: the type of a C function pointer, which
+  /// a static method is passed as. It has no instances and no layout; its one
+  /// feature is the method "call", which carries the signature.
+  bool isCallbackType() const { return callbackType; }
+  void setCallbackType(bool value) { callbackType = value; }
   /// The size `@ n` after the name asserts, or -1 when there is none.
   int getAssertedSize() const { return assertedSize; }
   void setAssertedSize(int size) { assertedSize = size; }
@@ -129,6 +134,7 @@ private:
   bool builtinDeclaration = false;
   bool externDeclaration = false;
   int cKind = 0; // 0 a class, 1 an extern struct, 2 an extern union
+  bool callbackType = false;
   int assertedSize = -1;
   FeaturesType features;
   Symbol self;
