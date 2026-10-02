@@ -1,0 +1,68 @@
+# Declaring a variable of a class type makes an object when nothing else will
+# supply one -- `Noisy a` on its own, so that `a.id = 5` works without a `new`.
+# It must not make one when the declaration says where the object comes from:
+# `Noisy c = holder.item` is that object, and building a throwaway first and then
+# dropping it is wrong in two ways -- it allocates and runs a constructor for
+# nothing, and when the class holds something finalize gives back, giving it
+# back. (Sdl's finalize calls SDL_Quit: declaring `Sdl sdl = pad.sdl` in one
+# method of an editor switched off the events for the whole program.)
+#
+# A constructor that announces itself shows every object made: each case below
+# prints what it should make and nothing else.
+
+class Noisy
+  Int id
+  constructor():
+    IO io
+    io.out("  [constructed]\n")
+  end
+end
+
+class Holder
+  Noisy item = null
+end
+
+class Main from IO
+  def Noisy make:
+    return new Noisy()
+  end
+
+  def main:
+    Holder h = new Holder()
+    out("the one that is held:\n")
+    h.item = new Noisy()
+    h.item.id = 7
+
+    out("a bare declaration makes one:\n")
+    Noisy a
+    a.id = 5
+    out("  usable: ${a.id}\n")
+
+    out("a declaration with new makes one:\n")
+    Noisy b = new Noisy()
+
+    out("a declaration from a field makes none, and is that object:\n")
+    Noisy c = h.item
+    out("  same: ${c.id == 7}\n")
+    c.id = 8
+    out("  and changing it changes the held one: ${h.item.id == 8}\n")
+
+    out("a declaration from a call makes only what the call makes:\n")
+    Noisy d = make()
+
+    out("a declaration from an Object makes none:\n")
+    Object o = h.item
+    Noisy e = o
+    out("  same: ${e.id == 8}\n")
+
+    out("a declaration from null makes none:\n")
+    Noisy f = null
+    out("  null: ${f == null}\n")
+
+    out("several names, one declaration, one object each:\n")
+    Noisy g1, g2
+    g1.id = 1
+    g2.id = 2
+    out("  ${g1.id} ${g2.id}\n")
+  end
+end

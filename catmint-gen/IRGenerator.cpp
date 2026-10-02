@@ -1868,12 +1868,47 @@ llvm::Value *IRGenerator::emitSymbol(Symbol *S) {
 
 /// Declaring a variable of class type also constructs it, so `IO n` yields a
 /// usable object without an explicit `new`. That is the style every program in
-/// this repository is written in, and it matters for a second reason: the
-/// grammar folds the statement that follows a bare declaration into the
-/// declaration's initialiser, so `IO n` on one line and `n.out(...)` on the
-/// next arrive here as one node whose initialiser already mentions `n`. The
-/// variable is therefore registered and constructed before the initialiser is
-/// evaluated.
+/// this repository is written in -- but only when nothing else supplies the
+/// object. `Noisy c = holder.item` is that object: building a default one first
+/// and dropping it allocated and ran a constructor for nothing, and when the
+/// class has a finalize it ran that too (Sdl's calls SDL_Quit, so declaring
+/// `Sdl sdl = pad.sdl` in one method switched off the events for the program).
+///
+/// So the variable is registered first, as before, and the initialiser's type
+/// is looked at before anything is built: if the initialiser can be stored in
+/// the variable, the variable is that, and no default is made. A default is
+/// still made for a bare declaration, and for an initialiser that cannot be
+/// stored (a statement the grammar once folded into the declaration, which is
+/// evaluated for its effect and discarded).
+/// Whether a value of type From can be stored in a variable declared as To.
+/// Store only when the initialiser actually yields this type; when the grammar
+/// has folded an unrelated following statement in here, it is evaluated for its
+/// effect and discarded.
+///
+/// `From == Object` is the container case: a value coming out of a List is typed
+/// Object, and the declared type narrows it with a checked cast. The
+/// last clause is the unboxing one, `Int n = list.get(i)`. Neither can be
+/// confused with a folded statement, whose value is always some concrete class
+/// such as IO.
+bool IRGenerator::initialiserFits(const std::string &From, const std::string &To,
+                                  ClassInfo *ToClass) {
+  return From == To || isSubclassOf(From, To) ||
+         // Any number: coerce widens, truncates or converts between every pair
+         // of numeric types, as the language documents. Listing only Int here
+         // dropped `Int n = someInt64` and left n zero.
+         TypeTable::integerWidth(From) || TypeTable::floatWidth(From) ||
+         From == strings::Null || From == strings::Object ||
+         (To == strings::Int && lookupClass(From) != nullptr) ||
+         // A downcast from a class that is not Object: `Dog d = animal`. The
+         // `=` was written, so the value is wanted; coerce inserts the checked
+         // cast. Without this the initialiser was dropped and d stayed the
+         // default Dog the declaration had built, every field zero.
+         (ToClass && lookupClass(From) != nullptr && isSubclassOf(To, From)) ||
+         // An interface-typed variable takes any object; whether it really does
+         // what the interface asks is settled at run time.
+         (ToClass && ToClass->IsInterface && lookupClass(From) != nullptr);
+}
+
 llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
   std::string DeclaredType = LD->getType();
 
@@ -1933,22 +1968,11 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
   if (DeclClass &&
       (DeclClass->IsInterface || DeclClass->IsAbstract || DeclClass->COpaque))
     DeclClass = nullptr;
-  // A self-contained initialiser supplies the whole value, so there is nothing
-  // to default-construct first.
-  const bool InitIsComplete =
-      InitExpr && (dynamic_cast<NewObject *>(InitExpr) ||
-                   dynamic_cast<StringConstant *>(InitExpr) ||
-                   dynamic_cast<NullConstant *>(InitExpr));
-
   llvm::Type *Lowered = lowerType(DeclaredType);
   std::vector<llvm::Value *> Slots;
   for (const auto &Name : LD->getName()) {
     auto *Slot = createEntryAlloca(Lowered, Name);
-    if (DeclClass && !InitIsComplete) {
-      auto *Obj = constructObject(DeclClass, {}, LD->getLineNumber(),
-                                  Name + ".obj");
-      storeReference(Obj, Slot, /*SlotIsLive=*/false);
-    } else if (Lowered->isPointerTy()) {
+    if (Lowered->isPointerTy()) {
       Builder.CreateStore(llvm::ConstantPointerNull::get(
                               llvm::PointerType::getUnqual(Context)),
                           Slot);
@@ -1964,41 +1988,33 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
     Slots.push_back(Slot);
   }
 
+  // What the initialiser is, looked at with the names registered (it may
+  // mention them) and before anything is built.
+  const std::string InitType = InitExpr ? staticTypeOf(InitExpr) : std::string();
+  ClassInfo *DeclaredClass = lookupClass(DeclaredType);
+  const bool Assignable = InitExpr && initialiserFits(InitType, DeclaredType, DeclaredClass);
+
+  // A self-contained initialiser supplies the whole value, so there is nothing
+  // to default-construct first; so does any initialiser that will be stored.
+  const bool InitIsComplete =
+      InitExpr && (Assignable || dynamic_cast<NewObject *>(InitExpr) ||
+                   dynamic_cast<StringConstant *>(InitExpr) ||
+                   dynamic_cast<NullConstant *>(InitExpr));
+
+  if (DeclClass && !InitIsComplete) {
+    for (auto *Slot : Slots) {
+      auto *Obj = constructObject(DeclClass, {}, LD->getLineNumber(),
+                                  LD->getName().front() + ".obj");
+      storeReference(Obj, Slot, /*SlotIsLive=*/false);
+    }
+  }
+
   if (!InitExpr)
     return nullptr;
 
-  const std::string InitType = staticTypeOf(InitExpr);
   llvm::Value *V = emit(InitExpr);
   if (!V)
     return nullptr;
-  // Store only when the initialiser actually yields this type; when the
-  // grammar has folded an unrelated following statement in here, it is
-  // evaluated for its effect and discarded.
-  //
-  // `InitType == Object` is the container case: a value coming out of a List
-  // is typed Object, and the declared type narrows it with a checked cast.
-  // The last clause is the unboxing one, `Int n = list.get(i)`. Neither can be
-  // confused with a folded statement, whose value is always some concrete
-  // class such as IO.
-  ClassInfo *DeclaredClass = lookupClass(DeclaredType);
-  const bool Assignable =
-      InitType == DeclaredType || isSubclassOf(InitType, DeclaredType) ||
-      // Any number: coerce widens, truncates or converts between every pair
-      // of numeric types, as the language documents. Listing only Int here
-      // dropped `Int n = someInt64` and left n zero.
-      TypeTable::integerWidth(InitType) || TypeTable::floatWidth(InitType) ||
-      InitType == strings::Null || InitType == strings::Object ||
-      (DeclaredType == strings::Int && lookupClass(InitType) != nullptr) ||
-      // A downcast from a class that is not Object: `Dog d = animal`. The
-      // `=` was written, so the value is wanted; coerce inserts the checked
-      // cast. Without this the initialiser was dropped and d stayed the
-      // default Dog the declaration had built, every field zero.
-      (DeclaredClass && lookupClass(InitType) != nullptr &&
-       isSubclassOf(DeclaredType, InitType)) ||
-      // An interface-typed variable takes any object; whether it really does
-      // what the interface asks is settled at run time.
-      (DeclaredClass && DeclaredClass->IsInterface &&
-       lookupClass(InitType) != nullptr);
   if (Assignable) {
     llvm::Value *Stored = coerce(V, InitType, DeclaredType, LD->getLineNumber());
     if (Stored->getType() == Lowered) {

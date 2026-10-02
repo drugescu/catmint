@@ -354,6 +354,8 @@ private:
   llvm::Value *emitNullConstant(NullConstant *NC);
   llvm::Value *emitSymbol(Symbol *S);
   llvm::Value *emitLocalDefinition(LocalDefinition *LD);
+  bool initialiserFits(const std::string &From, const std::string &To,
+                       ClassInfo *ToClass);
   llvm::Value *emitAssignment(Assignment *A);
   llvm::Value *emitBinaryOperator(BinaryOperator *BO);
   /// The pieces of a chain of string concatenations, left to right. `"a" + b

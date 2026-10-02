@@ -430,6 +430,19 @@ constructor when that constructor takes no arguments. Declaring a variable of a
 class whose constructor does take arguments leaves the object default-
 initialised, as it was before constructors existed; use `new` there.
 
+**Only when nothing else supplies the object.** `Noisy c = holder.item` is that
+object. It used to build a default `Noisy` first and drop it -- an allocation
+and a constructor run for nothing, and for a class with a `finalize` the
+finalizer too: `Sdl sdl = pad.sdl` in one method of the editor called
+`SDL_Quit()` and switched off the events for the whole program, with no error
+anywhere. `emitLocalDefinition` now registers the names, looks at the
+initialiser's type (`initialiserFits`), and constructs a default only for a bare
+declaration or an initialiser that cannot be stored. (The grammar no longer
+folds a following statement into a bare declaration's initialiser, as an old
+comment there said it did; `IO n` then `n.out(...)` gives `n` no initialiser at
+all.) `89_declaration_constructs_once` has a constructor that announces itself
+and six ways of declaring.
+
 One detail that is easy to trip over, forced by the grammar:
 
 - **`x = expr` is a `LocalDefinition` with the type `auto`, never an
