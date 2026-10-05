@@ -1,0 +1,63 @@
+# The keys that move the cursor or change the text of the file being edited: the
+# arrows and what goes with them, Home and End, the page keys, Enter, Backspace,
+# Delete and Tab. Everything else -- Ctrl S, F5, the palette -- is a command and
+# comes from lib/commands.cmm. Shift extends the selection; Ctrl takes the arrows
+# by word and Home and End to the ends of the text.
+
+using sdl
+using editor
+
+class EditKeys from Object
+  # Do what the key says to the text. 1 if it was one of these keys, so the
+  # caller can scroll to the cursor; `rows` is how many lines a page is.
+  static def Int apply(Editor ed, Int key, Int shift, Int shortcut, Int rows):
+    if shortcut == 1:
+      if key == SDL2C.SDLK_LEFT():
+        ed.wordLeft(shift)
+        return 1
+      elif key == SDL2C.SDLK_RIGHT():
+        ed.wordRight(shift)
+        return 1
+      elif key == SDL2C.SDLK_HOME():
+        ed.docStart(shift)
+        return 1
+      elif key == SDL2C.SDLK_END():
+        ed.docEnd(shift)
+        return 1
+      end
+      return 0
+    end
+    if key == SDL2C.SDLK_LEFT():
+      ed.left(shift)
+    elif key == SDL2C.SDLK_RIGHT():
+      ed.right(shift)
+    elif key == SDL2C.SDLK_UP():
+      ed.up(shift)
+    elif key == SDL2C.SDLK_DOWN():
+      ed.down(shift)
+    elif key == SDL2C.SDLK_HOME():
+      ed.home(shift)
+    elif key == SDL2C.SDLK_END():
+      ed.endOfLine(shift)
+    elif key == SDL2C.SDLK_PAGEUP():
+      ed.vertical(0 - rows, shift)
+    elif key == SDL2C.SDLK_PAGEDOWN():
+      ed.vertical(rows, shift)
+    elif key == SDL2C.SDLK_RETURN():
+      ed.newline()
+    elif key == SDL2C.SDLK_BACKSPACE():
+      ed.backspace()
+    elif key == SDL2C.SDLK_DELETE():
+      ed.deleteForward()
+    elif key == SDL2C.SDLK_TAB():
+      if shift == 1:
+        ed.untab()
+      else
+        ed.tab()
+      end
+    else
+      return 0
+    end
+    return 1
+  end
+end

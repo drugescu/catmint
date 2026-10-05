@@ -1,0 +1,8 @@
+# The size in the settings is the one used at the start.
+# font default
+# config-files settings=fontsize=24\n
+# files t.txt=abc
+# open t.txt
+# frames 2
+# expect | 24
+1 key a

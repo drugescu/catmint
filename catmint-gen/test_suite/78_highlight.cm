@@ -1,0 +1,42 @@
+# Syntax colouring for one line of catmint. Each line is printed, and under it a
+# picture with one letter for each byte: k keyword, s string, n number,
+# c comment, and a dot for everything else. The pictures are worked out from the
+# lexer's rules, not from this code:
+#   - a keyword is a whole word; `endless`, `end_` and the qualified `m::end`
+#     are names, because the lexer reads a name whole;
+#   - a string runs to its matching quote, and a backslash keeps the next
+#     character inside it; `#`, keywords and digits inside one are string;
+#   - a comment is `#` to the end of the line, and a `#` in a string is not one;
+#   - a number is digits, then optionally a dot and digits, or a dot and digits;
+#     `12ab` is a number and then a name, `7.` is a number and then a dot;
+#   - an unterminated string is a string to the end of the line;
+#   - a byte of a multi-byte character belongs to whatever contains it.
+# And the keyword list is the lexer's: a word is in it or not.
+
+using highlight
+
+class Main from IO
+  def show(String line):
+    out("${line}\n")
+    out("${Highlight.picture(line)}\n")
+  end
+
+  def main:
+    show("def run(Int n):")
+    show("  if n >= 10 and n < 3.5 then")
+    show("x = \"a # b\" # tail")
+    show("s = 'it\\'s' + \"q\\\"x\"")
+    show("endless end_ end m::end end.x")
+    show("x1 = 12ab + .5 + 0.25 + 7.")
+    show("say(\"oops")
+    show("")
+    show("x = \"é\" # ü")
+    show("if(x)then end")
+    show("#line 3 \"x.cm\"")
+    show("\"end 5\"")
+    show("\treturn 0")
+    out("class ${Keywords.has("class")} clas ${Keywords.has("clas")} classes ${Keywords.has("classes")}\n")
+    out("and ${Keywords.has("and")} or ${Keywords.has("or")} elif ${Keywords.has("elif")} else ${Keywords.has("else")} end ${Keywords.has("end")}\n")
+    out("Int ${Keywords.has("Int")} self ${Keywords.has("self")} null ${Keywords.has("null")} true ${Keywords.has("true")} empty ${Keywords.has("")}\n")
+  end
+end

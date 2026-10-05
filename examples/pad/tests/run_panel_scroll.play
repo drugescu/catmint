@@ -1,0 +1,13 @@
+# The wheel over the panel scrolls it, three lines a notch: up from the end to 10, and
+# back down, where it stays put at 13 because that is the end.
+# files many.cm=class Main from IO\n  def main:\n    Int i = 1\n    while i <= 20:\n      out("line ${i}\\n")\n      i = i + 1\n    end\n  end\nend\n
+# open many.cm
+# args --catmintc @ROOT@/catmintc
+# frames 8
+# expect paneltop 13
+1 key f5
+2 wait idle
+3 move 300 500
+4 wheel 1
+5 wheel -1
+6 wheel -1

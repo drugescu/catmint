@@ -24,6 +24,12 @@ class NamedSymbolTableScope {
 public:
   std::string name;
   std::unordered_map<std::string, TreeNode *> *uscope;
+  /// A scope the analysis has left stays in the table, so the whole thing can
+  /// still be printed at the end, but nothing can see into it. Until this
+  /// existed no scope was ever closed: a name declared in one block, method or
+  /// class was visible in every later one, so "is this name already bound?"
+  /// could not be asked.
+  bool open = true;
 
   NamedSymbolTableScope() { uscope = new UnnamedSymbolTableScope(); name = ""; };
   NamedSymbolTableScope(const std::string n) { uscope = new UnnamedSymbolTableScope(); name = n; };
@@ -43,10 +49,8 @@ public:
   // RAII class for scope management
   struct Scope {
     Scope(SymbolTable &s, std::string name) : symbolTable(s) { symbolTable.pushScope(name); }
-    ~Scope() { }
-
-    // We should not destroy the symbol table without outputting it
-    // ~Scope() { symbolTable.popScope(); }
+    // Closed, not deleted: the table is still printed whole at the end.
+    ~Scope() { symbolTable.closeScope(); }
 
   private:
     SymbolTable &symbolTable;
@@ -82,6 +86,10 @@ private:
 
   void pushScope(const std::string name);
   void popScope();
+  /// Mark the innermost scope that is still open as left.
+  void closeScope();
+  /// The innermost scope that is still open: where a new name goes.
+  SymbolTableScope *innermostOpen() const;
 
   SymbolTableScope *getScope(const std::string &name) const;
 

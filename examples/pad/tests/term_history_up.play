@@ -1,0 +1,12 @@
+# Up twice is the one before the last.
+# files t.txt=abc
+# open t.txt
+# frames 8
+# expect termline [echo one]
+1 key ` ctrl
+2 text echo one
+3 key enter
+4 text echo two
+5 key enter
+6 key up
+7 key up

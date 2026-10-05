@@ -9,6 +9,7 @@
 #define SAMPLE_POS(x) (0x2FFF0000u | (x))
 #define SAMPLE_CENTERED SAMPLE_POS(0)
 #define SAMPLE_NAME "not a number"
+#define OTHER_VALUE 99          /* a second prefix, bound by a second pattern */
 
 typedef enum { SAMPLE_RED = 1, SAMPLE_GREEN, SAMPLE_BLUE = 10 } SampleColor;
 
@@ -55,6 +56,34 @@ size_t sample_length(const char *s);
 int32_t sample_holder_last(const SampleHolder *h);
 void sample_count(int32_t *out);
 
+/* What `long` is depends on the target: 8 bytes here, 4 on Windows. */
+typedef struct {
+  long a;
+  unsigned long b;
+  long long c;
+  unsigned long long d;
+  char e;
+} SampleWide;
+
+long sample_wide_sum(const SampleWide *w);
+const char *sample_name(int32_t id);            /* static text, or NULL */
+char *sample_dup(const char *s);                /* malloc'd: stays a Ptr */
+void sample_release(char *p);
+
+/* Callbacks. A typedef; a function pointer written out in a parameter; one
+ * that cannot be bound because it takes a struct by value; and atexit, which
+ * installs a handler C runs when the process exits and is never bound. */
+typedef int32_t (*SampleVisit)(void *userdata, int32_t index);
+typedef void (*SampleSpoiled)(SamplePoint point);
+void sample_each(int32_t n, SampleVisit fn, void *userdata);
+int32_t sample_largest(const int64_t *values, int32_t count,
+                       int32_t (*better)(int64_t candidate, int64_t current));
+void sample_spoiled(SampleSpoiled handler);
+typedef void (*SampleTick)(void *userdata);     /* called from a thread of the library's */
+void sample_every(SampleTick fn, void *userdata);
+int atexit(void (*function)(void));
+
 int sample_printf(const char *fmt, ...);        /* variadic */
+int sample_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 SamplePoint sample_origin(void);                /* a struct by value */
 static inline int sample_inline(int x) { return x; }

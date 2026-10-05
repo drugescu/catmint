@@ -1,0 +1,23 @@
+# Telling a double click from two clicks: the same place, soon after the first.
+# The mouse events SDL gives carry no count, so pad keeps the last click itself.
+
+class Clicks from Object
+  Int row = 0 - 1
+  Int col = 0 - 1
+  Int at
+  # How long after the first click a second still counts, in milliseconds.
+  Int window = 400
+
+  # A click at (row, col) at time `now`. 1 if it is the second of a double click
+  # (and the pair is then used up, so a third starts again), else 0.
+  def Int press(Int r, Int c, Int now):
+    if r == row and c == col and now - at < window:
+      row = 0 - 1
+      return 1
+    end
+    row = r
+    col = c
+    at = now
+    return 0
+  end
+end

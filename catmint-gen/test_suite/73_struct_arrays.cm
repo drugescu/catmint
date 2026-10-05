@@ -1,0 +1,79 @@
+# An array of structs inside a struct: an element is a place, not a value.
+#
+# `items.cells[2].value = 42` has to write into the element in the struct, not
+# into a copy of it. In C that is an lvalue; here it was copied out whole, the
+# store went to the copy, and the 42 vanished without a word. An element read
+# or written *as a whole* (`Cell c = items.cells[2]`, `items.cells[3] = c`) is
+# still a copy in, a copy out, as C assigns structs.
+
+extern struct Pair @ 8
+  Int32 x @ 0
+  Int32 y @ 4
+end
+
+extern struct Cell @ 20
+  Int32 value @ 0
+  Pair at @ 4
+  Int32 tags[2] @ 12
+end
+
+extern struct Items @ 64
+  Cell cells[3] @ 0
+  Int32 count @ 60
+end
+
+extern class Libc
+  def Ptr memcpy(Ptr destination, Ptr source, UInt64 size)
+end
+
+class Main from IO
+  def main:
+    Items items
+
+    # A write lands in the element, and only there.
+    items.cells[1].value = 42
+    out("written: ${items.cells[1].value}, neighbours ${items.cells[0].value} ${items.cells[2].value}\n")
+
+    # Two levels: a struct held by value inside the element.
+    items.cells[2].at.x = 7
+    items.cells[2].at.y = 8
+    out("nested: ${items.cells[2].at.x} ${items.cells[2].at.y}, the other cells ${items.cells[1].at.x} ${items.cells[0].at.y}\n")
+
+    # An array inside an element.
+    items.cells[0].tags[1] = 9
+    items.cells[1].tags[0] = 5
+    out("inner arrays: ${items.cells[0].tags[0]} ${items.cells[0].tags[1]} ${items.cells[1].tags[0]} ${items.cells[1].tags[1]}\n")
+
+    # A variable index, in a loop.
+    Int i = 0
+    while i < 3:
+      items.cells[i].value = items.cells[i].value + 100 + i
+      i = i + 1
+    end
+    out("looped: ${items.cells[0].value} ${items.cells[1].value} ${items.cells[2].value}\n")
+
+    # The whole element: copied out, changed, copied back in.
+    Cell copy = items.cells[1]
+    copy.value = 1000
+    out("a copy is a copy: ${items.cells[1].value} while the copy says ${copy.value}\n")
+    items.cells[2] = copy
+    out("copied in: ${items.cells[2].value} ${items.cells[2].at.x} ${items.cells[2].tags[0]}\n")
+
+    # What C sees: the bytes, at the offsets the declarations assert. Cell is
+    # 20 bytes, so cells[1] starts at 20 and cells[2] at 40.
+    Bytes raw = new Bytes(64)
+    unsafe:
+      Libc.memcpy(raw, items, 64)
+    end
+    out("raw: ${raw.get(0)} ${raw.get(16)} ${raw.get(20)} ${raw.get(32)} ${raw.get(40)} ${raw.get(41)} ${raw.get(52)}\n")
+
+    # Bounds are checked, catchably, and a failed store changes nothing.
+    try:
+      items.cells[3].value = 1
+      out("not caught\n")
+    catch e:
+      out("out of range: ${e}\n")
+    end
+    out("count untouched: ${items.count}\n")
+  end
+end

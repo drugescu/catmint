@@ -1,0 +1,9 @@
+# A click on a row of the palette runs it. "dark" ranks "Toggle dark and light"
+# first; its row is the one below the field, y = 44 to 66, and a click there
+# toggles the theme and closes the box.
+# frames 5
+# expect theme Catmint Light
+# expect palette 0
+1 key p ctrl
+2 text dark
+3 click 300 50

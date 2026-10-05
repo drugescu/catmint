@@ -1,0 +1,10 @@
+# A program runs in the folder pad was started in, whichever folder its source is in:
+# this one is in sub/ and reads data.txt, which is beside where pad started.
+# files data.txt=the data\n
+# files sub/p.cm=class Main from IO\n  def main:\n    File f = new File()\n    f.open("data.txt", "r")\n    out(f.readLine() + "\\n")\n    f.close()\n  end\nend\n
+# open sub/p.cm
+# args --catmintc @ROOT@/catmintc
+# frames 4
+# expect panelall the data|[finished]
+1 key f5
+2 wait idle

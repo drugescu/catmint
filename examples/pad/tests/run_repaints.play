@@ -1,0 +1,12 @@
+# A line arriving makes the window draw again, though no event came: after a draw, a second
+# line from the program leaves the window wanting another (peeked 1).
+# files again.cm=class Main from IO\n  def main:\n    out("up\\n")\n    sleep(800)\n    out("again\\n")\n    while 1 == 1:\n      sleep(50)\n    end\n  end\nend\n
+# open again.cm
+# args --catmintc @ROOT@/catmintc
+# frames 3
+# expect peeked 1
+1 key f5
+2 wait panel up
+2 draw
+2 wait panel again
+2 peek

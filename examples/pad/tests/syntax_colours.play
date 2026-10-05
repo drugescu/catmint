@@ -1,0 +1,25 @@
+# Each line of catmint is drawn in the colours of what is in it, and only
+# those: the dark theme's keyword is (204, 168, 239), string (158, 198, 138),
+# number (227, 172, 123), comment (137, 147, 160) and text (223, 225, 230). A
+# row is 22 high and the text begins at x = 56, clear of the line numbers
+# (which are the same dim grey as a comment).
+# files s.cm=def f:\nx = 12\ns = "hi"\n# note\nplain
+# open s.cm
+# frames 2
+# pixels 56 0 960 22 204 168 239 some
+# pixels 56 0 960 22 227 172 123 none
+# pixels 56 0 960 22 158 198 138 none
+# pixels 56 22 960 44 227 172 123 some
+# pixels 56 22 960 44 204 168 239 none
+# pixels 56 44 960 66 158 198 138 some
+# pixels 56 44 960 66 227 172 123 none
+# pixels 56 66 960 88 137 147 160 some
+# pixels 56 66 960 88 204 168 239 none
+# pixels 56 66 960 88 158 198 138 none
+# pixels 56 66 960 88 227 172 123 none
+# pixels 56 88 960 110 223 225 230 some
+# pixels 56 88 960 110 204 168 239 none
+# pixels 56 88 960 110 158 198 138 none
+# pixels 56 88 960 110 227 172 123 none
+# pixels 56 88 960 110 137 147 160 none
+1 key home

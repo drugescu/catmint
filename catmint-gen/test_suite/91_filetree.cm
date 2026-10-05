@@ -1,0 +1,112 @@
+# The tree of files shown beside the text. It is built from the flat list of paths
+# a folder holds ("src/lib/util.cm") and shown as rows to click. What is expected:
+#   - folders come before files, and each group is in name order ignoring case
+#     ("a.txt" before "README.md");
+#   - everything starts folded; a row is a folder (with > folded, v open) or a
+#     file, indented two columns for each folder it is in;
+#   - toggling a folder opens or folds it; toggling a file does nothing; a folder
+#     remembers what was open inside it when it is folded and opened again;
+#   - revealing a path opens every folder on the way to it, and says where its row
+#     is; a path that is not there is -1;
+#   - rows are numbered from 0 in the order shown, and `count` is how many.
+# Each row is printed as its text, indented, with a / after a folder's name.
+
+using filetree
+
+class Main from IO
+  def show(String label, FileTree tree):
+    out("${label}: ${tree.count()} rows\n")
+    Int i = 0
+    while i < tree.count():
+      TreeNode n = tree.rowAt(i)
+      String pad = ""
+      Int d = 0
+      while d < n.depth:
+        pad = pad + "  "
+        d = d + 1
+      end
+      String mark = "  "
+      String slash = ""
+      if n.isDir == 1:
+        slash = "/"
+        if n.expanded == 1:
+          mark = "v "
+        else
+          mark = "> "
+        end
+      end
+      out("  ${pad}${mark}${n.name}${slash}\n")
+      i = i + 1
+    end
+  end
+
+  def main:
+    List paths = new List()
+    paths.append("README.md")
+    paths.append("src/main.cm")
+    paths.append("src/lib/util.cm")
+    paths.append("src/lib/ZZZ.cm")
+    paths.append("docs/guide.md")
+    paths.append("a.txt")
+    FileTree tree = new FileTree()
+    tree.load(paths)
+    show("folded", tree)
+
+    tree.toggle(1)
+    show("src opened", tree)
+    tree.toggle(2)
+    show("src/lib opened", tree)
+    tree.toggle(5)
+    show("a file toggled", tree)
+    out("a file stays unexpanded when toggled: ${tree.rowAt(5).expanded}\n")
+    tree.toggle(1)
+    show("src folded", tree)
+    tree.toggle(1)
+    show("src opened again, lib still open", tree)
+
+    out("row of src/lib/util.cm: ${tree.indexOf("src/lib/util.cm")}\n")
+    out("row of docs/guide.md while docs is folded: ${tree.indexOf("docs/guide.md")}\n")
+    out("revealing docs/guide.md: ${tree.reveal("docs/guide.md")}\n")
+    show("after reveal", tree)
+    FileTree deep = new FileTree()
+    deep.load(paths)
+    out("a path two folders down, from all folded: row ${deep.reveal("src/lib/util.cm")} of ${deep.count()}\n")
+    out("revealing what is not there: ${tree.reveal("nothing/here.txt")}\n")
+    out("the path of row 0: ${tree.rowAt(0).path}\n")
+    out("the path of the last row: ${tree.rowAt(tree.count() - 1).path}\n")
+
+    # A big project: five thousand files in one folder and two hundred folders. The
+    # merge sort keeps this quick; the order is bytewise, so file10 is before file9.
+    List big = new List()
+    Int n = 0
+    while n < 5000:
+      big.append("data/file${n}.txt")
+      n = n + 1
+    end
+    n = 0
+    while n < 200:
+      big.append("pkg${n}/x.cm")
+      n = n + 1
+    end
+    FileTree large = new FileTree()
+    Int started = ticks()
+    large.load(big)
+    Int took = ticks() - started
+    out("5200 paths load in a fair time: ${took < 3000}\n")
+    out("folded: ${large.count()} rows, the first four ${large.rowAt(0).name} ${large.rowAt(1).name} ${large.rowAt(2).name} ${large.rowAt(3).name}\n")
+    out("the last file is at row ${large.reveal("data/file4999.txt")} of ${large.count()}\n")
+    out("and the first three files are ${large.rowAt(1).name} ${large.rowAt(2).name} ${large.rowAt(3).name}\n")
+
+    FileTree empty = new FileTree()
+    empty.load(new List())
+    show("no files", empty)
+    List one = new List()
+    one.append("only.txt")
+    FileTree single = new FileTree()
+    single.load(one)
+    show("one file", single)
+    single.toggle(7)
+    single.toggle(0 - 1)
+    show("rows that are not there are ignored", single)
+  end
+end

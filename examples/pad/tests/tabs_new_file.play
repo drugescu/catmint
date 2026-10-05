@@ -1,0 +1,7 @@
+# Ctrl N is a new, empty tab with no name.
+# files a.txt=A
+# open a.txt
+# frames 4
+# expect tabs 2 1
+# expect tabnames a.txt|(no name)
+1 key n ctrl

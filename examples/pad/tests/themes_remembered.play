@@ -1,0 +1,7 @@
+# The theme in the settings file is the one pad starts with: Gruvbox Light's ground
+# is #fbf1c7 = (251, 241, 199).
+# config-files settings=theme=Gruvbox Light\n
+# frames 3
+# expect theme Gruvbox Light
+# pixels 400 200 500 300 251 241 199 10000
+1 key down

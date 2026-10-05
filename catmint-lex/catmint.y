@@ -69,7 +69,7 @@
 		       name == "Null" || name == "Object" || name == "String" ||
 		       name == "IO" || name == "List" || name == "Integer" ||
 		       name == "File" || name == "Math" || name == "Process" ||
-		       name == "Worker" || name == "Bytes" ||
+		       name == "Worker" || name == "Handles" || name == "Bytes" ||
 		       name == "Ints" || name == "Floats" || name == "Ptr" ||
 		       name == "auto" || name.rfind("_uuid_generic_", 0) == 0;
 	}
@@ -133,6 +133,41 @@
 		return c;
 	}
 
+	// `extern def Name(params) Result`. The class holds one method, "call",
+	// whose signature is the function pointer's; the C widths (UInt32 and the
+	// like) are kept on the nodes and catmint's integers put in their place,
+	// exactly as for an extern function.
+	static catmint::Class *makeCallbackType(int line, const std::string &name,
+	                                        std::vector<catmint::Feature*> *params,
+	                                        const std::string &result) {
+		std::vector<catmint::Attribute*> arguments;
+		if (params) {
+			for (auto feature : *params) {
+				arguments.push_back(dynamic_cast<catmint::Attribute*>(feature));
+			}
+			delete params;
+		}
+		auto call = new catmint::Method(line, "call", result, nullptr, arguments);
+		call->setStatic(true);
+		if (cBoundaryType(result) != result) {
+			call->setCReturnType(result);
+			call->setReturnType(cBoundaryType(result));
+		}
+		for (auto param : *call) {
+			const std::string t = param->getType();
+			if (cBoundaryType(t) != t) {
+				param->setCType(t);
+				param->setType(cBoundaryType(t));
+			}
+		}
+		std::vector<catmint::Feature*> features;
+		features.push_back(call);
+		auto c = rememberClass(new catmint::Class(line, qualifyTypeName(name), "", features));
+		c->setExtern(true);
+		c->setCallbackType(true);
+		return c;
+	}
+
 	int  yylex ();
 	void yyerror(const char *error)
 	{
@@ -182,7 +217,7 @@
 %token OP_LT OP_GT OP_LTE OP_GTE OP_ISE OP_ISNE OP_NOT OP_AND OP_OR OP_XOR OP_LSHIFT OP_RSHIFT
 %token OP_ANDALSO OP_ORELSE
 %token OP_ATTRIB OP_DIV OP_PLUS OP_MINUS OP_MUL
-%token OP_OPAREN OP_CPAREN OP_COLON OP_STATIC_ACCESS
+%token OP_OPAREN OP_CPAREN OP_COLON OP_STATIC_ACCESS OP_ELLIPSIS
 
 %token KW_CONSTEXPR KW_DEF KW_STATIC KW_ABSTRACT KW_EXTERN KW_UNSAFE
 %token KW_STRUCT KW_UNION
@@ -234,9 +269,9 @@ expression
 %type <expressions> dispatch_arguments vector_arguments
 %type <block> block
 
-%type <features> features attributes attribute_definitions interface_features
+%type <features> features attributes attribute_definitions interface_features extern_features
 %type <features> method_arguments
-%type <feature> attribute method interface_method
+%type <feature> attribute method interface_method extern_method
 %type <catmintClass> catmint_class
 %type <intValue> c_size c_dimension
 %type <features> c_fields
@@ -319,7 +354,7 @@ catmint_class
 	// body-less form an interface uses. Every one is static -- a C function
 	// has no receiver -- so the parser marks them rather than making each
 	// line say so.
-	| KW_EXTERN KW_CLASS IDENTIFIER interface_features KW_END {
+	| KW_EXTERN KW_CLASS IDENTIFIER extern_features KW_END {
 			$$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$3), "", *$4));
 			$$->setExtern(true);
 			for (auto feature : *$4) {
@@ -346,6 +381,20 @@ catmint_class
 		}
 	// `extern struct` and `extern union`: a C layout, fields only. `@ n`
 	// after the name asserts the size, after a field its offset.
+	// `extern def Compare(Ptr left, Ptr right) Int` declares the type of a C
+	// function pointer, as a typedef does in a header. It is a class with no
+	// instances whose one feature, "call", holds the signature; a static
+	// method is passed where a parameter has the type. The C widths stay on the
+	// nodes, as for an extern function, since the function the compiler writes
+	// for C to call must take and return exactly those.
+	| KW_EXTERN KW_DEF IDENTIFIER OP_OPAREN OP_CPAREN type_name {
+			$$ = makeCallbackType(@1.first_line, *$3, nullptr, *$6);
+			delete $3; delete $6;
+		}
+	| KW_EXTERN KW_DEF IDENTIFIER OP_OPAREN method_arguments OP_CPAREN type_name {
+			$$ = makeCallbackType(@1.first_line, *$3, $5, *$7);
+			delete $3; delete $7;
+		}
 	| KW_EXTERN KW_STRUCT IDENTIFIER c_size c_fields KW_END {
 			$$ = rememberClass(new catmint::Class(@1.first_line, qualifyTypeName(*$3), "", *$5));
 			$$->setCKind(1);
@@ -412,6 +461,51 @@ type_name_list
 		$$ = $1;
 		$$->push_back(*$3);
 		delete $3;
+	}
+	;
+
+// What an `extern class` holds: the signatures an interface holds, and the
+// aliased form. `def Int fcntl_flags = fcntl(Int fd, Int cmd, ... Int flags)`
+// names the C function `fcntl` as `fcntl_flags` in catmint, so one C function
+// can be declared twice with different types; and `...` marks where the
+// variable arguments of a variadic C function begin, with the types this
+// declaration passes for them. Both are for extern classes only.
+extern_features
+	: %empty {
+		$$ = new std::vector<catmint::Feature*>();
+	}
+	| extern_features extern_method {
+		$$ = $1;
+		$$->push_back($2);
+	}
+	;
+
+extern_method
+	: interface_method { $$ = $1; }
+	| KW_DEF type_name IDENTIFIER OP_ATTRIB IDENTIFIER OP_OPAREN OP_CPAREN {
+		auto params = new std::vector<catmint::Attribute*>();
+		auto m = new catmint::Method(@1.first_line, *$3, *$2, nullptr, *params);
+		m->setCSymbol(*$5);
+		$$ = m;
+		delete $2; delete $3; delete $5; delete params;
+	}
+	| KW_DEF type_name IDENTIFIER OP_ATTRIB IDENTIFIER OP_OPAREN method_arguments OP_CPAREN {
+		auto m = new catmint::Method(@1.first_line, *$3, *$2, nullptr,
+		                             *reinterpret_cast<std::vector<catmint::Attribute*>*>($7));
+		m->setCSymbol(*$5);
+		$$ = m;
+		delete $2; delete $3; delete $5;
+	}
+	| KW_DEF type_name IDENTIFIER OP_ATTRIB IDENTIFIER OP_OPAREN method_arguments ',' OP_ELLIPSIS method_arguments OP_CPAREN {
+		auto fixed = reinterpret_cast<std::vector<catmint::Attribute*>*>($7);
+		auto extra = reinterpret_cast<std::vector<catmint::Attribute*>*>($10);
+		const int fixedCount = static_cast<int>(fixed->size());
+		fixed->insert(fixed->end(), extra->begin(), extra->end());
+		auto m = new catmint::Method(@1.first_line, *$3, *$2, nullptr, *fixed);
+		m->setCSymbol(*$5);
+		m->setFixedParams(fixedCount);
+		$$ = m;
+		delete $2; delete $3; delete $5; delete extra;
 	}
 	;
 

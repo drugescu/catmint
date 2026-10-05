@@ -1,0 +1,11 @@
+# A line typed in the terminal and entered is echoed under the prompt and run by the shell,
+# whose output follows it; the line is empty again.
+# files t.txt=abc
+# open t.txt
+# frames 5
+# expect termall $ echo hi|hi
+# expect termline []
+1 key ` ctrl
+2 text echo hi
+3 key enter
+4 wait term hi

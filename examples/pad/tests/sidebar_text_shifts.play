@@ -1,0 +1,9 @@
+# With the explorer showing, the text begins where the editor does: 224 pixels over,
+# then the same 56 for the line numbers and their margins, so x = 280. "def" is in
+# the keyword colour from there and not under the explorer.
+# files s.cm=def f:
+# open s.cm
+# frames 4
+# pixels 280 0 960 22 204 168 239 some
+# pixels 0 0 280 22 204 168 239 none
+1 key b ctrl

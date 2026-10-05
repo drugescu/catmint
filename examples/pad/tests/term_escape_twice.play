@@ -1,0 +1,10 @@
+# Escape gives the keyboard back to the text, and then closes the panel, as it does for
+# the compiler's output; the shell goes on.
+# files t.txt=abc
+# open t.txt
+# frames 4
+# expect term 1 0 1 0
+# expect panel 0 0
+1 key ` ctrl
+2 key esc
+3 key esc

@@ -350,6 +350,7 @@ bool IRGenerator::collectClasses() {
     // be a second list of names here, which is one more place to forget.
     CI.Builtin = C->isBuiltin();
     CI.IsCStruct = C->isCStruct();
+    CI.IsCallback = C->isCallbackType();
     CI.CUnion = C->isCUnion();
     CI.COpaque = C->isOpaque();
     const std::string Name = C->getName();
@@ -443,6 +444,11 @@ bool IRGenerator::layoutClass(ClassInfo *CI) {
       // { rtti, int refs, FILE *pipe, int pid }
       CI->Elements = {Ptr, I32, Ptr, I32};
       CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.TProcess");
+    } else if (Name == strings::Handles) {
+      // { rtti, int refs } -- Handles has no state of its own either; the
+      // table lives in the runtime.
+      CI->Elements = {Ptr, I32};
+      CI->Ty = llvm::StructType::create(Context, CI->Elements, "struct.THandles");
     } else if (Name == strings::Worker) {
       // { rtti, int refs } -- Worker has no state of its own.
       CI->Elements = {Ptr, I32};
@@ -1862,12 +1868,47 @@ llvm::Value *IRGenerator::emitSymbol(Symbol *S) {
 
 /// Declaring a variable of class type also constructs it, so `IO n` yields a
 /// usable object without an explicit `new`. That is the style every program in
-/// this repository is written in, and it matters for a second reason: the
-/// grammar folds the statement that follows a bare declaration into the
-/// declaration's initialiser, so `IO n` on one line and `n.out(...)` on the
-/// next arrive here as one node whose initialiser already mentions `n`. The
-/// variable is therefore registered and constructed before the initialiser is
-/// evaluated.
+/// this repository is written in -- but only when nothing else supplies the
+/// object. `Noisy c = holder.item` is that object: building a default one first
+/// and dropping it allocated and ran a constructor for nothing, and when the
+/// class has a finalize it ran that too (Sdl's calls SDL_Quit, so declaring
+/// `Sdl sdl = pad.sdl` in one method switched off the events for the program).
+///
+/// So the variable is registered first, as before, and the initialiser's type
+/// is looked at before anything is built: if the initialiser can be stored in
+/// the variable, the variable is that, and no default is made. A default is
+/// still made for a bare declaration, and for an initialiser that cannot be
+/// stored (a statement the grammar once folded into the declaration, which is
+/// evaluated for its effect and discarded).
+/// Whether a value of type From can be stored in a variable declared as To.
+/// Store only when the initialiser actually yields this type; when the grammar
+/// has folded an unrelated following statement in here, it is evaluated for its
+/// effect and discarded.
+///
+/// `From == Object` is the container case: a value coming out of a List is typed
+/// Object, and the declared type narrows it with a checked cast. The
+/// last clause is the unboxing one, `Int n = list.get(i)`. Neither can be
+/// confused with a folded statement, whose value is always some concrete class
+/// such as IO.
+bool IRGenerator::initialiserFits(const std::string &From, const std::string &To,
+                                  ClassInfo *ToClass) {
+  return From == To || isSubclassOf(From, To) ||
+         // Any number: coerce widens, truncates or converts between every pair
+         // of numeric types, as the language documents. Listing only Int here
+         // dropped `Int n = someInt64` and left n zero.
+         TypeTable::integerWidth(From) || TypeTable::floatWidth(From) ||
+         From == strings::Null || From == strings::Object ||
+         (To == strings::Int && lookupClass(From) != nullptr) ||
+         // A downcast from a class that is not Object: `Dog d = animal`. The
+         // `=` was written, so the value is wanted; coerce inserts the checked
+         // cast. Without this the initialiser was dropped and d stayed the
+         // default Dog the declaration had built, every field zero.
+         (ToClass && lookupClass(From) != nullptr && isSubclassOf(To, From)) ||
+         // An interface-typed variable takes any object; whether it really does
+         // what the interface asks is settled at run time.
+         (ToClass && ToClass->IsInterface && lookupClass(From) != nullptr);
+}
+
 llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
   std::string DeclaredType = LD->getType();
 
@@ -1927,22 +1968,11 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
   if (DeclClass &&
       (DeclClass->IsInterface || DeclClass->IsAbstract || DeclClass->COpaque))
     DeclClass = nullptr;
-  // A self-contained initialiser supplies the whole value, so there is nothing
-  // to default-construct first.
-  const bool InitIsComplete =
-      InitExpr && (dynamic_cast<NewObject *>(InitExpr) ||
-                   dynamic_cast<StringConstant *>(InitExpr) ||
-                   dynamic_cast<NullConstant *>(InitExpr));
-
   llvm::Type *Lowered = lowerType(DeclaredType);
   std::vector<llvm::Value *> Slots;
   for (const auto &Name : LD->getName()) {
     auto *Slot = createEntryAlloca(Lowered, Name);
-    if (DeclClass && !InitIsComplete) {
-      auto *Obj = constructObject(DeclClass, {}, LD->getLineNumber(),
-                                  Name + ".obj");
-      storeReference(Obj, Slot, /*SlotIsLive=*/false);
-    } else if (Lowered->isPointerTy()) {
+    if (Lowered->isPointerTy()) {
       Builder.CreateStore(llvm::ConstantPointerNull::get(
                               llvm::PointerType::getUnqual(Context)),
                           Slot);
@@ -1958,41 +1988,33 @@ llvm::Value *IRGenerator::emitLocalDefinition(LocalDefinition *LD) {
     Slots.push_back(Slot);
   }
 
+  // What the initialiser is, looked at with the names registered (it may
+  // mention them) and before anything is built.
+  const std::string InitType = InitExpr ? staticTypeOf(InitExpr) : std::string();
+  ClassInfo *DeclaredClass = lookupClass(DeclaredType);
+  const bool Assignable = InitExpr && initialiserFits(InitType, DeclaredType, DeclaredClass);
+
+  // A self-contained initialiser supplies the whole value, so there is nothing
+  // to default-construct first; so does any initialiser that will be stored.
+  const bool InitIsComplete =
+      InitExpr && (Assignable || dynamic_cast<NewObject *>(InitExpr) ||
+                   dynamic_cast<StringConstant *>(InitExpr) ||
+                   dynamic_cast<NullConstant *>(InitExpr));
+
+  if (DeclClass && !InitIsComplete) {
+    for (auto *Slot : Slots) {
+      auto *Obj = constructObject(DeclClass, {}, LD->getLineNumber(),
+                                  LD->getName().front() + ".obj");
+      storeReference(Obj, Slot, /*SlotIsLive=*/false);
+    }
+  }
+
   if (!InitExpr)
     return nullptr;
 
-  const std::string InitType = staticTypeOf(InitExpr);
   llvm::Value *V = emit(InitExpr);
   if (!V)
     return nullptr;
-  // Store only when the initialiser actually yields this type; when the
-  // grammar has folded an unrelated following statement in here, it is
-  // evaluated for its effect and discarded.
-  //
-  // `InitType == Object` is the container case: a value coming out of a List
-  // is typed Object, and the declared type narrows it with a checked cast.
-  // The last clause is the unboxing one, `Int n = list.get(i)`. Neither can be
-  // confused with a folded statement, whose value is always some concrete
-  // class such as IO.
-  ClassInfo *DeclaredClass = lookupClass(DeclaredType);
-  const bool Assignable =
-      InitType == DeclaredType || isSubclassOf(InitType, DeclaredType) ||
-      // Any number: coerce widens, truncates or converts between every pair
-      // of numeric types, as the language documents. Listing only Int here
-      // dropped `Int n = someInt64` and left n zero.
-      TypeTable::integerWidth(InitType) || TypeTable::floatWidth(InitType) ||
-      InitType == strings::Null || InitType == strings::Object ||
-      (DeclaredType == strings::Int && lookupClass(InitType) != nullptr) ||
-      // A downcast from a class that is not Object: `Dog d = animal`. The
-      // `=` was written, so the value is wanted; coerce inserts the checked
-      // cast. Without this the initialiser was dropped and d stayed the
-      // default Dog the declaration had built, every field zero.
-      (DeclaredClass && lookupClass(InitType) != nullptr &&
-       isSubclassOf(DeclaredType, InitType)) ||
-      // An interface-typed variable takes any object; whether it really does
-      // what the interface asks is settled at run time.
-      (DeclaredClass && DeclaredClass->IsInterface &&
-       lookupClass(InitType) != nullptr);
   if (Assignable) {
     llvm::Value *Stored = coerce(V, InitType, DeclaredType, LD->getLineNumber());
     if (Stored->getType() == Lowered) {
@@ -2769,6 +2791,8 @@ llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,
                                          int Line) {
   if (Owner->IsExtern)
     return emitExternCall(M, Args, Line);
+  if (Owner->AST->getName() == strings::String && M->getName() == "fromC")
+    return emitFromC(Args, Line);
   auto *FT = methodType(Owner, M);
 
   std::vector<llvm::Value *> CallArgs;
@@ -2802,6 +2826,183 @@ llvm::Value *IRGenerator::emitStaticCall(ClassInfo *Owner, Method *M,
              : static_cast<llvm::Value *>(Call);
 }
 
+/// The function C calls for a callback. A static method is passed for a
+/// callback type by naming it, and C needs an address it can call with its own
+/// calling convention, taking and returning the C types the typedef says. This
+/// writes that function, in IR (there is no C in it), once per method:
+///
+///   - it refuses to run on any thread but the program's own, because the
+///     reference counts and pools it is about to use are not atomic;
+///   - if an earlier call already met an error it does nothing and answers
+///     zero, so C finishing its work cannot run catmint code in a state nobody
+///     reasoned about;
+///   - it catches what the method throws, rather than let a longjmp skip
+///     whatever C still had to do on the way out, and keeps the error for the
+///     extern call that is running to throw once C has returned;
+///   - and it gives the call a pool of its own, so what each call makes (a
+///     view of a struct C passed) is gone when the call returns however many
+///     times C calls.
+llvm::Function *IRGenerator::callbackTrampoline(ClassInfo *Callback,
+                                                Expression *Arg, int Line) {
+  auto *Field = dynamic_cast<FieldAccess *>(Arg);
+  auto *Receiver = Field ? dynamic_cast<Symbol *>(Field->getObject()) : nullptr;
+  ClassInfo *Owner = Receiver ? lookupClass(Receiver->getName()) : nullptr;
+  if (!Owner)
+    fail(Line, "a callback is passed by naming a static method");
+  auto Found = Owner->StaticImpl.find(Field->getField());
+  if (Found == Owner->StaticImpl.end())
+    fail(Line, "'" + Owner->AST->getName() + "' has no static method '" +
+                   Field->getField() + "'");
+  ClassInfo *Impl = Found->second.first;
+  Method *Target = Found->second.second;
+
+  const std::string Name = "__cm_cb_" + Callback->AST->getName() + "_" +
+                           Owner->AST->getName() + "_" + Target->getName();
+  if (auto *Existing = Module.getFunction(Name))
+    return Existing;
+
+  Method *Signature = nullptr;
+  for (auto *F : *Callback->AST)
+    Signature = dynamic_cast<Method *>(F);
+  if (!Signature)
+    fail(Line, "the callback type '" + Callback->AST->getName() +
+                   "' has no signature");
+
+  auto *PtrTy = llvm::PointerType::getUnqual(Context);
+  auto *I32 = llvm::Type::getInt32Ty(Context);
+  auto *I64 = llvm::Type::getInt64Ty(Context);
+  auto *VoidTy = llvm::Type::getVoidTy(Context);
+
+  // C's view of it: the widths the typedef names, unsigned ones included.
+  std::vector<llvm::Type *> CParams;
+  for (auto *P : *Signature)
+    CParams.push_back(lowerCType(P->getCType()));
+  const std::string CRetName = Signature->getCReturnType();
+  const bool ReturnsVoid = CRetName == strings::Void || CRetName == "auto";
+  llvm::Type *CRet = ReturnsVoid ? VoidTy : lowerCType(CRetName);
+  auto *F = llvm::Function::Create(llvm::FunctionType::get(CRet, CParams, false),
+                                   llvm::Function::InternalLinkage, Name, &Module);
+
+  // Built here, in the middle of whatever function is being generated, so the
+  // insertion point is put back when it is done.
+  auto Saved = Builder.saveIP();
+  auto *Entry = llvm::BasicBlock::Create(Context, "entry", F);
+  auto *Run = llvm::BasicBlock::Create(Context, "run", F);
+  auto *Body = llvm::BasicBlock::Create(Context, "body", F);
+  auto *Caught = llvm::BasicBlock::Create(Context, "caught", F);
+  auto *Skip = llvm::BasicBlock::Create(Context, "skip", F);
+
+  auto Zero = [&]() -> llvm::Value * {
+    return llvm::Constant::getNullValue(CRet);
+  };
+
+  Builder.SetInsertPoint(Entry);
+  auto *BufTy = llvm::ArrayType::get(Builder.getInt8Ty(), 512);
+  auto *Buf = Builder.CreateAlloca(BufTy, nullptr, "cb.buf");
+  Buf->setAlignment(llvm::Align(16));
+  auto Enter = Module.getOrInsertFunction(
+      "__cm_callbackEnter", llvm::FunctionType::get(I32, {}, false));
+  auto *Pending = Builder.CreateCall(Enter, {}, "cb.pending");
+  Builder.CreateCondBr(Builder.CreateICmpNE(Pending, Builder.getInt32(0)), Skip,
+                       Run);
+
+  Builder.SetInsertPoint(Run);
+  auto Push = Module.getOrInsertFunction(
+      "__cm_pushHandler", llvm::FunctionType::get(VoidTy, {PtrTy}, false));
+  auto Pop = Module.getOrInsertFunction(
+      "__cm_popHandler", llvm::FunctionType::get(VoidTy, {}, false));
+  auto PoolPush = Module.getOrInsertFunction(
+      "__cm_poolPush", llvm::FunctionType::get(VoidTy, {}, false));
+  auto PoolPop = Module.getOrInsertFunction(
+      "__cm_poolPop", llvm::FunctionType::get(VoidTy, {}, false));
+  auto SetJmp = Module.getOrInsertFunction(
+      "setjmp", llvm::FunctionType::get(I32, {PtrTy}, false));
+  if (auto *SJ = llvm::dyn_cast<llvm::Function>(SetJmp.getCallee()))
+    SJ->addFnAttr(llvm::Attribute::ReturnsTwice);
+  Builder.CreateCall(Push, {Buf});
+  auto *Code = Builder.CreateCall(SetJmp, {Buf}, "cb.code");
+  Code->addFnAttr(llvm::Attribute::ReturnsTwice);
+  Builder.CreateCondBr(Builder.CreateICmpNE(Code, Builder.getInt32(0)), Caught,
+                       Body);
+
+  // The method runs. The pool is opened after the handler has recorded its
+  // depth, so a throw out of the method closes it on the way.
+  Builder.SetInsertPoint(Body);
+  Builder.CreateCall(PoolPush, {});
+  std::vector<llvm::Value *> Args;
+  unsigned Index = 0;
+  for (auto *P : *Signature) {
+    llvm::Value *V = F->getArg(Index++);
+    const std::string CTy = P->getCType();
+    if (CTy == "UInt8" || CTy == "UInt16")
+      V = Builder.CreateZExt(V, I32, "cb.widen");
+    else if (CTy == "UInt32")
+      V = Builder.CreateZExt(V, I64, "cb.widen");
+    if (ClassInfo *S = lookupClass(P->getType()); S && S->IsCStruct)
+      V = makeView(S, V);
+    Args.push_back(V);
+  }
+  auto Callee = Module.getOrInsertFunction(
+      runtimeSymbol(Impl, Target->getName()), methodType(Impl, Target));
+  llvm::Value *Result = Builder.CreateCall(Callee, Args);
+  Builder.CreateCall(PoolPop, {});
+  Builder.CreateCall(Pop, {});
+  if (ReturnsVoid) {
+    Builder.CreateRetVoid();
+  } else {
+    if (Result->getType() != CRet && Result->getType()->isIntegerTy() &&
+        CRet->isIntegerTy())
+      Result = Builder.CreateTrunc(Result, CRet, "cb.narrow");
+    Builder.CreateRet(Result);
+  }
+
+  // Arriving here means the method threw. The handler was popped by the
+  // throw, which also closed the pool; the error is kept for the extern call.
+  Builder.SetInsertPoint(Caught);
+  Builder.CreateCall(Module.getOrInsertFunction(
+      "__cm_callbackFail", llvm::FunctionType::get(VoidTy, {}, false)));
+  Builder.CreateBr(Skip);
+
+  Builder.SetInsertPoint(Skip);
+  if (ReturnsVoid)
+    Builder.CreateRetVoid();
+  else
+    Builder.CreateRet(Zero());
+
+  Builder.restoreIP(Saved);
+  return F;
+}
+
+/// String.fromC(source, max). The source is a Ptr, a null, or a Bytes; the
+/// last is read through the runtime's own entry, which stops at the buffer's
+/// length however large `max` is, since a Bytes knows how big it is and a
+/// bare pointer does not.
+llvm::Value *IRGenerator::emitFromC(const std::vector<Expression *> &Args,
+                                    int Line) {
+  if (Args.size() != 2)
+    fail(Line, "'String.fromC' takes a source and a length");
+  const std::string FromTy = staticTypeOf(Args[0]);
+  llvm::Value *Source = emit(Args[0]);
+  llvm::Value *Max = emit(Args[1]);
+  if (!Source || !Max)
+    fail(Line, "argument to 'String.fromC' produced no value");
+  Max = coerce(Max, staticTypeOf(Args[1]), strings::Int, Line);
+
+  auto *PtrTy = llvm::PointerType::getUnqual(Context);
+  auto *I32 = llvm::Type::getInt32Ty(Context);
+  noteAllocation();
+  if (FromTy == strings::Bytes) {
+    auto Callee = Module.getOrInsertFunction(
+        "M6_String_fromBytes",
+        llvm::FunctionType::get(PtrTy, {PtrTy, I32}, false));
+    return Builder.CreateCall(Callee, {Source, Max}, "c.text");
+  }
+  Source = coerce(Source, FromTy, strings::Ptr, Line);
+  auto Callee = Module.getOrInsertFunction(
+      "M6_String_fromC", llvm::FunctionType::get(PtrTy, {PtrTy, I32}, false));
+  return Builder.CreateCall(Callee, {Source, Max}, "c.text");
+}
+
 /// A call to C. Every argument becomes what the C signature says it is: an
 /// extern struct its bytes (or NULL), a String or an array the address of
 /// its contents, a number C's own width. The result comes back the other way:
@@ -2811,12 +3012,29 @@ llvm::Value *IRGenerator::emitExternCall(Method *M,
                                          int Line) {
   auto *FT = externFunctionType(M);
   std::vector<llvm::Value *> CallArgs;
+  // The arguments C's unsigned types make narrower than an int. A trunc leaves
+  // whatever was above the low bits in the register, and a C function compiled
+  // by clang takes the register as it finds it: Apple's arm64 ABI makes the
+  // caller extend such an argument to 32 bits, and clang's own callers do on
+  // x86-64 too. Without the attribute a UInt8 computed as (c >> 8) arrived as
+  // 0x1E22 and SDL clamped it to 255.
+  std::vector<unsigned> ZeroExtended;
   auto ParamIt = M->begin();
+  int ArgIndex = 0;
   for (auto *Arg : Args) {
     if (ParamIt == M->end())
       fail(Line, "too many arguments to '" + M->getName() + "'");
-    const std::string FromTy = staticTypeOf(Arg);
     const std::string ParamTy = (*ParamIt)->getType();
+    // A callback parameter takes the function written for C. The argument is
+    // a method's name, not a value, so it is never evaluated.
+    if (ClassInfo *CallbackType = lookupClass(ParamTy);
+        CallbackType && CallbackType->IsCallback) {
+      CallArgs.push_back(callbackTrampoline(CallbackType, Arg, Line));
+      ++ParamIt;
+      ++ArgIndex;
+      continue;
+    }
+    const std::string FromTy = staticTypeOf(Arg);
     const std::string CTy = (*ParamIt)->getCType();
     llvm::Value *V = emit(Arg);
     if (!V)
@@ -2824,7 +3042,17 @@ llvm::Value *IRGenerator::emitExternCall(Method *M,
 
     ClassInfo *ParamClass = lookupClass(ParamTy);
     ClassInfo *ArgClass = lookupClass(FromTy);
-    if (ParamClass && ParamClass->IsCStruct) {
+    const bool WantsBuffer =
+        ParamTy == strings::String || ParamTy == strings::Bytes ||
+        ParamTy == strings::Ints || ParamTy == strings::Floats;
+    if (WantsBuffer && FromTy == strings::Null) {
+      // The word `null`, written where C takes a string or a buffer, is C's
+      // NULL: dlopen(NULL), recv with no address. It is the literal that
+      // means it. A String variable that merely holds null has the static
+      // type String, not Null, and still meets the null check below, because
+      // that one is the accident.
+      V = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(Context));
+    } else if (ParamClass && ParamClass->IsCStruct) {
       V = structPointerOrNull(V, ParamClass);
     } else if (ParamTy == strings::Ptr && ArgClass && ArgClass->IsCStruct) {
       V = structPointerOrNull(V, ArgClass);
@@ -2838,23 +3066,62 @@ llvm::Value *IRGenerator::emitExternCall(Method *M,
       llvm::Type *CT = lowerCType(CTy);
       if (V->getType() != CT && V->getType()->isIntegerTy() && CT->isIntegerTy())
         V = Builder.CreateTrunc(V, CT, "c.narrow");
+      if ((CTy == "UInt8" || CTy == "UInt16") &&
+          !(M->isVariadic() && ArgIndex >= M->getFixedParams()))
+        ZeroExtended.push_back(static_cast<unsigned>(CallArgs.size()));
+      // C's default argument promotions for the variable part of a variadic
+      // call: anything narrower than an int is passed as one. (A float cannot
+      // get here: the declaration is refused, see checkExternSignature.)
+      if (M->isVariadic() && ArgIndex >= M->getFixedParams() &&
+          V->getType()->isIntegerTy() && V->getType()->getIntegerBitWidth() < 32) {
+        auto *I32 = llvm::Type::getInt32Ty(Context);
+        V = CTy.rfind("UInt", 0) == 0 ? Builder.CreateZExt(V, I32, "c.promote")
+                                      : Builder.CreateSExt(V, I32, "c.promote");
+      }
     }
     CallArgs.push_back(V);
     ++ParamIt;
+    ++ArgIndex;
   }
-  if (CallArgs.size() != FT->getNumParams())
+  // A variadic function's type holds only its fixed parameters; the call
+  // carries the rest.
+  const size_t Declared = static_cast<size_t>(std::distance(M->begin(), M->end()));
+  if (CallArgs.size() != (M->isVariadic() ? Declared : FT->getNumParams()))
     fail(Line, "wrong number of arguments to '" + M->getName() + "'");
 
   if (isReferenceTypeName(M->getReturnType()))
     noteAllocation();
 
   // An extern function keeps its own name: the symbol already exists in a
-  // library, and mangling it would name something that does not.
-  auto Callee = Module.getOrInsertFunction(M->getName(), FT);
-  llvm::Value *Result = Builder.CreateCall(Callee, CallArgs);
+  // library, and mangling it would name something that does not. Declared
+  // under another name in catmint (`def A = b(...)`), it is b that is called.
+  auto Callee = Module.getOrInsertFunction(M->getCSymbol(), FT);
+  auto *CallInstr = Builder.CreateCall(Callee, CallArgs);
+  llvm::Value *Result = CallInstr;
+  for (unsigned Index : ZeroExtended) {
+    CallInstr->addParamAttr(Index, llvm::Attribute::ZExt);
+    if (auto *Declared = llvm::dyn_cast<llvm::Function>(Callee.getCallee()))
+      Declared->addParamAttr(Index, llvm::Attribute::ZExt);
+  }
+  // An error a callback met while C was running it was kept, not thrown
+  // through C's frames; this is where C has returned and it can be.
+  Builder.CreateCall(Module.getOrInsertFunction(
+      "__cm_callbackRethrow",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {}, false)));
   const std::string Ret = M->getReturnType();
   if (Ret == strings::Void || Ret == "auto")
     return nullptr;
+  // C's char * is not a catmint String. Declared to return String, the text is
+  // copied out of it, bounded (a megabyte is longer than any C string a
+  // library hands back); NULL becomes null.
+  if (Ret == strings::String) {
+    auto *PtrTy = llvm::PointerType::getUnqual(Context);
+    auto *I32 = llvm::Type::getInt32Ty(Context);
+    auto FromC = Module.getOrInsertFunction(
+        "M6_String_fromC", llvm::FunctionType::get(PtrTy, {PtrTy, I32}, false));
+    return Builder.CreateCall(FromC, {Result, llvm::ConstantInt::get(I32, 1 << 20)},
+                              "c.text");
+  }
   if (ClassInfo *RetClass = lookupClass(Ret); RetClass && RetClass->IsCStruct)
     return makeView(RetClass, Result);
   const std::string CRet = M->getCReturnType();
@@ -3123,27 +3390,41 @@ llvm::Value *IRGenerator::cFieldAddress(FieldAccess *FA, ClassInfo::CField &Out)
                                   "' has no field '" + FA->getField() + "'");
   Out = It->second;
 
-  // A field reached through another field held by value is one more offset
-  // into the same bytes, not a copy.
-  llvm::Value *Base = nullptr;
-  auto *Inner = dynamic_cast<FieldAccess *>(FA->getObject());
-  if (Inner && !Inner->getValue()) {
-    ClassInfo *InnerCI = lookupClass(staticTypeOf(Inner->getObject()));
-    if (InnerCI && InnerCI->IsCStruct) {
-      ClassInfo::CField Holder;
-      Base = cFieldAddress(Inner, Holder);
-    }
-  }
-  if (!Base) {
-    llvm::Value *Obj = emit(FA->getObject());
-    if (!Obj)
-      fail(FA->getLineNumber(), "the object of '." + FA->getField() +
-                                    "' produced no value");
-    Builder.CreateCall(Runtime.checkNull(), {Obj});
-    Base = dataPointer(Obj, CI);
-  }
+  // One more offset into the bytes of whatever holds this field -- reached
+  // through a field held by value or an element of an array of structs it is
+  // still those same bytes, not a copy.
+  llvm::Value *Base = cStructAddress(FA->getObject());
   return Builder.CreateConstInBoundsGEP1_64(llvm::Type::getInt8Ty(Context), Base,
                                             Out.Offset, FA->getField() + ".c");
+}
+
+llvm::Value *IRGenerator::cStructAddress(Expression *E) {
+  ClassInfo *CI = lookupClass(staticTypeOf(E));
+  if (!CI || !CI->IsCStruct)
+    fail(E->getLineNumber(), "this is not an extern struct");
+
+  // A struct held by value in another struct: a place inside it.
+  if (auto *FA = dynamic_cast<FieldAccess *>(E)) {
+    if (!FA->getValue()) {
+      ClassInfo *Holder = lookupClass(staticTypeOf(FA->getObject()));
+      if (Holder && Holder->IsCStruct) {
+        ClassInfo::CField Field;
+        return cFieldAddress(FA, Field);
+      }
+    }
+  }
+  // An element of an array of structs: a place inside the array.
+  if (auto *D = dynamic_cast<Dispatch *>(E)) {
+    ClassInfo::CField Array;
+    if (cArrayField(D, Array) && D->getName() == "get")
+      return cElementAddress(D, Array);
+  }
+
+  llvm::Value *Obj = emit(E);
+  if (!Obj)
+    fail(E->getLineNumber(), "an extern struct was expected and produced no value");
+  Builder.CreateCall(Runtime.checkNull(), {Obj});
+  return dataPointer(Obj, CI);
 }
 
 llvm::Value *IRGenerator::emitCFieldAccess(FieldAccess *FA) {
@@ -3212,9 +3493,7 @@ void IRGenerator::emitRuntimeErrorIf(llvm::Value *Cond, const std::string &Messa
 /// s.pad[i], and s.pad[i] = v (which the parser made set(i, v)). The index is
 /// checked against the declared length, so an array in a C struct is as
 /// bounds-safe as a Bytes.
-llvm::Value *IRGenerator::emitCArrayElement(Dispatch *D) {
-  ClassInfo::CField F;
-  cArrayField(D, F);
+llvm::Value *IRGenerator::cElementAddress(Dispatch *D, ClassInfo::CField &F) {
   auto *FA = dynamic_cast<FieldAccess *>(D->getObject());
   const int Line = D->getLineNumber();
   llvm::Value *Base = cFieldAddress(FA, F);
@@ -3232,8 +3511,18 @@ llvm::Value *IRGenerator::emitCArrayElement(Dispatch *D) {
                                      std::to_string(F.ArrayLen) +
                                      " elements of '" + FA->getField() + "'");
   auto *Offset = Builder.CreateMul(Index, llvm::ConstantInt::get(I64, F.ElemSize));
-  auto *Addr = Builder.CreateInBoundsGEP(llvm::Type::getInt8Ty(Context), Base,
-                                         Offset, "c.element");
+  return Builder.CreateInBoundsGEP(llvm::Type::getInt8Ty(Context), Base, Offset,
+                                   "c.element");
+}
+
+llvm::Value *IRGenerator::emitCArrayElement(Dispatch *D) {
+  ClassInfo::CField F;
+  cArrayField(D, F);
+  const int Line = D->getLineNumber();
+  llvm::Value *Addr = cElementAddress(D, F);
+  std::vector<Expression *> Args;
+  for (auto *A : *D)
+    Args.push_back(A);
 
   if (D->getName() == "set") {
     const std::string FromType = staticTypeOf(Args.at(1));
@@ -3306,13 +3595,18 @@ llvm::Value *IRGenerator::structPointerOrNull(llvm::Value *Obj, ClassInfo *CI) {
 
 llvm::FunctionType *IRGenerator::externFunctionType(Method *M) {
   std::vector<llvm::Type *> Params;
-  for (auto *P : *M)
+  int Index = 0;
+  for (auto *P : *M) {
+    // A variadic C function's type is its fixed parameters and "...".
+    if (M->isVariadic() && Index++ >= M->getFixedParams())
+      break;
     Params.push_back(lowerCType(P->getCType()));
+  }
   const std::string Ret = M->getCReturnType();
   llvm::Type *RetTy = (Ret == strings::Void || Ret == "auto" || Ret.empty())
                           ? llvm::Type::getVoidTy(Context)
                           : lowerCType(Ret);
-  return llvm::FunctionType::get(RetTy, Params, false);
+  return llvm::FunctionType::get(RetTy, Params, M->isVariadic());
 }
 
 // ---------------------------------------------------------------------------

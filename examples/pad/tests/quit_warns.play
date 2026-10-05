@@ -1,0 +1,6 @@
+# The first Ctrl Q with unsaved changes does not quit. It says why.
+# frames 6
+# expect quit 0
+# expect message unsaved changes
+1 text x
+2 key q ctrl

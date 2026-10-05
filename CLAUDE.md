@@ -372,8 +372,9 @@ pointing at freed memory -- which is exactly how it failed when it was still
 there. `release` lets go of one reference and frees on the last; `retain`
 takes one; `refs` reports the count, which is 2 for a freshly made object
 held in a variable (the allocation's, still owed to the pool, and the
-variable's). `IO.allocated()` is the live object count, which is how test 31
-proves a thousand-iteration loop returns to where it started.
+variable's). `IO.allocated()` is the live object count -- leaving out what only a pool is
+holding, see below -- which is how test 31 proves a thousand-iteration loop
+returns to where it started.
 
 **Freeing follows a class's reference fields.** The run-time type information
 carries a list of their byte offsets ending in -1, which the generator writes
@@ -428,6 +429,19 @@ Declaring a variable of class type still constructs it, and runs the
 constructor when that constructor takes no arguments. Declaring a variable of a
 class whose constructor does take arguments leaves the object default-
 initialised, as it was before constructors existed; use `new` there.
+
+**Only when nothing else supplies the object.** `Noisy c = holder.item` is that
+object. It used to build a default `Noisy` first and drop it -- an allocation
+and a constructor run for nothing, and for a class with a `finalize` the
+finalizer too: `Sdl sdl = pad.sdl` in one method of the editor called
+`SDL_Quit()` and switched off the events for the whole program, with no error
+anywhere. `emitLocalDefinition` now registers the names, looks at the
+initialiser's type (`initialiserFits`), and constructs a default only for a bare
+declaration or an initialiser that cannot be stored. (The grammar no longer
+folds a following statement into a bare declaration's initialiser, as an old
+comment there said it did; `IO n` then `n.out(...)` gives `n` no initialiser at
+all.) `89_declaration_constructs_once` has a constructor that announces itself
+and six ways of declaring.
 
 One detail that is easy to trip over, forced by the grammar:
 
@@ -692,6 +706,155 @@ record's alignment, so records holding it still lay out right.
 from it; `test.sh` runs it and says "skipped: needs clang" rather than
 nothing when it cannot.
 
+The generator reads the **target's** scalar sizes from clang's predefined
+macros (`__SIZEOF_LONG__`, `__CHAR_UNSIGNED__`), so `long` is `Int64` on Linux
+and macOS and `Int` on Windows, and `--target` / `--clang-arg=` bind for a
+machine that is not this one (the test binds its header for
+`x86_64-pc-windows-msvc` and checks `b` lands at offset 4, not 8; use the `=`
+form for a clang argument that starts with a dash). `--constants-match`
+repeats, and the header reports how many names each pattern matched and says
+so on stderr when one matched nothing -- `AUDIO_S16LSB` was missing from the
+SDL bindings for exactly that reason, an unprefixed name under a `^SDL_`
+pattern. `--string-returns REGEX` binds the named `char *` returns as `String`;
+leave out anything that returns memory someone must free (`SDL_GetPrefPath`,
+`SDL_GetClipboardText`). A variadic function is listed as refused, with
+"takes a format string" added when clang's JSON carries a `FormatAttr`.
+
+**The SDL library and the game run headless** in `test.sh`:
+`SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software SDL_AUDIODRIVER=dummy` need
+no window system, and the game's 17 input tests and `check.sh` pass under them.
+`tools/sdl_test/run.sh` runs always (and says "skipped: SDL2 is not installed"),
+the game's two suites with `--thorough`. SDL's `disk` audio driver
+(`SDL_AUDIODRIVER=disk SDL_DISKAUDIOFILE=f.raw`) records what a program
+queues, converted to signed 16-bit stereo at 44.1 kHz whatever was asked for.
+
+**The C boundary's edges** (all in `emitExternCall` and `checkExternSignature`
+unless said). *Text back*: an extern function declared to return `String`
+gets `M6_String_fromC(ptr, 1 << 20)` called on its result -- before this the
+raw `char *` came back typed as a String, which was type confusion inside
+`unsafe`; `Bytes`/`Ints`/`Floats` returns are refused for the same reason.
+`String.fromC` is `emitFromC`, routed from `emitStaticCall`; a `Bytes` source
+goes to `M6_String_fromBytes`, which clamps `max` to the buffer's own length,
+and a `Ptr` or `null` to `M6_String_fromC`; the semantic pass makes it need
+`unsafe` (the same gate as an extern call) and refuses `Ints`, `Floats` and
+structs as the source. *The literal `null`* where a parameter is a
+`String` or an array is C's NULL, decided by the argument's static type being
+`Null` -- not by its value, so a null-holding String variable still meets
+`marshalToC`'s null check. *Aliases and variadics*: `Method` carries
+`getCSymbol()` (the C name, defaulting to the method's own) and
+`getFixedParams()` (minus one unless variadic); the grammar's `extern_method`
+rules build them, `OP_ELLIPSIS` is the `...` token. `externFunctionType` gives
+LLVM the fixed parameters and `isVarArg`; the call's extra arguments are the
+declaration's remaining parameters, promoted to at least an `int`
+(`c.promote`). **A variadic call must be made through a variadic function
+type**: on Apple arm64 variable arguments go on the stack, and declaring
+`snprintf` as an ordinary function printed `0.000|83734528` for `3.142|42`
+(test 67 is the proof). `String` and arrays are refused in the variable part,
+`Float32` too (C promotes it; declare `Float`).
+
+*`Process` without a shell*: `runArgs`/`startArgs`/`openArgs` take a List and
+`execvp`; `argv_from_list` validates it (null, empty, over 4096, non-String,
+NUL) before anything starts. `openArgs` forks by hand, so its pipe is closed
+with `fclose` and a `waitpid` on `TProcess::pid`, not `pclose` -- that is what
+`process_close` decides, and why `object_free` and `finish` both call it.
+`openArgs` is appended after `finish` in both `TypeTable.cpp` and `RProcess`,
+and `RProcess` is now a 12-slot vtable (`catmint_rtti12_process`). **The child
+closes the parent's other descriptors** (CWE-403: a socket or a document would
+stay open in a program that could read it). `open_descriptors` snapshots them
+*in the parent* and the child only calls `close`, because between `fork` and
+`exec` only async-signal-safe functions are allowed -- SDL starts threads, and
+one may have held the malloc lock at the fork and never release it in the
+child. It asks each descriptor in turn (`fcntl(fd, F_GETFD)`) rather than
+reading `/dev/fd`: `opendir`/`readdir` are `readdir$INODE64` on Intel Macs and
+plain `readdir` on Apple silicon, two struct layouts, and the Darwin runtime is
+one file for both. `portability.sh` caught that in the first version, which
+had used them; this is what its architecture check is for. Test 69 counts the
+descriptors a child sees with and without files open here (not an absolute
+number: macOS's `ls` opens two for itself) and fails when the closing is
+removed.
+`String.chr(0)` was an empty String because `chr` built a C string; it uses
+`new_string(1)` now.
+
+**Callbacks.** `extern def Compare(Ptr left, Ptr right) Int` is a `Class` with
+`isCallbackType()` (a flag of its own: `isCStruct()` is `cKind != 0`, so reusing
+a kind would have made it look like a struct) holding one static method,
+"call", for the signature; it is also `isExtern()`, which is what makes the
+generator skip its initialiser, metadata and bodies. There is deliberately **no
+`callback` keyword**: it is a field and parameter name throughout the generated
+`sdl2.cmm` and the obvious name of a variable. A callback is passed by
+*naming* the method, which the parser already reads as a field access on a
+class name; `checkCallbackArgument` reinterprets it when the extern parameter is
+a callback type, and `emitExternCall` never evaluates it. `callbackTrampoline`
+writes, in IR, the function C calls: `__cm_callbackEnter` (aborts off the main
+thread, answers 1 if an error is pending), a handler and `setjmp`, a pool, the
+conversion of C's arguments (`UInt8/16` zero-extended to `i32`, `UInt32` to
+`i64`, a struct pointer made a view), the call, and on a throw
+`__cm_callbackFail` keeps the error. **Every extern call is followed by
+`__cm_callbackRethrow`**, which throws what a callback kept; it is a load and a
+branch. Note the consequence: that check also runs for extern calls *inside* a
+callback body, so a body that makes one while an error is pending dies at it.
+That is correct, and it once hid a missing skip in the test, which now counts
+through a handle so that no comparator makes an extern call.
+`gMainThread` is recorded by a C constructor in the runtime, so the generated
+`main` needed no change and `CATMINT_ABI` did not move. `Handles` is a
+static-only built-in class (`Math`'s shape; registered in `StringConstants.h`,
+`TypeTable.cpp`, `IRGenerator.cpp`, `catmint.y`'s global type names and
+`runtime.c`), a table of `{object, generation, next_free}`; a handle is
+`0x4348 << 48 | generation << 24 | index + 1`, so a number that is not one
+fails the magic check, and a dropped slot's generation moves on so a stale
+handle cannot reach whatever reuses it. Two Ptrs cannot be compared with each
+other (only with `null`), so tests observe handles through `get`, reference
+counts and `allocated()`.
+
+Three defects found while testing callbacks, **all fixed** (tests 73, 74, 75):
+
+**A place inside C memory is an address, not a value.** `items.cells[2].value
+= 42` compiled and wrote to a *copy* of the element: `cells[2]` was evaluated
+whole, which copies a nested struct, and the store went to the copy. Silent,
+which is the worst kind. The generator had three special cases (a field, a
+field of a field, an array element) and no idea of "the bytes this expression
+denotes". `cStructAddress(E)` is that idea: for a nested struct held by value
+it is `cFieldAddress`, for an element of an array of structs it is
+`cElementAddress` (the bounds-checked address, shared with get/set), and only
+otherwise an object evaluated and its bytes found through `dataPointer`. A
+field's address is then `cStructAddress(object) + offset` whatever the object
+is, so writes reach the original, an array inside an element works
+(`items.cells[0].tags[1]`), and a whole element is still a copy in and a copy
+out. In the checker `cArrayContext` was set and then *cleared* by each array
+access, so one inside another wiped the outer's and the outer was refused as an
+array used whole; it is saved and restored.
+
+**The symbol table never closed a scope.** `SymbolTable::Scope`'s destructor
+was empty (the pop was commented out, "we should not destroy the symbol table
+without outputting it"), so every name ever declared stayed visible to every
+later block, method and class, and `contains` meant "was ever declared".
+Scopes now have an `open` flag: the guard closes the innermost open one,
+insert/lookup/contains see only open ones, and the table is still printed whole
+at the end. Nothing in the suite had depended on the leak; a class scope
+inserts inherited attributes explicitly. **With that, `x = expr` is an
+assignment when every name is visible**: the checker no longer binds a new `x`
+of the right-hand side's type (which made `a = o`, an Object into a variable
+declared A, leave the checker believing `a` was an Object), it gives the
+definition the variable's own type, and the generator's `coerce` does the
+checking and the run-time downcast as it always did.
+
+**`IO.allocated()` counts what something holds.** An object made in a method
+sits on that method's pool until it returns, so `things = null` did not lower
+the count there, and neither did the strings `out()` had just built;
+measuring a leak meant a helper method and reading the count before printing.
+`pool_held_objects` is a trial deletion (as a cycle collector does) that frees
+nothing: it counts each pooled object down by its pool entries, and where that
+reaches zero follows its references -- the RTTI's field offsets and a List's
+items, exactly as `object_free` does -- counting each down by one. Everything
+that reaches zero is what closing the pools would free; `allocated()` is
+`gLiveObjects` minus that. A cycle never reaches zero, which is the point:
+counting cannot free one and the number keeps saying so. It reads the pool and
+the counts and writes nothing of the program's, and costs what the pools and
+the freeable part hold, so it is for diagnostics.
+
+Still true: `allocated()` read in an expression is of the objects then alive,
+and a `finalize` that releases things is not simulated.
+
 `link "SDL2"` names a library. The preprocessor removes the line, so there is
 no grammar rule and no AST node; `catmintc` greps the sources for it, as it
 already does for `using`, and turns each into a `-l`. `-l` and `-L` on the
@@ -801,6 +964,143 @@ means `Void`), and lists and dictionaries.
 
 `catmint-gen/ASTCodeGen.cpp.old` and `include/ASTCodeGen.h` are a superseded
 earlier attempt, not built and not included by anything.
+
+## The editor
+
+`examples/pad` is a small editor for catmint programs, built to find what the
+language and its libraries lacked (it found seven things; see the traps). Its
+`pad.cm` is the controller -- the window, the event loop, events to commands and
+commands to calls -- and is kept small on purpose: it was one 1,700-line class,
+and was split into the modules below, one at a time with the suite green after each.
+
+| module | what it knows |
+|---|---|
+| `workspace.cmm` | the open files (`Doc`: text, path, sideways scroll), which is in front, the tab strip's model |
+| `metrics.cmm` | where things are: cell, row, gutter, explorer, tab strip, panel, palette -- no state but the size, the scale and the explorer's width |
+| `painter.cmm` | drawing, from what it is handed (an `Editor`, a `FileTree`, a theme, `Metrics`); never asks a question of the program |
+| `builder.cmm`, `runner.cmm` | finding `catmintc` and what to run to build or run a file; the build and the program as `Job`s, polled once a frame (F5 runs, F7 builds, Shift F5 stops) |
+| `themechooser.cmm` | which theme, the list that previews it, keeping the choice |
+| `fontchooser.cmm` | which font: the list (bundled, yours, the system's, the bitmap one), the size ladder, keeping the choice |
+| `terminalkeys.cmm` | the keys of the terminal panel when it has the keyboard, and which editor commands still work from it |
+| `search.cmm`, `recents.cmm`, `clicks.cmm`, `editkeys.cmm`, `options.cmm` | find state; files opened; double clicks; the text-editing keys; the command line |
+| `playscript.cmm` | `--play`: scripted input, and the state report the tests read |
+
+and, with no window in them, in `lib/`, each with a test in `catmint-gen/test_suite`:
+
+| module | what | test |
+|---|---|---|
+| `textbuffer` | gap buffer, line index, undo that joins typed runs | `76_textbuffer` (against a model, 4000 steps) |
+| `theme`, `themes` | twelve colours; thirteen published palettes from `tools/make_themes.py` | `77_theme` (the Catmint pair held to 7:1), `86_themes` (every colour, and WCAG figures checked against an independent calculation) |
+| `base16` | any Base16 scheme file (tinted-theming/schemes, 352 of them) as a theme | `87_base16` (real files, the old format, the refusals) |
+| `settings` | `key=value` in `$PAD_CONFIG` or `~/.config/catmint-pad` | `88_settings` |
+| `highlight`, `keywords` | colour a line; keywords read out of `catmint.l` | `78_highlight`; `test.sh` runs `tools/make_keywords.py --check` |
+| `editor` | cursor, selection, movement, edits, find/replace, scroll | `79_editor` (scripted, and 3000 random operations) |
+| `fuzzy`, `palette` | ranking, and the one-field list over it | `80_fuzzy`, `82_palette` |
+| `commands` | the commands, their keys and their hints in one table | `90_commands` |
+| `files` | capped read, safe save, tree listing, base name | `81_files` (permissions, links, failures) |
+| `job` | a program in the background: output to a private file, polled without waiting, stop (the process family, then kill), a cap on what it may print | `92_job`, `95_job_input` (sixty mutations; four survive: `ps -x` for `-A`, `O_RDWR` for `O_RDONLY`, and two guards against a recycled process number and a write between a read and a reap, which no test can aim at) |
+| `outputpanel` | what a compiler or program printed: keep the first 200 or follow the last 2000, the wheel; takes colour escapes, carriage returns and tabs out of a line | `93_outputpanel` |
+| `ttf` | TrueType text through SDL_ttf: an atlas of the ASCII glyphs in a monospaced font, drawn cell by cell, anti-aliased | `tools/sdl_test/ttf.cm` + `check_ttf.py` (cells, ink inside them, descenders) |
+| `terminal` | a shell in the background (a `Job` with input), its scrollback, the line being typed and its history, ^C and ^D | `96_terminal` |
+| `filetree` | a folder's files as rows to fold and open: folders first, case-blind order, reveal a path | `91_filetree` |
+| `buildlog` | the place in a compiler message | `83_buildlog` |
+
+The file explorer (Ctrl B; shown or not is remembered in the settings as `sidebar`,
+next to `theme`) is 28 cells down the left: `Metrics.areaLeft()` is where the editor
+begins, and the tab strip, the gutter, the text and the output panel all start there,
+so a pixel is "in the explorer" by `x < areaLeft()`, which is how a click and the
+wheel (by the pointer's last x) are routed. Its tests are `tests/sidebar_*.play`;
+the pixel counts in them for the folder marks are Unscii's glyphs counted from
+`lib/fontdata.cmm` (">" 18, "v" 26, "1" 29), not read off a run.
+
+`font` and `Texture` (in `sdl`) draw text and sprites; `tools/sdl_test` checks
+them pixel for pixel. The pad itself is tested by `examples/pad/play.sh` (one
+scripted run per behaviour: input in, printed state and pixel counts out,
+expectations written by hand) and `examples/pad/idle.py` (the CPU an idle pad
+uses, measured with `wait4`; a busy loop costs 1.0 s in 5, the real one 0.09).
+`test.sh --thorough` runs both. Every one of these was checked by breaking the
+code it tests and watching the test fail; several first passed against a break,
+and were strengthened.
+
+**Run.** F5 saves, builds, and runs what was built, all as `Job`s (`lib/job.cmm`)
+that `Pad.step()` looks at once a frame -- every 30 ms while one is going, so the
+window never waits for a compiler or a program. The program runs in the folder pad
+was started in, with no input (it finds the keyboard at its end), and its output and
+errors go to the panel in the order written, followed by `[finished]`, `[exited with
+code N]` or `[stopped]`. Closing pad stops it. `play.sh`'s `wait idle`, `wait running`,
+`wait file NAME` and `loop idle` (turns of the real `step()`) are how the tests wait
+without sleeping; `# gone pid.txt` checks a process is not there afterwards and
+`# env NAME=value` sets a variable for pad.
+
+Two things about a program run this way. Its standard output goes to a file, which
+stdio **buffers fully**: what it printed would appear when the buffer filled or the
+program ended, in an order that puts standard error first, and a program that is stopped
+would lose what was still in the buffer. So the runtime has `CATMINT_LINEBUF=1`
+(a constructor in `runtime.c` that makes stdout line-buffered, only when asked: it costs a
+write per line) and the Runner and the terminal set it for what they start
+(`94_linebuf.check`, `run_live`, `run_order`); changing it meant rebuilding both
+`runtime-*.bc`. And a `sh` is only the launcher -- it redirects, changes folder,
+and `exec`s the program, so the program is the process `Job.pid` names, and a missing
+program is 127 whatever the shell would have said (macOS's `sh` says 126 for a path
+with a slash).
+
+**The build commands need no flags.** `catmintc` searches `lib/` beside itself for modules (after the
+source's own folder and any `-I`) and, on macOS, Homebrew's `/opt/homebrew/lib` and `/usr/local/lib`
+for libraries, so pad runs it on a file with nothing but the file and `-o`, and `build.sh` is only
+that; `test.sh` checks the library is found from another folder, and `tools/sdl_test` that SDL links.
+
+**Fonts.** The editor draws with JetBrains Mono (OFL, in `examples/pad/fonts/` with its
+licence) unless the settings or `--font` say otherwise; "Choose font..." in the palette lists
+the monospaced TrueType fonts it can find -- `fonts/` beside the program, `fonts/` in the
+settings folder, a few the system has -- and the bitmap Unscii, which is also what is used
+if no TrueType font will load. The highlighted font is shown as the list moves, as the theme
+list does. Bigger and Smaller step a TrueType font through 11 to 32 pixels and the bitmap one
+through whole-number scales; `font` and `fontsize` are in the settings. `Metrics` takes its
+cell from the face (`fixedW`, `fixedH`), so everything that was laid out in 8 x 16 cells is laid
+out in the font's. It needs **SDL2_ttf** (`brew install sdl2_ttf`, `libsdl2-ttf-dev`), a new
+dependency; `lib/ttf.cmm` is the only module that links it, so nothing else needs it. The play
+tests are given `--font pixel` (`# font default` in a test leaves pad to choose), because
+every pixel position in them is worked out for 8 x 16 cells; a TrueType font's exact cell
+depends on FreeType, so the tests of it check relations, not numbers.
+
+**The terminal** (Ctrl `, "Toggle terminal") is the bottom panel showing a shell instead
+of the compiler's output; F5 or F7 shows the output again and Ctrl ` brings the terminal
+back. There is no pseudo-terminal: `sh` reads what is typed as a script from a named
+pipe in the job's folder and writes to a file, so anything that wants a screen (an
+editor, a pager waiting for a key, a password prompt) does not work, and anything that
+reads and writes lines does -- `cd` and variables persist, ^C stops what the shell is
+running without stopping the shell, ^D ends it. `TERM` is `dumb` and `CATMINT_LINEBUF=1`
+in its environment.
+A command typed after the shell has ended starts a new one. Lines pasted together with a
+command that reads standard input (`cat`) go to the shell on Debian's `sh` (dash reads ahead on
+a pipe), where typed one at a time they go to the command. In the terminal: Enter runs the
+line, Up and Down walk the last 100 commands, Ctrl C interrupts, Ctrl D (on an empty line)
+ends the input, Ctrl L clears, Ctrl A, E and U are the readline ones, Ctrl V pastes, the
+wheel and the page keys scroll. Only the commands in `TerminalKeys.global` run from the
+terminal; Escape gives the keyboard back to the text, and again closes the panel. Ctrl C is a
+SIGINT to what the shell started. A program started from a script's background job (`cmd &`)
+has SIGINT *ignored*, and so would everything it starts -- which broke the terminal's Ctrl C
+and the tests of it under `test.sh` run that way. GitHub's runner ignores SIGPIPE, so under it
+`yes | head` made `yes` print "Broken pipe" and `92_job` counted one line too many (the CI log
+cannot be read without signing in; `test.sh` now writes its failures as annotations, which can).
+So `Job.start` starts the program with SIGINT and SIGPIPE at their defaults and puts back what
+the process had. To run the suite as the runner does: `perl -e '$SIG{PIPE}="IGNORE"; $SIG{INT}="IGNORE"; exec @ARGV' ./test.sh --thorough`.
+A pipe opened for reading by a program that has not started yet blocks that program
+for ever if the writer closes first: `Job` therefore waits for the launcher's `ready`
+file before closing the input (a hang found by the test, not by thought).
+
+Not done, on purpose: Windows, indenting a block of lines, and any character outside printable
+ASCII in a TrueType font (it is drawn as `?`, as in the bitmap one).
+
+## Other editors
+
+`editors/vscode` is a VS Code extension: highlighting for `.cm` and `.cmm`, comment toggling,
+brackets and indentation after `:` and `end`. Its grammar, `syntaxes/catmint.tmLanguage.json`,
+is generated by `tools/make_vscode.py` from the lexer's keywords (a keyword the lexer gains
+that the script's table does not classify stops it), and `tools/vscode_test.py` applies the
+grammar to `editors/vscode/tests/sample.cm` and compares with `sample.scopes`, written by hand.
+That tokenizer is a small imitation of TextMate's rules, not VS Code itself. Install by linking
+the folder into `~/.vscode/extensions` (`editors/vscode/README.md`).
 
 ## Building on Linux
 
@@ -1006,6 +1306,39 @@ Each of these produced a crash or a silent miscompile during development.
   left the declaration undefined, so a class with an attribute of a
   later-declared class did not link. `emitInitFunction` now reuses the
   declaration (`56_forward_attribute`).
+- **A narrow integer argument to C must be extended by the caller.** Apple's
+  arm64 ABI makes the caller extend a `uint8_t` to 32 bits, clang's callees
+  rely on it, and an LLVM `trunc` to `i8` without `zeroext` leaves whatever was
+  in the register. Worse, the optimizer knows only the low byte is wanted, so
+  `(c >> 8) & 255` loses its mask and leaves the shift: `Theme.green(c)` came
+  out as 0x1E22 and SDL clamped it to 255, a whole window cyan. Passing a
+  constant, or a number loaded a byte at a time, hides it. `emitExternCall`
+  now puts `zeroext` on `UInt8` and `UInt16` arguments, on the call and the
+  declaration; `tools/callback_test/narrow.cm` passes shifted-and-masked random
+  numbers to a C function compiled by clang and fails 2000 of 2000 without it.
+  A new path that calls C with a narrow argument must do the same.
+- **sdl2-compat is what `brew install sdl2` is now**, and it cannot be handed
+  an `SDL_TEXTINPUT` event: `SDL_PushEvent` crashes dereferencing NULL. A script
+  gives typed text to the program's own handler (`Pad.send`). A pushed wheel
+  event arrives with `y` 0 and the amount in `preciseY`, which `Sdl.wheel`
+  reads. Real SDL2 (Linux) has neither problem.
+- ~~**A string literal cannot end in an escaped backslash.**~~ **Fixed.** The
+  lexer's rule was `["]([^"]|(\\\"))*["]`, which took `\"` for an escaped
+  quote without asking whether that backslash was itself escaped, so `"\\"` ran
+  on to the next quote anywhere after it: a parse error, or two strings
+  silently joined. It is now `["]([^"\\]|\\(.|\n))*["]` (and the same for
+  single quotes): a backslash takes the character after it, left to right, and
+  a quote ends the string unless a backslash is claiming it. `85_string_end_backslash`
+  fails to parse without either half of the fix (the single-quote rule needs a
+  later single quote in the file to show, so the test has one), and the parser
+  suite has `string_end_backslash.cm`. The editor's highlighter always read
+  strings this way, and now agrees with the lexer.
+- **`type`, `copy`, `abort`, `retain`, `release` and `refs` are `Object`'s.** A
+  method of that name on your class is an override and must match the
+  signature: "doesn't match that of overriden method". `Texture.copy` became
+  `draw` and `Editor.type` became `typeText` for this.
+- **`readAll` is not a size check, and `fopen` opens a directory.** `Files.read`
+  counts with `readBytes` first and refuses a directory with `test -d`.
 
 ## Documents
 

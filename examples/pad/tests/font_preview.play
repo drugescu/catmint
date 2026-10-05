@@ -1,0 +1,12 @@
+# Moving down the list shows the highlighted font as it moves: with the bitmap font highlighted,
+# the cell is 8 x 22 while the list is still open.
+# font default
+# files t.txt=abc
+# open t.txt
+# frames 6
+# expect palette 8 
+# expect cell 8 22
+1 key p ctrl
+2 text Choose font
+3 key enter
+4 text Pixel

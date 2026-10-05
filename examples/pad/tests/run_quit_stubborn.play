@@ -1,0 +1,12 @@
+# Leaving pad kills a program that ignores being asked to stop: the "program" here
+# is a shell script that ignores TERM and writes its process number to pid.txt.
+# files t.cm=x
+# exec catmintc=#!/bin/sh\nfor a; do last=$a; done\nprintf '#!/bin/sh\\ntrap "" TERM\\necho $$ > pid.txt\\nwhile :; do sleep 1; done\\n' > "$last"\nchmod +x "$last"\n
+# open t.cm
+# frames 5
+# expect quit 1
+# gone pid.txt
+1 key f5
+2 wait file pid.txt
+3 key q ctrl
+3 run

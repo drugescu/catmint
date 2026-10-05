@@ -1,0 +1,11 @@
+# Enter on a list that has narrowed to nothing chooses nothing and puts back what
+# was in use.
+# frames 8
+# expect theme Catmint Dark
+# expect palette 0
+1 key p ctrl
+2 text color
+3 key enter
+4 text dracula
+5 text zzzz
+6 key enter

@@ -29,11 +29,14 @@ const auto Abstract = "Abstract";
 const auto Unsafe = "Unsafe";
 const auto Extern = "Extern";
 const auto CKind = "CKind";
+const auto CallbackType = "CallbackType";
 const auto AssertedSize = "AssertedSize";
 const auto CType = "CType";
 const auto ArrayLength = "ArrayLength";
 const auto AssertedOffset = "AssertedOffset";
 const auto CReturnType = "CReturnType";
+const auto CSymbol = "CSymbol";
+const auto FixedParams = "FixedParams";
 const auto Body = "Body";
 const auto FormalParams = "FormalParams";
 const auto Value = "Value";
@@ -201,6 +204,10 @@ bool ASTSerializer::visit(Class *C) {
   }
   // Written only for extern structs and unions, so every other AST is what
   // it was before they existed.
+  if (C->isCallbackType()) {
+    writer->Key(keys::CallbackType);
+    writer->Bool(true);
+  }
   if (C->isCStruct()) {
     writePair(keys::CKind, C->getCKind());
     if (C->getAssertedSize() >= 0) {
@@ -264,6 +271,12 @@ bool ASTSerializer::visit(Method *M) {
   auto ret = M->getReturnType();
   if (!ret.empty()) {
     writePair(keys::ReturnType, ret);
+  }
+  if (M->hasCSymbol()) {
+    writePair(keys::CSymbol, M->getCSymbol().c_str());
+  }
+  if (M->isVariadic()) {
+    writePair(keys::FixedParams, M->getFixedParams());
   }
   if (M->hasCReturnType()) {
     writePair(keys::CReturnType, M->getCReturnType());
@@ -1038,6 +1051,10 @@ std::unique_ptr<Class> ASTDeserializer::parseClass(rapidjson::Value &tree) {
     assert(tree[keys::Extern].IsBool() && "Invalid extern flag");
     classNode->setExtern(tree[keys::Extern].GetBool());
   }
+  if (tree.HasMember(keys::CallbackType)) {
+    assert(tree[keys::CallbackType].IsBool() && "Invalid callback flag");
+    classNode->setCallbackType(tree[keys::CallbackType].GetBool());
+  }
   if (tree.HasMember(keys::CKind)) {
     assert(tree[keys::CKind].IsInt() && "Invalid struct kind");
     classNode->setCKind(tree[keys::CKind].GetInt());
@@ -1166,6 +1183,16 @@ std::unique_ptr<Method> ASTDeserializer::parseMethod(rapidjson::Value &tree) {
   if (tree.HasMember(keys::CReturnType)) {
     assert(tree[keys::CReturnType].IsString() && "Invalid C return type");
     method->setCReturnType(tree[keys::CReturnType].GetString());
+  }
+
+  if (tree.HasMember(keys::CSymbol)) {
+    assert(tree[keys::CSymbol].IsString() && "Invalid C symbol");
+    method->setCSymbol(tree[keys::CSymbol].GetString());
+  }
+
+  if (tree.HasMember(keys::FixedParams)) {
+    assert(tree[keys::FixedParams].IsInt() && "Invalid fixed parameter count");
+    method->setFixedParams(tree[keys::FixedParams].GetInt());
   }
 
   //if (tree.HasMember(keys::AttributeNodeType)) {

@@ -1,0 +1,184 @@
+# Text from a TrueType font, drawn the way font.cmm draws the bitmap one: a texture of
+# every printable ASCII glyph in a grid, built once when the face is made, and a cell
+# copied out of it for each character. The glyphs are drawn by SDL_ttf (FreeType) in
+# white, so the atlas takes any colour as the bitmap one does, and anti-aliased: each
+# pixel has an alpha.
+#
+#   using ttf
+#   if TrueType.monospaced("fonts/JetBrainsMono-Regular.ttf") == 1:
+#     TrueType face = new TrueType(renderer, "fonts/JetBrainsMono-Regular.ttf", 16)
+#     face.draw("hello", 10, 10, 231, 226, 214)
+#
+# Fixed pitch only: a cell is the width of the font's advance and the height of its line,
+# and a column of text is arithmetic. Kerning is off, so the width of text is its length
+# in cells. As in font.cmm anything that is not printable ASCII is drawn as `?`.
+#
+# Needs SDL2_ttf installed (brew install sdl2_ttf; libsdl2-ttf-dev). The `link` below is
+# in this module and not in sdl.cmm, so a program that does not draw TrueType text does
+# not need the library.
+
+using sdl
+using sdl2
+
+link "SDL2_ttf"
+
+extern class TTF
+  def Int TTF_Init()
+  def Ptr TTF_OpenFont(String file, Int ptsize)
+  def Void TTF_CloseFont(Ptr font)
+  def Void TTF_SetFontKerning(Ptr font, Int allowed)
+  def Int TTF_FontHeight(Ptr font)
+  def Int TTF_FontFaceIsFixedWidth(Ptr font)
+  def Int TTF_GlyphMetrics32(Ptr font, UInt32 ch, Ints minx, Ints maxx, Ints miny, Ints maxy, Ints advance)
+  def SDL_Surface TTF_RenderGlyph32_Blended(Ptr font, UInt32 ch, UInt32 color)
+end
+
+extern class TTFLibC
+  def Ptr memcpy(Bytes target, Ptr source, UInt64 count)
+end
+
+class TrueType from Object
+  Texture atlas = null
+  # The size of a cell, in pixels: the font's advance and its line height.
+  Int cellW
+  Int cellH
+  Int size
+  Ptr font = null
+
+  # The library, started once.
+  static def Int start:
+    Int ok = 0
+    unsafe:
+      ok = TTF.TTF_Init()
+    end
+    if ok == 0:
+      return 1
+    end
+    return 0
+  end
+
+  # 1 if the file opens as a font with a fixed pitch.
+  static def Int monospaced(String file):
+    if TrueType.start() == 0:
+      return 0
+    end
+    Int fixed = 0
+    unsafe:
+      Ptr f = TTF.TTF_OpenFont(file, 12)
+      if f != null:
+        fixed = TTF.TTF_FontFaceIsFixedWidth(f)
+        TTF.TTF_CloseFont(f)
+      end
+    end
+    if fixed != 0:
+      return 1
+    end
+    return 0
+  end
+
+  constructor(Renderer r, String file, Int pixels):
+    size = pixels
+    if TrueType.start() == 0:
+      throw "could not start SDL_ttf"
+    end
+    unsafe:
+      font = TTF.TTF_OpenFont(file, pixels)
+    end
+    if font == null:
+      throw "could not open the font ${file}"
+    end
+    Ints minx = new Ints(1)
+    Ints maxx = new Ints(1)
+    Ints miny = new Ints(1)
+    Ints maxy = new Ints(1)
+    Ints advance = new Ints(1)
+    unsafe:
+      TTF.TTF_SetFontKerning(font, 0)
+      TTF.TTF_GlyphMetrics32(font, 77, minx, maxx, miny, maxy, advance)
+      cellH = TTF.TTF_FontHeight(font)
+    end
+    cellW = advance.get(0)
+    if cellW < 1 or cellH < 1:
+      throw "the font ${file} has no size"
+    end
+    # 16 glyphs across, 6 down, as in font.cmm; a pixel is 4 bytes, blue first.
+    Int width = 16 * cellW
+    Int height = 6 * cellH
+    Bytes pixels = new Bytes(width * height * 4)
+    Int glyph = 1
+    while glyph < 95:
+      Int row = glyph / 16
+      Int col = glyph - row * 16
+      SDL_Surface s = null
+      unsafe:
+        s = TTF.TTF_RenderGlyph32_Blended(font, glyph + 32, 4294967295)
+      end
+      if s != null:
+        Int w = s.w
+        Int h = s.h
+        Int pitch = s.pitch
+        Bytes copy = new Bytes(pitch * h)
+        unsafe:
+          TTFLibC.memcpy(copy, s.pixels, pitch * h)
+          SDL2.SDL_FreeSurface(s)
+        end
+        if w > cellW:
+          w = cellW
+        end
+        if h > cellH:
+          h = cellH
+        end
+        Int y = 0
+        while y < h:
+          Int x = 0
+          while x < w:
+            Int at = y * pitch + x * 4
+            Int dest = ((row * cellH + y) * width + col * cellW + x) * 4
+            pixels.set(dest, copy.get(at))
+            pixels.set(dest + 1, copy.get(at + 1))
+            pixels.set(dest + 2, copy.get(at + 2))
+            pixels.set(dest + 3, copy.get(at + 3))
+            x = x + 1
+          end
+          y = y + 1
+        end
+      end
+      glyph = glyph + 1
+    end
+    atlas = new Texture(r, width, height, pixels)
+  end
+
+  # Draw text with its top left at (x, y), in colour (r, g, b). The width drawn.
+  def Int draw(String text, Int x, Int y, Int r, Int g, Int b):
+    atlas.tint(r, g, b)
+    Int n = text.len()
+    Int cell = 0
+    Int i = 0
+    while i < n:
+      Int c = text.at(i)
+      i = i + 1
+      while i < n and (text.at(i) & 192) == 128:
+        i = i + 1
+      end
+      if c < 32 or c > 126:
+        c = 63
+      end
+      if c != 32:
+        Int index = c - 32
+        Int row = index / 16
+        atlas.draw((index - row * 16) * cellW, row * cellH, cellW, cellH,
+                   x + cell * cellW, y, cellW, cellH)
+      end
+      cell = cell + 1
+    end
+    return cell * cellW
+  end
+
+  def Void finalize:
+    if font != null:
+      unsafe:
+        TTF.TTF_CloseFont(font)
+      end
+    end
+  end
+end

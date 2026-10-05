@@ -1,0 +1,8 @@
+# A file opened by its whole path is run by its whole path: not ./ in front of it.
+# files hello.cm=class Main from IO\n  def main:\n    out("hello\\n")\n  end\nend\n
+# open @DIR@/hello.cm
+# args --catmintc @ROOT@/catmintc
+# frames 3
+# expect panelall hello|[finished]
+1 key f5
+2 wait idle

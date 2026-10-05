@@ -54,6 +54,16 @@ SCALARS = {
 }
 
 
+# Functions whose whole job is to install a handler C will run at a moment of
+# its own choosing: when a signal arrives, or as the process exits. Catmint code
+# cannot run there -- a signal can land between any two instructions of the
+# reference counting -- so these are never bound, callback types or not.
+HANDLER_INSTALLERS = {"signal", "sigaction", "sigaltstack", "atexit", "on_exit",
+                      "at_quick_exit", "pthread_atfork"}
+
+FUNCTION_POINTER = re.compile(r"^(?P<ret>.*?)\(\*\)\((?P<params>.*)\)$")
+
+
 class Unbindable(Exception):
     """Why a declaration cannot be bound, said in a way a person can act on."""
 
@@ -138,10 +148,18 @@ class Header:
             self.include_line = "#include <%s>\n" % args.header
         with open(self.tu, "w") as f:
             f.write(self.include_line)
+        self.target_flags = (["--target=" + args.target] if args.target else []) + \
+                            list(args.clang_arg)
         self.flags = ["-x", "c", "-w"] + ["-I" + d for d in args.include] + \
-                     ["-D" + d for d in args.define]
+                     ["-D" + d for d in args.define] + self.target_flags
+        self.scalars = self.target_scalars()
         self.match = re.compile(args.match)
-        self.constants_match = re.compile(args.constants_match or args.match)
+        patterns = args.constants_match or [args.match]
+        self.constants_patterns = [(p, re.compile(p)) for p in patterns]
+        self.pattern_counts = {p: 0 for p in patterns}
+        self.not_integer = 0
+        self.string_returns = re.compile(args.string_returns) if args.string_returns else None
+        self.foreign_thread = re.compile(args.foreign_thread) if args.foreign_thread else None
         self.origin = re.compile(args.origin) if args.origin else None
         self.keywords = catmint_keywords()
 
@@ -151,6 +169,32 @@ class Header:
         self.enums = []          # (name, file) of enumerators
         self.functions = []      # FunctionDecl nodes, with their file
         self.skipped = []        # (name, reason)
+        self.fn_typedefs = {}    # typedef name -> (function pointer type, where)
+        self.callbacks = {}      # callback type name -> its `extern def` line
+        self.callback_failed = set()
+
+    def target_scalars(self):
+        """C's scalar types as this target makes them. The table is fixed
+        except for what the target decides, and it decides two things: how wide
+        `long` is (8 bytes on 64-bit Linux and macOS, 4 on Windows, where only
+        `long long` is 64 bits) and whether plain `char` is signed (it is not
+        on aarch64 Linux). Layouts do not need this, since clang computes
+        those for the target; this is only the names catmint gives the types."""
+        out = run([self.clang, "-dM", "-E", "-x", "c", os.devnull] +
+                  self.target_flags).stdout
+        macros = dict(re.findall(r"#define (\w+) (\S+)", out))
+        table = dict(SCALARS)
+        if int(macros.get("__SIZEOF_LONG__", "8")) == 8:
+            signed, unsigned = "Int64", "UInt64"
+        else:
+            signed, unsigned = "Int", "UInt32"
+        for name in ("long", "long int", "signed long"):
+            table[name] = signed
+        for name in ("unsigned long", "unsigned long int"):
+            table[name] = unsigned
+        if "__CHAR_UNSIGNED__" in macros:
+            table["char"] = "UInt8"
+        return table
 
     # ---- reading ---------------------------------------------------------
     def from_here(self, where):
@@ -170,6 +214,9 @@ class Header:
             self.read_record(node, where)
         elif kind == "TypedefDecl":
             self.read_typedef(node)
+            shape = node.get("type", {}).get("qualType", "")
+            if FUNCTION_POINTER.match(re.sub(r"\s+", " ", shape)):
+                self.fn_typedefs[node["name"]] = (shape, where)
         elif kind == "EnumConstantDecl":
             if self.from_here(where):
                 self.enums.append(node["name"])
@@ -264,16 +311,28 @@ class Header:
                 current["fields"].append((int(offset), text.split()[-1]))
         self.layouts = layouts
 
+    def wanted_constant(self, name):
+        """Whether any pattern takes this name, counting which one did, so a
+        pattern that matches nothing -- a prefix that was wrong, a header that
+        did not define what was expected -- can be said out loud."""
+        hit = False
+        for text, pattern in self.constants_patterns:
+            if pattern.search(name):
+                self.pattern_counts[text] += 1
+                hit = True
+        return hit
+
     def read_constant_names(self):
         out = run([self.clang, "-E", "-dM"] + self.flags + [self.tu]).stdout
         macros = []
         for line in out.splitlines():
             m = re.match(r"#define ([A-Za-z_][A-Za-z0-9_]*) (.+)$", line)
-            if m and self.constants_match.search(m.group(1)):
+            if m and self.wanted_constant(m.group(1)):
                 if '"' in m.group(2) or "'" in m.group(2):
+                    self.not_integer += 1   # a string or a character
                     continue
                 macros.append(m.group(1))
-        names = [n for n in self.enums if self.constants_match.search(n)]
+        names = [n for n in self.enums if self.wanted_constant(n)]
         seen = set(names)
         return names + [m for m in macros if m not in seen]
 
@@ -357,8 +416,8 @@ class Header:
             return ("array", m.group(1), int(m.group(2)))
         if t.endswith("*"):
             return ("pointer", t[:-1].strip())
-        if t in SCALARS:
-            return ("scalar", SCALARS[t])
+        if t in self.scalars:
+            return ("scalar", self.scalars[t])
         if t == "long double":
             raise Unbindable("uses long double")
         m = re.match(r"^(struct|union) (.+)$", t)
@@ -433,6 +492,112 @@ class Header:
     def bindable_record(self, key):
         record = self.records.get(key)
         return record is not None and key in self.bound
+
+    # ---- callbacks ---------------------------------------------------------
+    @staticmethod
+    def split_params(text):
+        """A parameter list at its top-level commas."""
+        parts, depth, current = [], 0, ""
+        for ch in text:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            if ch == "," and depth == 0:
+                parts.append(current.strip())
+                current = ""
+            else:
+                current += ch
+        if current.strip():
+            parts.append(current.strip())
+        return parts
+
+    def fn_pointer(self, shape):
+        """(result, [parameters]) of a function pointer type, or None."""
+        m = FUNCTION_POINTER.match(re.sub(r"\s+", " ", shape).strip())
+        if not m:
+            return None
+        params = self.split_params(m.group("params"))
+        return m.group("ret").strip(), ([] if params == ["void"] else params)
+
+    def callback_param(self, t):
+        """What C passes a callback, as catmint receives it: a number, a Ptr,
+        or -- for a pointer to a record that is bound -- that record, which the
+        callback sees as a view. A `char *` is a Ptr here, not a String: a
+        callback is handed bytes, and who owns them is C's business."""
+        kind = self.resolve(t)
+        if kind[0] == "scalar":
+            return kind[1]
+        if kind[0] == "enum":
+            return "Int"
+        if kind[0] == "void":
+            raise Unbindable("takes void")
+        if kind[0] == "record":
+            raise Unbindable("passes a struct by value")
+        if kind[0] == "array":
+            return "Ptr"
+        if kind[1] != "function":
+            try:
+                target = self.resolve(self.clean(kind[1]))
+                if target[0] == "record":
+                    name = self.record_name(target[1])
+                    if name and self.bindable_record(target[1]):
+                        return name
+            except Unbindable:
+                pass
+        return "Ptr"
+
+    def callback_line(self, name, shape):
+        parts = self.fn_pointer(shape)
+        if parts is None:
+            raise Unbindable("is not a function pointer")
+        result, params = parts
+        if "..." in params:
+            raise Unbindable("is variadic")
+        kind = self.resolve(result)
+        if kind[0] == "void":
+            ret = "Void"
+        elif kind[0] == "record":
+            raise Unbindable("returns a struct by value")
+        else:
+            ret = self.callback_param(result)
+        typed = ["%s arg%d" % (self.callback_param(p), i) for i, p in enumerate(params)]
+        return "extern def %s(%s) %s" % (name, ", ".join(typed), ret)
+
+    def build_callbacks(self):
+        """Each function-pointer typedef the header declares becomes a callback
+        type; one that cannot be (a struct by value, say) is listed, and the
+        functions taking it keep a Ptr."""
+        for name, (shape, where) in sorted(self.fn_typedefs.items()):
+            if not self.match.search(name) or not self.from_here(where):
+                continue
+            # A catmint callback runs on the program's own thread only; one the
+            # library calls from threads of its own (an audio callback, a timer,
+            # an allocator hook) would stop the program the first time it was.
+            # Better not to offer the trap: those stay a Ptr, and say why.
+            if self.foreign_thread and self.foreign_thread.search(name):
+                self.callback_failed.add(name)
+                self.skipped.append((name + " (callback type)",
+                                     "the library calls it from threads of its own, "
+                                     "where catmint code cannot run; the parameter "
+                                     "stays a Ptr"))
+                continue
+            try:
+                self.callbacks[name] = self.callback_line(self.ident(name), shape)
+            except Unbindable as why:
+                self.callback_failed.add(name)
+                self.skipped.append((name + " (callback type)", str(why)))
+
+    def anonymous_callback(self, function, param, shape):
+        """A function parameter that is a function pointer written out, as in
+        qsort's comparator, gets a callback type named after the two."""
+        name = "%s_%s" % (function, param)
+        try:
+            self.callbacks[name] = self.callback_line(name, shape)
+            return name
+        except Unbindable as why:
+            self.skipped.append(("%s (%s)" % (function, param), "its callback type " + str(why)))
+            return "Ptr"
 
     # ---- choosing and writing --------------------------------------------
     def choose(self):
@@ -514,18 +679,45 @@ class Header:
                 continue
             seen.add(name)
             try:
+                if name in HANDLER_INSTALLERS:
+                    raise Unbindable("installs a handler C runs at a moment of its "
+                                     "own choosing (a signal, the process exiting), "
+                                     "where catmint code cannot run")
                 if fn.get("variadic"):
-                    raise Unbindable("is variadic")
+                    if any(c.get("kind") == "FormatAttr" for c in fn.get("inner", [])):
+                        raise Unbindable("is variadic and takes a format string "
+                                         "(the printf family), which is refused")
+                    raise Unbindable("is variadic; declare the call you need by "
+                                     "hand, as `def Alias = %s(fixed..., ... Type)`" % name)
                 if fn.get("storageClass") == "static" or fn.get("inline"):
                     raise Unbindable("is inline, so there is no symbol to call")
                 qual = fn["type"].get("desugaredQualType", fn["type"]["qualType"])
-                ret = self.param_type(qual[:qual.index("(")].strip(), returning=True)
+                returned = qual[:qual.index("(")].strip()
+                ret = self.param_type(returned, returning=True)
+                # A `char *` comes back as a Ptr, because who frees it is not
+                # in the header. For the functions the author names as
+                # returning static or thread-local text (SDL_GetError), the
+                # copy is made for them.
+                if ret == "Ptr" and self.string_returns and \
+                        self.string_returns.search(name) and \
+                        self.clean(returned) == "char *":
+                    ret = "String"
                 params = []
                 for i, p in enumerate(c for c in fn.get("inner", [])
                                       if c.get("kind") == "ParmVarDecl"):
                     t = p["type"]
-                    ptype = self.param_type(t.get("desugaredQualType", t.get("qualType")))
-                    params.append("%s %s" % (ptype, self.ident(p.get("name") or "arg%d" % i)))
+                    declared = t.get("qualType", "")
+                    pname = p.get("name") or "arg%d" % i
+                    shape = t.get("desugaredQualType", declared)
+                    if declared in self.callbacks:
+                        ptype = self.ident(declared)
+                    elif declared in self.callback_failed:
+                        ptype = "Ptr"
+                    elif self.fn_pointer(shape) is not None:
+                        ptype = self.anonymous_callback(name, pname, shape)
+                    else:
+                        ptype = self.param_type(shape)
+                    params.append("%s %s" % (ptype, self.ident(pname)))
                 lines.append("  def %s %s(%s)" % (ret, name, ", ".join(params)))
             except Unbindable as why:
                 self.skipped.append((name, str(why)))
@@ -535,6 +727,7 @@ class Header:
         self.read_ast()
         self.read_layouts()
         self.choose()
+        self.build_callbacks()
         functions = self.functions_text()
         values, dropped = self.evaluate(self.read_constant_names())
         version = run([self.clang, "--version"]).stdout.splitlines()[0]
@@ -545,8 +738,17 @@ class Header:
         out.append("#   tools/bindgen.py " + " ".join(shlex.quote(a) for a in sys.argv[1:]))
         out.append("# Layouts and constants as %s reported them." % version)
         out.append("#")
-        out.append("# %d records, %d functions, %d constants." %
-                   (len(self.bound), len(functions), len(values)))
+        out.append("# %d records, %d callback types, %d functions, %d constants." %
+                   (len(self.bound), len(self.callbacks), len(functions), len(values)))
+        for text, count in (self.pattern_counts.items() if self.args.constants else ()):
+            out.append("# constants pattern %s matched %d names%s" %
+                       (text, count, "" if count else " -- NOTHING; check the pattern"))
+            if not count:
+                sys.stderr.write("bindgen: constants pattern %s matched nothing\n" % text)
+        if self.args.constants and (dropped or self.not_integer):
+            out.append("# %d names matched but are not integer constants "
+                       "(strings, function-like macros, expressions)" %
+                       (len(dropped) + self.not_integer))
         if self.skipped:
             out.append("# Not bound, with the reason:")
             for name, why in sorted(self.skipped):
@@ -557,6 +759,10 @@ class Header:
         out.append("")
         for key in sorted(self.bound, key=lambda k: self.record_name(k)):
             self.emit_record(key, out)
+        for name in sorted(self.callbacks):
+            out.append(self.callbacks[name])
+        if self.callbacks:
+            out.append("")
         out.append("extern class %s" % self.args.cls)
         out.extend(functions)
         out.append("end\n")
@@ -579,8 +785,19 @@ def main():
     parser.add_argument("header", help="a header, <on the include path> or a file")
     parser.add_argument("--match", required=True,
                         help="regex a record's or function's name must match")
-    parser.add_argument("--constants-match", default=None,
-                        help="regex for macro and enumerator names (default: --match)")
+    parser.add_argument("--constants-match", action="append", default=[],
+                        help="regex for macro and enumerator names; repeat for "
+                             "several (default: --match)")
+    parser.add_argument("--string-returns", default=None,
+                        help="regex of functions returning a `char *` that "
+                             "should be bound as String, the text copied out")
+    parser.add_argument("--foreign-thread", default=None,
+                        help="regex of function-pointer typedefs the library calls "
+                             "from threads of its own; they stay a Ptr")
+    parser.add_argument("--target", default=None,
+                        help="clang target triple, to bind for another OS")
+    parser.add_argument("--clang-arg", action="append", default=[],
+                        help="an extra argument for clang (repeatable)")
     parser.add_argument("--from", dest="origin", default=None,
                         help="regex the declaring file's path must match")
     parser.add_argument("--class", dest="cls", required=True,

@@ -1,0 +1,266 @@
+# Colour schemes in the Base16 format, the one standard there is for this.
+#
+#   using base16
+#   Theme t = Base16.parse(text, "fallback name")      # null if it is not a scheme
+#   List all = Base16.withFolder("/path/to/schemes")   # the built-in themes, then those
+#
+# Base16 is a YAML file: a name, sometimes a variant (dark or light), and sixteen
+# colours, base00 to base0F, each with a defined job. github.com/tinted-theming
+# /schemes publishes 352 of them (MIT licensed) and 210 in Base24, which keeps the
+# same first sixteen; any editor that reads the format gets all of them. This one
+# reads both the form in that repository (the colours under `palette:`) and the
+# older one with them at the top level, because it only looks for lines of the shape
+# `base0X: colour`, wherever they are and however indented.
+#
+# The sixteen are mapped on to the twelve the editor draws with, by the jobs the
+# format gives them (github.com/tinted-theming/home, styling.md):
+#   base00 ground          base01 the current line and the panels
+#   base02 selection       base03 comments            base04 line numbers, hints
+#   base05 text            base08 errors
+#   base09 numbers         base0B strings             base0E keywords
+#   base0D the accent (the caret, the focus, what is live)
+#
+# What is not a complete scheme is refused, not guessed at: a colour missing, a
+# colour that is not six hex digits, or a `system:` that is not base16 or base24
+# (the newer tinted8 format has a different shape). The format's `variant` says
+# whether it is dark or light when it says; when it does not, the colours do.
+
+using theme
+using themes
+using files
+
+class Base16
+  static def Int isHex(Int c):
+    if (c >= 48 and c <= 57) or (c >= 97 and c <= 102) or (c >= 65 and c <= 70):
+      return 1
+    end
+    return 0
+  end
+
+  # The text of a YAML scalar after its key: quoted either way, or bare. A bare
+  # one ends at a space, so a leading # is part of a colour and a # after a
+  # space is a comment. (A comment line has no key of ours, so it passes.)
+  static def String value(String rest):
+    String r = rest.trim()
+    if r.len() == 0:
+      return ""
+    end
+    Int first = r.at(0)
+    Int stop = 1
+    if first == 34 or first == 39:
+      while stop < r.len() and r.at(stop) != first:
+        stop = stop + 1
+      end
+      return r.substr(1, stop)
+    end
+    stop = 0
+    while stop < r.len() and r.at(stop) != 32 and r.at(stop) != 9:
+      stop = stop + 1
+    end
+    return r.substr(0, stop)
+  end
+
+  # Six hex digits, lower case, from "#a1b2c3" or "A1B2C3"; "" if it is not one.
+  static def String colour(String raw):
+    String s = raw
+    if s.len() > 0 and s.at(0) == 35:
+      s = s.substr(1, s.len())
+    end
+    if s.len() != 6:
+      return ""
+    end
+    Int i = 0
+    while i < 6:
+      if Base16.isHex(s.at(i)) == 0:
+        return ""
+      end
+      i = i + 1
+    end
+    return s.lower()
+  end
+
+  # Which of the sixteen a key names, 0 to 15, or -1: "base00" ... "base0F".
+  static def Int slot(String key):
+    if key.len() != 6 or key.substr(0, 5).equals("base0") == 0:
+      return 0 - 1
+    end
+    Int c = key.at(5)
+    if Base16.isHex(c) == 0:
+      return 0 - 1
+    end
+    return Theme.hexDigit(c)
+  end
+
+  # The theme a scheme describes, or null. `fallback` names it if it has no name.
+  static def Theme parse(String text, String fallback):
+    if text == null:
+      return null
+    end
+    List slots = new List()
+    Int n = 0
+    while n < 16:
+      slots.append("")
+      n = n + 1
+    end
+    String name = ""
+    String variant = ""
+    String system = ""
+    List lines = text.split("\n")
+    Int i = 0
+    while i < lines.len():
+      String line = lines.get(i)
+      Int colon = line.indexOf(":")
+      if colon > 0:
+        String key = line.substr(0, colon).trim()
+        String rest = line.substr(colon + 1, line.len())
+        if key.equals("name"):
+          name = Base16.value(rest)
+        elif key.equals("variant"):
+          variant = Base16.value(rest).lower()
+        elif key.equals("system"):
+          system = Base16.value(rest)
+        else
+          Int which = Base16.slot(key)
+          if which >= 0:
+            String c = Base16.colour(Base16.value(rest))
+            if c.len() == 0:
+              return null
+            end
+            slots.set(which, c)
+          end
+        end
+      end
+      i = i + 1
+    end
+    if system.len() > 0 and system.equals("base16") == 0 and system.equals("base24") == 0:
+      return null
+    end
+    n = 0
+    while n < 16:
+      String have = slots.get(n)
+      if have.len() == 0:
+        return null
+      end
+      n = n + 1
+    end
+    if name.len() == 0:
+      name = fallback
+    end
+    String b0 = slots.get(0)
+    String b1 = slots.get(1)
+    String b2 = slots.get(2)
+    String b3 = slots.get(3)
+    String b4 = slots.get(4)
+    String b5 = slots.get(5)
+    String b8 = slots.get(8)
+    String b9 = slots.get(9)
+    String bB = slots.get(11)
+    String bD = slots.get(13)
+    String bE = slots.get(14)
+    Int dark = 0
+    if variant.equals("dark"):
+      dark = 1
+    elif variant.equals("light"):
+      dark = 0
+    elif Theme.luminance(Theme.hex(b0)) < Theme.luminance(Theme.hex(b5)):
+      dark = 1
+    end
+    String pair = "Catmint Dark"
+    if dark == 1:
+      pair = "Catmint Light"
+    end
+    return Theme.make(name, dark, pair, b0, b1, b1, b2, b5, b4, b3, bD, bE, bB, b9, b8)
+  end
+
+  static def Int ends(String s, String suffix):
+    if s.len() < suffix.len():
+      return 0
+    end
+    if s.substr(s.len() - suffix.len(), s.len()).equals(suffix):
+      return 1
+    end
+    return 0
+  end
+
+  # Every scheme in the folder, down to three levels, in name order. Files that
+  # are not schemes are passed over.
+  static def List loadDir(String dir):
+    List names = Files.list(dir, 3, 3000)
+    List found = new List()
+    Int i = 0
+    while i < names.len():
+      String rel = names.get(i)
+      if Base16.ends(rel, ".yaml") == 1 or Base16.ends(rel, ".yml") == 1:
+        String text = Files.read(dir + "/" + rel, 65536)
+        if text != null:
+          Theme t = Base16.parse(text, rel)
+          if t != null:
+            found.append(t)
+          end
+        end
+      end
+      i = i + 1
+    end
+    # Insertion sort by name.
+    List sorted = new List()
+    i = 0
+    while i < found.len():
+      Theme t = found.get(i)
+      Int at = sorted.len()
+      while at > 0:
+        Theme before = sorted.get(at - 1)
+        if Files.before(t.name, before.name) == 1:
+          at = at - 1
+        else
+          break
+        end
+      end
+      List grown = new List()
+      Int k = 0
+      while k < at:
+        grown.append(sorted.get(k))
+        k = k + 1
+      end
+      grown.append(t)
+      while k < sorted.len():
+        grown.append(sorted.get(k))
+        k = k + 1
+      end
+      sorted = grown
+      i = i + 1
+    end
+    return sorted
+  end
+
+  # The built-in themes, then the folder's, a name already taken made distinct.
+  static def List withFolder(String dir):
+    List all = Themes.all()
+    List loaded = Base16.loadDir(dir)
+    Int i = 0
+    while i < loaded.len():
+      Theme t = loaded.get(i)
+      String name = t.name
+      if Base16.taken(all, name) == 1:
+        name = t.name + " (base16)"
+      end
+      if Base16.taken(all, name) == 0:
+        t.name = name
+        all.append(t)
+      end
+      i = i + 1
+    end
+    return all
+  end
+
+  static def Int taken(List themes, String name):
+    Int i = 0
+    while i < themes.len():
+      Theme t = themes.get(i)
+      if t.name.equals(name):
+        return 1
+      end
+      i = i + 1
+    end
+    return 0
+  end
+end

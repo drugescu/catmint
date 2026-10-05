@@ -1,0 +1,13 @@
+# Escape on the list puts back the font that was in use.
+# font default
+# files t.txt=abc
+# open t.txt
+# frames 7
+# expect font JetBrainsMono-Regular | 
+# absent cell 8 22
+# expect palette 0
+1 key p ctrl
+2 text Choose font
+3 key enter
+4 text Pixel
+5 key esc

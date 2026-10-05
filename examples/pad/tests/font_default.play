@@ -1,0 +1,11 @@
+# With nothing said, pad draws with the TrueType font that ships with it, JetBrains Mono: its
+# name is shown, the cell is not the bitmap font's 8 x 22, and the text has ink.
+# font default
+# files t.txt=abc
+# open t.txt
+# frames 3
+# expect font JetBrainsMono-Regular | 
+# expect | 16
+# absent cell 8 22
+# pixels 0 0 960 640 223 225 230 some
+1 key a

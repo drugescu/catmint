@@ -1,0 +1,128 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Catmint",
+  "scopeName": "source.catmint",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#definition"
+    },
+    {
+      "name": "keyword.control.catmint",
+      "match": "\\b(return|if|for|in|do|while|break|continue|try|catch|throw|defer|then|elif|else|end)\\b"
+    },
+    {
+      "name": "storage.type.catmint",
+      "match": "\\b(class|interface|constructor|constexpr|def|static|abstract|extern|struct|union|unsafe|var)\\b"
+    },
+    {
+      "name": "keyword.other.catmint",
+      "match": "\\b(using|does|from|new|is|spawn)\\b"
+    },
+    {
+      "name": "keyword.operator.word.catmint",
+      "match": "\\b(and|or)\\b"
+    },
+    {
+      "name": "constant.language.catmint",
+      "match": "\\b(self|null)\\b"
+    },
+    {
+      "name": "support.type.catmint",
+      "match": "\\b(Int|Int8|Int16|Int32|Int64|UInt8|UInt16|UInt32|UInt64|Float|Float32|Float64|String|Object|List|Bytes|Ints|Floats|Integer|File|Math|Process|Worker|IO|Ptr|Void)\\b"
+    },
+    {
+      "name": "entity.name.type.catmint",
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    },
+    {
+      "name": "entity.name.function.call.catmint",
+      "match": "\\b[a-z_][A-Za-z0-9_]*(?=\\()"
+    },
+    {
+      "name": "keyword.operator.catmint",
+      "match": "==|!=|<=|>=|<<|>>|[-+*/%<>=&|^~!]"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.number-sign.catmint",
+      "match": "#.*$"
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.catmint",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.catmint",
+              "match": "\\\\(.|\\n)"
+            },
+            {
+              "name": "meta.interpolation.catmint",
+              "begin": "\\$\\{",
+              "end": "\\}",
+              "beginCaptures": {
+                "0": {
+                  "name": "punctuation.section.interpolation.begin.catmint"
+                }
+              },
+              "endCaptures": {
+                "0": {
+                  "name": "punctuation.section.interpolation.end.catmint"
+                }
+              },
+              "patterns": [
+                {
+                  "include": "$self"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.catmint",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.catmint",
+              "match": "\\\\(.|\\n)"
+            }
+          ]
+        }
+      ]
+    },
+    "number": {
+      "name": "constant.numeric.catmint",
+      "match": "\\b[0-9]+(\\.[0-9]+)?\\b"
+    },
+    "definition": {
+      "match": "\\b(def)\\s+(?:(static|abstract)\\s+)?(?:([A-Z][A-Za-z0-9_]*)\\s+)?([a-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": {
+          "name": "storage.type.catmint"
+        },
+        "2": {
+          "name": "storage.modifier.catmint"
+        },
+        "3": {
+          "name": "entity.name.type.catmint"
+        },
+        "4": {
+          "name": "entity.name.function.catmint"
+        }
+      }
+    }
+  }
+}

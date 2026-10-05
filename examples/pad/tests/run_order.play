@@ -1,0 +1,9 @@
+# What a program writes to standard output and to standard error is in the panel in the
+# order it was written.
+# files order.cm=class Main from IO\n  def main:\n    out("a\\n")\n    err("b\\n")\n    out("c\\n")\n  end\nend\n
+# open order.cm
+# args --catmintc @ROOT@/catmintc
+# frames 3
+# expect panelall a|b|c|[finished]
+1 key f5
+2 wait idle

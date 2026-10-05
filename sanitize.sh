@@ -76,10 +76,24 @@ for source in test_suite/*.cm; do
 done
 
 echo "------------------------------------------------------------"
-[ -n "$unbuilt" ] && echo "did not build under --asan:$unbuilt"
+# A test that does not build under --asan has not been checked, so it is a
+# failure of the sweep, not a note beside it. This used to print the list and
+# carry on: on a machine without the sanitizer runtime (a Linux container with
+# no libclang-rt) every test failed to build, "0 tests clean" was printed, and
+# the step exited 0 -- a sweep that checked nothing and said it was fine.
+status=0
+if [ -n "$unbuilt" ]; then
+  printf "${RED}did not build under --asan:%s${NC}\n" "$unbuilt"
+  status=1
+fi
 if [ "$findings" -ne 0 ]; then
   printf "${RED}%d of %d tests reported a sanitizer finding${NC}\n" \
     "$findings" "$checked"
-  exit 1
+  status=1
 fi
+if [ "$checked" -eq 0 ]; then
+  printf "${RED}no test was checked${NC}\n"
+  status=1
+fi
+[ "$status" -ne 0 ] && exit 1
 printf "${GREEN}%d tests clean under the sanitizers${NC}\n" "$checked"

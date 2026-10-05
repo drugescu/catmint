@@ -1,0 +1,8 @@
+# "abc", back one, Backspace takes the b, Delete takes the c.
+# frames 8
+# expect text a
+# expect cursor 1 2
+1 text abc
+2 key left
+3 key backspace
+4 key delete

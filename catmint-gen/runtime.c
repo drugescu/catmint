@@ -23,6 +23,7 @@
  */
 
 #include <ctype.h>
+#include <fcntl.h>
 #include <math.h>
 #include <setjmp.h>
 /* Spelled through a macro so the file still compiles as plain C89 anywhere
@@ -178,6 +179,13 @@ struct TFloats {
 
 /* Worker has no state: it exists to name the two static methods that wait
  * for a thread and report how many cores there are. */
+/* Handles has no state of its own: the table is below, and the class exists
+ * to give the functions a home. */
+struct THandles {
+  struct __catmint_rtti *rtti;
+  int refs;
+};
+
 struct TWorker {
   struct __catmint_rtti *rtti;
   int refs;
@@ -205,7 +213,7 @@ CATMINT_RTTI_TYPE(catmint_rtti20_io, 20);
 CATMINT_RTTI_TYPE(catmint_rtti11_list, 11);
 CATMINT_RTTI_TYPE(catmint_rtti8_integer, 8);
 CATMINT_RTTI_TYPE(catmint_rtti15_file, 15);
-CATMINT_RTTI_TYPE(catmint_rtti11_process, 11);
+CATMINT_RTTI_TYPE(catmint_rtti12_process, 12);
 CATMINT_RTTI_TYPE(catmint_rtti10_array, 10);
 /* Bytes carries two more than Ints and Floats do: it is the one of the three
  * that bridges to String and File, because it is the one whose element is a
@@ -235,6 +243,8 @@ struct TString *M6_String_upper(struct TString *self);
 struct TString *M6_String_lower(struct TString *self);
 struct TList *M6_String_split(struct TString *self, struct TString *separator);
 struct TString *M6_String_chr(int code);
+struct TString *M6_String_fromC(const char *source, int max);
+struct TString *M6_String_fromBytes(struct TBytes *source, int max);
 struct TString *M6_String_replace(struct TString *self, struct TString *from,
                                   struct TString *to);
 double M6_String_toFloat(struct TString *self);
@@ -273,8 +283,12 @@ struct TString *M7_Process_readLine(struct TProcess *self);
 struct TProcess *M7_Process_write(struct TProcess *self, struct TString *text);
 int M7_Process_eof(struct TProcess *self);
 int M7_Process_finish(struct TProcess *self);
+int M7_Process_openArgs(struct TProcess *self, struct TList *args);
+static int process_close(struct TProcess *self);
 int M7_Process_run(struct TString *command);
 int M7_Process_start(struct TString *command);
+int M7_Process_runArgs(struct TList *args);
+int M7_Process_startArgs(struct TList *args);
 int M7_Process_wait(int pid);
 int M7_Process_pid(void);
 
@@ -360,6 +374,7 @@ struct TString NFile    = { RTTI(RString), 0, 4, "File" };
 struct TString NMath    = { RTTI(RString), 0, 4, "Math" };
 struct TString NProcess = { RTTI(RString), 0, 7, "Process" };
 struct TString NWorker  = { RTTI(RString), 0, 6, "Worker" };
+struct TString NHandles = { RTTI(RString), 0, 7, "Handles" };
 struct TString NBytes   = { RTTI(RString), 0, 5, "Bytes" };
 struct TString NInts    = { RTTI(RString), 0, 4, "Ints" };
 struct TString NFloats  = { RTTI(RString), 0, 6, "Floats" };
@@ -416,6 +431,11 @@ catmint_rtti6_object RMath = {
   { CATMINT_OBJECT_SLOTS }
 };
 
+catmint_rtti6_object RHandles = {
+  &NHandles, sizeof(struct THandles), RTTI(RObject), NULL, NULL, NULL,
+  { CATMINT_OBJECT_SLOTS }
+};
+
 catmint_rtti6_object RWorker = {
   &NWorker, sizeof(struct TWorker), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS }
@@ -443,12 +463,12 @@ catmint_rtti10_array RFloats = {
     (void *)M6_Floats_fill }
 };
 
-catmint_rtti11_process RProcess = {
+catmint_rtti12_process RProcess = {
   &NProcess, sizeof(struct TProcess), RTTI(RObject), NULL, NULL, NULL,
   { CATMINT_OBJECT_SLOTS,
     (void *)M7_Process_open, (void *)M7_Process_readLine,
     (void *)M7_Process_write, (void *)M7_Process_eof,
-    (void *)M7_Process_finish }
+    (void *)M7_Process_finish, (void *)M7_Process_openArgs }
 };
 
 catmint_rtti11_list RList = {
@@ -530,6 +550,10 @@ void Math_init(struct TMath *self) {
 void Process_init(struct TProcess *self) {
   self->pipe = NULL;
   self->pid = 0;
+}
+
+void Handles_init(struct THandles *self) {
+  (void)self;
 }
 
 void Worker_init(struct TWorker *self) {
@@ -714,11 +738,7 @@ static void release_owned_buffers(struct TObject *self) {
       file->handle = NULL;
     }
   } else if (self->rtti == RTTI(RProcess)) {
-    struct TProcess *process = (struct TProcess *)self;
-    if (process->pipe) {
-      pclose(process->pipe);
-      process->pipe = NULL;
-    }
+    process_close((struct TProcess *)self);
   } else if (self->rtti == RTTI(RBytes) || self->rtti == RTTI(RInts) ||
              self->rtti == RTTI(RFloats)) {
     /* All three have their length and their buffer in the same two fields,
@@ -1470,11 +1490,48 @@ struct TList *M6_String_split(struct TString *self, struct TString *separator) {
  * one string operation that cannot be written in catmint, because there is no
  * way to build a character out of a number. It is static: String.chr(65). */
 struct TString *M6_String_chr(int code) {
-  char buffer[2];
+  /* Built by length, not as a C string: chr(0) is one character, a NUL, and
+   * a C string would have been empty. */
+  struct TString *result = new_string(1);
 
-  buffer[0] = (char)(code & 0xff);
-  buffer[1] = '\0';
-  return make_string(buffer);
+  result->string[0] = (char)(code & 0xff);
+  return result;
+}
+
+/* Text that C owns, copied: the bytes at `source` up to the first NUL or
+ * `max` of them, whichever comes first. A copy and never an alias, so C still
+ * cannot write into a String. NULL gives null. The compiler makes this call
+ * only inside `unsafe`, because reading through a pointer is the promise that
+ * it is valid; the bound is what turns an unterminated buffer into a short
+ * read where strlen would run on. */
+struct TString *M6_String_fromC(const char *source, int max) {
+  struct TString *result;
+  const char *end;
+  size_t length;
+
+  if (max < 0) {
+    __cm_runtimeError("String.fromC needs a length of zero or more");
+  }
+  if (!source) {
+    return NULL;
+  }
+  end = (const char *)memchr(source, '\0', (size_t)max);
+  length = end ? (size_t)(end - source) : (size_t)max;
+  result = new_string((int)length);
+  memcpy(result->string, source, length);
+  return result;
+}
+
+/* The same out of a Bytes, which knows how large it is: `max` can never reach
+ * past the end of the buffer. */
+struct TString *M6_String_fromBytes(struct TBytes *source, int max) {
+  if (!source) {
+    __cm_runtimeError("String.fromC was given a null Bytes.");
+  }
+  if (max > source->length) {
+    max = source->length;
+  }
+  return M6_String_fromC((const char *)source->data, max);
 }
 
 /* Every occurrence, left to right. Replacing an empty string would never
@@ -1568,11 +1625,24 @@ void M2_IO_exit(struct TIO *self, int code) {
   exit(code);
 }
 
-/* Objects allocated and not yet given back. Compare two readings around a
- * piece of work to see whether it leaks. */
+static int pool_held_objects(void);
+
+/* Objects allocated and not yet given back, and held by something other than
+ * a temporary. Compare two readings around a piece of work to see whether it
+ * leaks.
+ *
+ * "Not yet given back" alone made the number useless inside the method that
+ * did the work: an object made there stays on that method's pool until it
+ * returns, so letting go of it did not lower the count, and every string
+ * out() built stayed counted too. What is left out is exactly what closing the
+ * pools would free -- see pool_held_objects. A cycle is not among it, which is
+ * the point: counting never frees one, and this keeps saying so. */
 int M2_IO_allocated(struct TIO *self) {
+  int held;
+
   (void)self;
-  return gLiveObjects;
+  held = gLiveObjects - pool_held_objects();
+  return held < 0 ? 0 : held;
 }
 
 /* -------------------------------------------------------------------------
@@ -2016,6 +2086,179 @@ int __cm_poolDepth(void) {
   return gPoolDepth;
 }
 
+/* ---- what the pools alone are keeping alive ------------------------------
+ *
+ * A trial deletion, as a cycle collector does, and with nothing freed. Every
+ * object an open pool holds is owed one release per entry. If that is all its
+ * count has left -- nothing else holds it -- closing the pools would free it,
+ * and freeing it would release what it holds in turn, which may free those. So:
+ * count each object down by its pool entries, and where that reaches zero
+ * follow its references (the offsets the generator wrote into the type
+ * information, and a List's items, exactly as object_free does), counting each
+ * down by one, and so on. Everything that reaches zero is what closing the
+ * pools would free. Anything a variable, a field or a container still holds
+ * does not reach zero, and neither does a cycle.
+ *
+ * This reads the pool and the counts and writes nothing of the program's.
+ * It is a diagnostic, run when asked, and costs what the pools and the
+ * freeable part hold. */
+struct trial_entry {
+  struct TObject *object;
+  long left;
+  int freeable;
+};
+
+struct trial {
+  struct trial_entry *slots;
+  size_t capacity;
+  size_t used;
+};
+
+static size_t trial_slot(const struct TObject *object, size_t mask) {
+  uint64_t v = (uint64_t)(uintptr_t)object >> 4;
+
+  v *= 0x9E3779B97F4A7C15ull;
+  v ^= v >> 32;
+  return (size_t)v & mask;
+}
+
+static void trial_grow(struct trial *t) {
+  size_t capacity = t->capacity ? t->capacity * 2 : 256;
+  struct trial_entry *slots = (struct trial_entry *)calloc(capacity, sizeof(*slots));
+  size_t i;
+
+  if (!slots) {
+    printf("Runtime error : out of memory counting allocations.\n");
+    exit(1);
+  }
+  for (i = 0; i < t->capacity; i++) {
+    if (t->slots[i].object) {
+      size_t at = trial_slot(t->slots[i].object, capacity - 1);
+
+      while (slots[at].object) {
+        at = (at + 1) & (capacity - 1);
+      }
+      slots[at] = t->slots[i];
+    }
+  }
+  free(t->slots);
+  t->slots = slots;
+  t->capacity = capacity;
+}
+
+/* The entry for an object, made on first sight with all of its count still
+ * to account for. The address is good only until the next call. */
+static struct trial_entry *trial_for(struct trial *t, struct TObject *object) {
+  size_t at;
+
+  if (t->used * 2 >= t->capacity) {
+    trial_grow(t);
+  }
+  at = trial_slot(object, t->capacity - 1);
+  while (t->slots[at].object && t->slots[at].object != object) {
+    at = (at + 1) & (t->capacity - 1);
+  }
+  if (!t->slots[at].object) {
+    t->slots[at].object = object;
+    t->slots[at].left = object->refs;
+    t->slots[at].freeable = 0;
+    t->used += 1;
+  }
+  return &t->slots[at];
+}
+
+struct trial_work {
+  struct TObject **items;
+  size_t length;
+  size_t capacity;
+};
+
+static void trial_push(struct trial_work *w, struct TObject *object) {
+  if (w->length == w->capacity) {
+    size_t capacity = w->capacity ? w->capacity * 2 : 64;
+    struct TObject **items =
+        (struct TObject **)realloc(w->items, capacity * sizeof(*items));
+
+    if (!items) {
+      printf("Runtime error : out of memory counting allocations.\n");
+      exit(1);
+    }
+    w->items = items;
+    w->capacity = capacity;
+  }
+  w->items[w->length++] = object;
+}
+
+/* One reference from an object that would be freed, given back. */
+static void trial_release(struct trial *t, struct trial_work *w,
+                          struct TObject *object) {
+  struct trial_entry *entry;
+
+  if (object == NULL || object->refs <= 0) {
+    return; /* nothing there, or static: never freed, never counted */
+  }
+  entry = trial_for(t, object);
+  if (entry->freeable) {
+    return;
+  }
+  entry->left -= 1;
+  if (entry->left == 0) {
+    entry->freeable = 1;
+    trial_push(w, object);
+  }
+}
+
+static int pool_held_objects(void) {
+  struct trial t = {NULL, 0, 0};
+  struct trial_work work = {NULL, 0, 0};
+  int freeable = 0;
+  int i;
+  size_t s;
+
+  for (i = 0; i < gPoolCount; i++) {
+    struct TObject *object;
+
+    if (pool_is_slot(gPoolItems[i])) {
+      continue; /* a variable's address, not an object: it holds a count */
+    }
+    object = (struct TObject *)gPoolItems[i];
+    if (object == NULL || object->refs <= 0) {
+      continue;
+    }
+    trial_for(&t, object)->left -= 1;
+  }
+  for (s = 0; s < t.capacity; s++) {
+    if (t.slots[s].object && t.slots[s].left == 0) {
+      t.slots[s].freeable = 1;
+      trial_push(&work, t.slots[s].object);
+    }
+  }
+  while (work.length > 0) {
+    struct TObject *object = work.items[--work.length];
+
+    freeable += 1;
+    if (object->rtti != NULL && object->rtti->fields != NULL) {
+      const int *offset;
+
+      for (offset = object->rtti->fields; *offset >= 0; ++offset) {
+        trial_release(&t, &work,
+                      *(struct TObject **)((char *)object + *offset));
+      }
+    }
+    if (object->rtti == RTTI(RList)) {
+      struct TList *list = (struct TList *)object;
+      int item;
+
+      for (item = 0; item < list->length; ++item) {
+        trial_release(&t, &work, (struct TObject *)list->items[item]);
+      }
+    }
+  }
+  free(t.slots);
+  free(work.items);
+  return freeable;
+}
+
 /* A throw jumps over every pool the try body opened, so the handler asks for
  * them to be closed rather than leaving them open forever. The objects in
  * them are temporaries; anything the body stored somewhere has a reference of
@@ -2052,6 +2295,33 @@ static int exit_status(int status) {
     return 128 + WTERMSIG(status);
   }
   return -1;
+}
+
+/* Let go of a Process's pipe and give back the exit status of what was on the
+ * other end, or -1. A pipe from popen is closed with pclose, which also waits;
+ * one from openArgs was made by hand, with a child of our own to wait for, and
+ * pclose on it would be undefined. */
+static int process_close(struct TProcess *self) {
+  int status = -1;
+  int wait_status;
+
+  if (!self->pipe) {
+    return -1;
+  }
+  if (self->pid > 0) {
+    fclose(self->pipe);
+    if (waitpid((pid_t)self->pid, &wait_status, 0) >= 0) {
+      status = exit_status(wait_status);
+    }
+  } else {
+    wait_status = pclose(self->pipe);
+    if (wait_status != -1) {
+      status = exit_status(wait_status);
+    }
+  }
+  self->pipe = NULL;
+  self->pid = 0;
+  return status;
 }
 
 /* Run a command and wait for it. The exit status, or -1 when it could not
@@ -2103,10 +2373,7 @@ int M7_Process_pid(void) {
  * not. */
 int M7_Process_open(struct TProcess *self, struct TString *command,
                      struct TString *mode) {
-  if (self->pipe) {
-    pclose(self->pipe);
-    self->pipe = NULL;
-  }
+  process_close(self);
   self->pipe = popen(command->string, mode->string);
   return self->pipe != NULL;
 }
@@ -2149,17 +2416,422 @@ int M7_Process_eof(struct TProcess *self) {
 
 /* Close the pipe and wait, giving back the command's exit status. */
 int M7_Process_finish(struct TProcess *self) {
-  int status;
+  return process_close(self);
+}
 
+/* The argument vector for execvp, from a List of Strings. This is where the
+ * no-shell forms earn the name: each argument is checked and then handed over
+ * whole, so nothing in it is ever parsed. Checked before anything starts, and
+ * catchably: an empty list, a null, something that is not a String, and a
+ * String holding a NUL (which C would read as the end of the argument, so
+ * `a\0b` would run as `a`) are all errors rather than guesses. */
+static char **argv_from_list(struct TList *args) {
+  char **argv;
+  int i;
+
+  if (!args) {
+    __cm_runtimeError("Process: the argument list is null");
+  }
+  if (args->length < 1) {
+    __cm_runtimeError("Process: the argument list is empty");
+  }
+  if (args->length > 4096) {
+    __cm_runtimeError("Process: too many arguments");
+  }
+  argv = malloc(sizeof(char *) * ((size_t)args->length + 1));
+  if (!argv) {
+    printf("Runtime error : out of memory starting a process.\n");
+    exit(1);
+  }
+  for (i = 0; i < args->length; i++) {
+    struct TObject *item = (struct TObject *)args->items[i];
+    struct TString *text = (struct TString *)item;
+
+    if (!item || item->rtti != RTTI(RString)) {
+      free(argv);
+      __cm_runtimeError("Process: every argument must be a String");
+    }
+    if (memchr(text->string, '\0', (size_t)text->length)) {
+      free(argv);
+      __cm_runtimeError("Process: an argument contains a NUL");
+    }
+    argv[i] = text->string;
+  }
+  argv[args->length] = NULL;
+  return argv;
+}
+
+/* A program started from here must not be lent what this one has open: a
+ * file, a socket, a document would stay open in the child for as long as it
+ * ran, and it could read it. So the child closes every descriptor above the
+ * three standard ones before it execs.
+ *
+ * The list is taken here, in the parent, because between fork and exec a
+ * child may call only async-signal-safe functions -- and another thread (SDL
+ * starts several) may have held the malloc lock at the moment of the fork and
+ * never release it in the child. The child only calls close.
+ *
+ * It is found by asking each descriptor in turn, not by reading /dev/fd. The
+ * obvious way, opendir and readdir, is two different symbols on Intel and on
+ * Apple-silicon Macs (readdir$INODE64 against readdir: the old and the new
+ * struct dirent), and this file is one for both architectures; portability.sh
+ * caught exactly that. fcntl is the same symbol on both. The scan stops at the
+ * descriptor table's size, at most 65536, and `cap` descriptors are returned;
+ * a process with more than that open at once keeps the rest open in the
+ * child, which is the one limit of this. */
+static int open_descriptors(int *fds, int cap) {
+  int count = 0;
+  int limit = getdtablesize();
+  int fd;
+
+  if (limit > 65536) {
+    limit = 65536;
+  }
+  for (fd = 3; fd < limit && count < cap; fd++) {
+    if (fcntl(fd, F_GETFD) != -1) {
+      fds[count++] = fd;
+    }
+  }
+  return count;
+}
+
+static void close_descriptors(const int *fds, int count) {
+  int i;
+
+  for (i = 0; i < count; i++) {
+    close(fds[i]);
+  }
+}
+
+/* Start a program without a shell and give back its process id, or 0 when
+ * it could not be started. A program that does not exist starts and exits
+ * with 127, as it does under a shell. */
+int M7_Process_startArgs(struct TList *args) {
+  char **argv = argv_from_list(args);
+  int held[1024];
+  int holding = open_descriptors(held, 1024);
+  pid_t child;
+
+  fflush(stdout);
+  child = fork();
+  if (child < 0) {
+    free(argv);
+    return 0;
+  }
+  if (child == 0) {
+    close_descriptors(held, holding);
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+  free(argv);
+  return (int)child;
+}
+
+/* Run a program to completion: its exit status, or -1 when it could not be
+ * started. */
+int M7_Process_runArgs(struct TList *args) {
+  int pid = M7_Process_startArgs(args);
+
+  if (pid <= 0) {
+    return -1;
+  }
+  return M7_Process_wait(pid);
+}
+
+/* Start a program and read what it prints, standard output and standard
+ * error together, in order. It is given no input at all (/dev/null), so a
+ * program that reads its terminal sees the end of the file at once instead of
+ * waiting for someone who is not there. 1 when it started, 0 when it did
+ * not. */
+int M7_Process_openArgs(struct TProcess *self, struct TList *args) {
+  char **argv;
+  int ends[2];
+  int held[1024];
+  int holding;
+  pid_t child;
+
+  process_close(self);
+  argv = argv_from_list(args);
+  if (pipe(ends) < 0) {
+    free(argv);
+    return 0;
+  }
+  fcntl(ends[0], F_SETFD, FD_CLOEXEC);
+  holding = open_descriptors(held, 1024);
+  fflush(stdout);
+  child = fork();
+  if (child < 0) {
+    close(ends[0]);
+    close(ends[1]);
+    free(argv);
+    return 0;
+  }
+  if (child == 0) {
+    int none = open("/dev/null", O_RDONLY);
+
+    if (none >= 0) {
+      dup2(none, 0);
+      if (none > 2) {
+        close(none);
+      }
+    }
+    dup2(ends[1], 1);
+    dup2(ends[1], 2);
+    /* Including both ends of the pipe, which were taken with the rest. */
+    close_descriptors(held, holding);
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+  close(ends[1]);
+  free(argv);
+  self->pipe = fdopen(ends[0], "r");
   if (!self->pipe) {
-    return -1;
+    int status;
+    close(ends[0]);
+    waitpid(child, &status, 0);
+    return 0;
   }
-  status = pclose(self->pipe);
-  self->pipe = NULL;
-  if (status == -1) {
-    return -1;
+  self->pid = (int)child;
+  return 1;
+}
+
+/* -------------------------------------------------------------------------
+ * Handles
+ *
+ * How C holds a catmint object. C cannot be given an object's address: the
+ * first words are type information and a reference count, which C would read
+ * as data and could write through, and a pointer C keeps is a reference nobody
+ * counts. So C is given a handle, a number carried in a Ptr, that names a slot
+ * in this table; the table holds a reference to the object until the handle is
+ * dropped.
+ *
+ * A handle is  magic | generation | index+1.  Three things follow:
+ *   - the magic (the top sixteen bits, which no real pointer has) means a Ptr
+ *     that never was a handle fails at once, whatever its other bits;
+ *   - a slot's generation moves on when it is dropped, so a stale handle can
+ *     never match a slot that has since been reused for something else;
+ *   - the index is range-checked, so no number can name a slot that is not
+ *     there. Nothing here dereferences a handle's own bits.
+ *
+ * The table is as non-atomic as the reference counts it holds, so it may be
+ * used from the program's main thread only, and says so, aborting, otherwise.
+ * ------------------------------------------------------------------------- */
+
+#define CATMINT_HANDLE_MAGIC ((uint64_t)0x4348 << 48)
+#define CATMINT_HANDLE_INDEX_BITS 24
+#define CATMINT_HANDLE_INDEX_MASK (((uint64_t)1 << CATMINT_HANDLE_INDEX_BITS) - 1)
+#define CATMINT_HANDLE_NO_SLOT 0xFFFFFFFFu
+
+struct __cm_handle_slot {
+  void *object;          /* NULL while the slot is free */
+  uint32_t generation;   /* 1 .. 2^24 - 1, never 0 */
+  uint32_t next_free;    /* the free list, while the slot is free */
+};
+
+static struct __cm_handle_slot *gHandleSlots = NULL;
+static uint32_t gHandleCount = 0;
+static uint32_t gHandleCapacity = 0;
+static uint32_t gHandleFree = CATMINT_HANDLE_NO_SLOT;
+
+/* The thread the program started on, recorded before main runs. */
+static pthread_t gMainThread;
+static int gMainThreadKnown = 0;
+
+__attribute__((constructor)) static void record_main_thread(void) {
+  gMainThread = pthread_self();
+  gMainThreadKnown = 1;
+}
+
+/* A program an editor runs has its output sent to a file, which stdio buffers
+ * fully: the editor sees nothing until the buffer fills or the program ends, the
+ * order of what went to standard output and standard error is lost, and a program
+ * that is stopped loses what it had printed. CATMINT_LINEBUF=1 in the environment
+ * asks for what a terminal gets, a flush at every newline. It is only ever asked
+ * for: the cost is a write for every line, which a program printing a great deal
+ * to a file does not want unasked. */
+__attribute__((constructor)) static void line_buffer_if_asked(void) {
+  const char *asked = getenv("CATMINT_LINEBUF");
+
+  if (asked && asked[0] == '1' && asked[1] == '\0') {
+    setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
   }
-  return exit_status(status);
+}
+
+static int on_main_thread(void) {
+  return gMainThreadKnown && pthread_equal(pthread_self(), gMainThread);
+}
+
+/* Stop the program, having written what it had printed. abort() does not
+ * flush stdio on glibc (it stopped in 2.27; macOS's does), so a program whose
+ * output goes to a file or a pipe -- fully buffered -- lost everything it had
+ * printed when a guard stopped it. exit() flushes; abort() is used here
+ * because the guards run where nothing may be run after them. */
+static CATMINT_NORETURN void abort_flushed(void) {
+  fflush(stdout);
+  fflush(stderr);
+  abort();
+}
+
+static void require_main_thread(const char *what) {
+  if (!on_main_thread()) {
+    /* Not __cm_runtimeError: that would throw into the main thread's handler
+     * stack from another thread, which is the very race this refuses. */
+    fprintf(stderr,
+            "Runtime error : %s may only be used on the program's main thread.\n",
+            what);
+    abort_flushed();
+  }
+}
+
+/* The slot a handle names, or NULL when it names none that is in use. */
+static struct __cm_handle_slot *handle_slot(void *handle) {
+  uint64_t value = (uint64_t)(uintptr_t)handle;
+  uint64_t index;
+  uint32_t generation;
+
+  if ((value & ~(((uint64_t)1 << 48) - 1)) != CATMINT_HANDLE_MAGIC) {
+    return NULL;
+  }
+  index = value & CATMINT_HANDLE_INDEX_MASK;
+  generation = (uint32_t)((value >> CATMINT_HANDLE_INDEX_BITS) &
+                          CATMINT_HANDLE_INDEX_MASK);
+  if (index == 0 || index > gHandleCount) {
+    return NULL;
+  }
+  if (!gHandleSlots[index - 1].object ||
+      gHandleSlots[index - 1].generation != generation) {
+    return NULL;
+  }
+  return &gHandleSlots[index - 1];
+}
+
+/* Put an object in the table and give back the handle for it. The table holds
+ * a reference of its own, given back by drop. */
+void *M7_Handles_make(void *object) {
+  uint32_t index;
+  struct __cm_handle_slot *slot;
+
+  require_main_thread("Handles.make");
+  if (!object) {
+    __cm_runtimeError("Handles.make needs an object, not null");
+  }
+  if (gHandleFree != CATMINT_HANDLE_NO_SLOT) {
+    index = gHandleFree;
+    gHandleFree = gHandleSlots[index].next_free;
+  } else {
+    if (gHandleCount >= CATMINT_HANDLE_INDEX_MASK) {
+      __cm_runtimeError("Handles: too many handles are held at once");
+    }
+    if (gHandleCount == gHandleCapacity) {
+      uint32_t capacity = gHandleCapacity ? gHandleCapacity * 2 : 64;
+      struct __cm_handle_slot *grown = (struct __cm_handle_slot *)realloc(
+          gHandleSlots, sizeof(struct __cm_handle_slot) * capacity);
+
+      if (!grown) {
+        printf("Runtime error : out of memory making a handle.\n");
+        exit(1);
+      }
+      gHandleSlots = grown;
+      gHandleCapacity = capacity;
+    }
+    index = gHandleCount++;
+    gHandleSlots[index].generation = 1;
+  }
+  slot = &gHandleSlots[index];
+  slot->object = object;
+  slot->next_free = CATMINT_HANDLE_NO_SLOT;
+  __cm_retain(object);
+  return (void *)(uintptr_t)(CATMINT_HANDLE_MAGIC |
+                             ((uint64_t)slot->generation
+                              << CATMINT_HANDLE_INDEX_BITS) |
+                             ((uint64_t)index + 1));
+}
+
+/* The object a handle names, or null if it names none: dropped, from a slot
+ * since reused, a null, or not a handle at all. */
+void *M7_Handles_get(void *handle) {
+  struct __cm_handle_slot *slot;
+
+  require_main_thread("Handles.get");
+  slot = handle_slot(handle);
+  return slot ? slot->object : NULL;
+}
+
+/* Let go of the table's reference. The slot is retired first and the object
+ * released last, so that anything the release runs (a finalize) sees a table
+ * that is already consistent. Dropping a handle that names nothing is
+ * harmless, which includes dropping one twice. */
+void M7_Handles_drop(void *handle) {
+  struct __cm_handle_slot *slot;
+  void *object;
+
+  require_main_thread("Handles.drop");
+  slot = handle_slot(handle);
+  if (!slot) {
+    return;
+  }
+  object = slot->object;
+  slot->object = NULL;
+  slot->generation = (slot->generation + 1) & (uint32_t)CATMINT_HANDLE_INDEX_MASK;
+  if (slot->generation == 0) {
+    slot->generation = 1;
+  }
+  slot->next_free = gHandleFree;
+  gHandleFree = (uint32_t)(slot - gHandleSlots);
+  __cm_release(object);
+}
+
+/* -------------------------------------------------------------------------
+ * Callbacks
+ *
+ * The function the compiler writes for C to call (callbackTrampoline) uses
+ * these three. The counts, pools and handler stack are not atomic, so it
+ * refuses to run anywhere but the program's own thread. An error the method
+ * throws is not allowed to leave through C's frames -- longjmp over a qsort
+ * skips whatever qsort still had to do -- so it is caught, kept here, and
+ * thrown by the extern call that was running once C has returned.
+ * ------------------------------------------------------------------------- */
+
+static void *gPendingError = NULL;
+
+/* On entry. 1 means an error is already pending, so do nothing and answer
+ * zero; anything else runs the method. Off the main thread it aborts, before
+ * touching anything shared: a callback that C calls from a thread of its own
+ * is exactly the race the rest of the runtime is built not to have. */
+int __cm_callbackEnter(void) {
+  if (!on_main_thread()) {
+    fputs("Runtime error : a callback was called on a thread other than the "
+          "program's main thread.\n"
+          "  C called catmint from a thread of its own; the reference counts "
+          "are not atomic, so it was stopped.\n",
+          stderr);
+    abort_flushed();
+  }
+  return gPendingError != NULL;
+}
+
+/* In the handler path: the method threw. __cm_throw retained the error for the
+ * unwind, and that reference is the one kept. */
+void __cm_callbackFail(void) {
+  gPendingError = gThrown;
+}
+
+static CATMINT_NORETURN void callback_rethrow(void) {
+  void *error = gPendingError;
+
+  gPendingError = NULL;
+  /* The kept reference becomes the pool's, which is how a thrown object is
+   * always owned until its handler is done with it. */
+  __cm_poolAdd(error);
+  __cm_throw(error);
+}
+
+/* After every call to C. The first test is the whole cost of a call that had
+ * no callback, and it is small enough to be inlined into the caller. */
+void __cm_callbackRethrow(void) {
+  if (__builtin_expect(gPendingError != NULL, 0)) {
+    callback_rethrow();
+  }
 }
 
 /* -------------------------------------------------------------------------

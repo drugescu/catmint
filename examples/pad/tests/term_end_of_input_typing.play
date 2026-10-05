@@ -1,0 +1,9 @@
+# Ctrl D with something typed does nothing: the shell is not ended.
+# files t.txt=abc
+# open t.txt
+# frames 4
+# expect term 1 1 1 0
+# expect termline [x]
+1 key ` ctrl
+2 text x
+3 key d ctrl

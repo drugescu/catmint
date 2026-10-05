@@ -1,0 +1,170 @@
+# The command palette: one line of text over a list that narrows as it is typed
+# in. It is the editor's menu, its file picker and its find box, so there is
+# nothing else of the kind to build.
+#
+#   using palette
+#   Palette p = new Palette()
+#   p.open(Palette.commandMode(), "command", names, hints)
+#   p.typeText("sav")          # p.results: indexes into names, best first
+#   p.down()
+#   Int which = p.chosen()     # an index into names, or -1
+#
+# The field is an Editor with no newline in it, so it has everything the text
+# has: a cursor, selection, word movement, undo. What the palette adds is the
+# list. The caller gives the names in the order to show them when nothing is
+# typed (recent ones first) and a hint to show beside each, such as the key
+# that does the same thing; the palette ranks them with `Fuzzy`, keeps the best
+# few, and selects the best of those. Anything that changes the text goes back
+# to selecting the best, because what was selected may be gone.
+#
+# Modes with no list (find, replace, go to line, save as) are opened with empty lists:
+# the field is all there is.
+
+using editor
+using fuzzy
+
+class Palette from Object
+  Editor field = null
+  Int mode
+  String prompt = ""
+  List names = null
+  List hints = null
+  # Indexes into names, best first.
+  List results = null
+  Int selected
+  # How many results are kept.
+  Int rows = 8
+
+  static def Int commandMode:
+    return 1
+  end
+
+  static def Int fileMode:
+    return 2
+  end
+
+  static def Int findMode:
+    return 3
+  end
+
+  static def Int replaceMode:
+    return 4
+  end
+
+  static def Int lineMode:
+    return 5
+  end
+
+  # Asking where to save: the field is a path, and there is no list.
+  static def Int saveMode:
+    return 6
+  end
+
+  # Choosing a colour theme: a list, with the highlighted one shown as it moves.
+  static def Int themeMode:
+    return 7
+  end
+
+  # Choosing a font: a list, with the highlighted one shown as it moves.
+  static def Int fontMode:
+    return 8
+  end
+
+  constructor():
+    field = new Editor()
+    names = new List()
+    hints = new List()
+    results = new List()
+  end
+
+  def Int isOpen:
+    if mode != 0:
+      return 1
+    end
+    return 0
+  end
+
+  def Void open(Int newMode, String label, List choices, List beside):
+    mode = newMode
+    prompt = label
+    names = choices
+    hints = beside
+    field = new Editor()
+    rows = 8
+    refresh()
+  end
+
+  def Void close:
+    mode = 0
+    names = new List()
+    hints = new List()
+    results = new List()
+    selected = 0
+  end
+
+  # Rank the names against what is typed, and select the best.
+  def Void refresh:
+    results = Fuzzy.best(field.buf.text(), names, rows)
+    selected = 0
+  end
+
+  # Type into the field; a newline is dropped, since it is one line.
+  def Void typeText(String s):
+    field.typeText(s.replace("\r", "").replace("\n", ""))
+    refresh()
+  end
+
+  def Void backspace:
+    field.backspace()
+    refresh()
+  end
+
+  def Void deleteForward:
+    field.deleteForward()
+    refresh()
+  end
+
+  def Void up:
+    if selected > 0:
+      selected = selected - 1
+    end
+  end
+
+  def Void down:
+    if selected < results.len() - 1:
+      selected = selected + 1
+    end
+  end
+
+  # The index in names of the selected result, or -1 when there is none.
+  def Int chosen:
+    if selected < results.len():
+      return results.get(selected)
+    end
+    return 0 - 1
+  end
+
+  def String hint:
+    Int which = chosen()
+    if which < 0 or which >= hints.len():
+      return ""
+    end
+    return hints.get(which)
+  end
+
+  # What the field says, read as a number, or -1 if it is not one.
+  def Int number:
+    String text = field.buf.text()
+    if text.len() == 0 or text.len() > 9:
+      return 0 - 1
+    end
+    Int i = 0
+    while i < text.len():
+      if text.at(i) < 48 or text.at(i) > 57:
+        return 0 - 1
+      end
+      i = i + 1
+    end
+    return text.toInt()
+  end
+end

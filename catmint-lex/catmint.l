@@ -127,6 +127,7 @@ static int gColumnNumber = 1;
 "!"           { countColumns(); return OP_NOT; }
 ":"						{ countColumns(); return OP_COLON; }
 "::"				  { countColumns(); return OP_STATIC_ACCESS; }
+"..."				  { countColumns(); return OP_ELLIPSIS; }
 
 "#"[^\r\n]*	{}
 
@@ -162,14 +163,20 @@ static int gColumnNumber = 1;
 	return FLOAT_CONSTANT;
 }
 
-["]([^"]|(\\\"))*["] {
+  /* A string runs to the first quote that no backslash is claiming. A backslash
+     takes the character after it whatever that is, so `\\` is one escaped
+     backslash and the quote after it ends the string, where `\"` is a quote
+     inside it. (The rule used to be ["]([^"]|(\\\"))*["], which let `\"` be an
+     escaped quote even when the backslash was itself escaped: "\\" ran on to
+     the next quote in the file.) */
+["]([^"\\]|\\(.|\n))*["] {
 	countColumns();
 	yylval.stringValue = new std::string(decodeEscapes(
 		std::string(yytext).substr(1, std::string(yytext).size() - 2)));
 	return STRING_CONSTANT;
 }
 
-[']([^']|(\\\'))*['] {
+['](([^'\\])|(\\(.|\n)))*['] {
 	std::string s = std::string(yytext);
 	s = s.substr(1, s.size() - 2);
 

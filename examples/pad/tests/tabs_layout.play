@@ -1,0 +1,14 @@
+# With the strip there the text starts one row down, y = 22: the current line's band
+# is on the second row, and the first row (the strip) has none of it.
+# files s.cm=def f:
+# files t.txt=x
+# open s.cm
+# frames 8
+# pixels 700 22 960 44 37 42 51 5720
+# pixels 700 0 960 22 37 42 51 none
+# pixels 56 22 960 44 204 168 239 some
+# pixels 56 0 960 22 204 168 239 none
+1 key o ctrl
+2 text t.t
+3 key enter
+4 key tab ctrl shift

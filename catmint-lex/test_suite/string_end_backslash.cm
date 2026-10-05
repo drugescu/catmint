@@ -1,0 +1,8 @@
+class Main from IO
+  def main:
+    out("\\")
+    out("a\\" + "b")
+    out('c\\')
+    out('d')
+  end
+end

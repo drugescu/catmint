@@ -1,0 +1,10 @@
+# And Ctrl ` from the output brings the terminal back, with the keyboard.
+# files t.cm=x
+# exec catmintc=#!/bin/sh\necho compiled\n
+# open t.cm
+# frames 6
+# expect term 1 1 1
+1 key ` ctrl
+2 key f7
+3 wait idle
+4 key ` ctrl

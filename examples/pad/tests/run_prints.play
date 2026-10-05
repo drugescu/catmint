@@ -1,0 +1,14 @@
+# F5 builds the program and runs it. What it prints goes in the panel, a line to a row,
+# in place of what the compiler said, and the program's end is written under it. The
+# status line says so too, and nothing is running afterwards.
+# files hello.cm=class Main from IO\n  def main:\n    out("hello\\n")\n    out("again\\n")\n  end\nend\n
+# open hello.cm
+# args --catmintc @ROOT@/catmintc
+# frames 4
+# expect message hello finished
+# expect status [hello finished]
+# expect runner 0
+# expect panel 1 3
+# expect panelall hello|again|[finished]
+1 key f5
+2 wait idle

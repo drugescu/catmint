@@ -1,0 +1,12 @@
+# A click on a row of the panel means the line of its output that is there, not the
+# line of the window: the program prints a place in a file at its twentieth line, the
+# panel is following the end (top 13), and the row at y = 442 + 22 * 6 = 574 is that line,
+# which is where the click goes.
+# files at.cm=class Main from IO\n  def main:\n    Int i = 1\n    while i < 19:\n      out("line ${i}\\n")\n      i = i + 1\n    end\n    out("at.cm | Line : 3 | Column : 5 | Error: here\\n")\n  end\nend\n
+# open at.cm
+# args --catmintc @ROOT@/catmintc
+# frames 6
+# expect cursor 3 5
+1 key f5
+2 wait idle
+3 click 100 574

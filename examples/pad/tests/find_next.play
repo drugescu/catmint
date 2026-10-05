@@ -1,0 +1,14 @@
+# Ctrl F, "two": the first match is selected as it is typed. Enter finds the
+# next one, Esc closes the box and leaves it selected, F3 goes round the end of
+# the text to the first again.
+# files t.txt=one two one two
+# open t.txt
+# frames 10
+# expect selection two
+# expect cursor 1 8
+# expect palette 0
+1 key f ctrl
+2 text two
+3 key enter
+4 key esc
+5 key f3

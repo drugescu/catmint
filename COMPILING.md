@@ -115,6 +115,22 @@ value, a bitfield) is listed at the top of the output with the reason.
 `tools/bindgen_test/run.sh` checks it against a C library built from a test
 header, and `test.sh` runs that.
 
+Options worth knowing: `--constants-match` may be given several times (the
+header reports how many names each pattern matched, and warns when one matched
+nothing); `--string-returns REGEX` binds those `char *`-returning functions as
+`String`, with the text copied out -- only for functions whose result is static
+or thread-local, never one whose result you must free; `--target TRIPLE` and
+`--clang-arg=ARG` bind for another machine (the scalar sizes, `long` above all,
+come from that target, not from this one). A function-pointer typedef becomes a
+callback type (`extern def`), and so does a function pointer written out in a
+parameter, named after the function and parameter; one that cannot be (a struct
+by value) is listed, and the functions using it keep a `Ptr`. `--foreign-thread
+REGEX` names the typedefs the library calls from threads of its own, which also
+stay a `Ptr` because a catmint callback runs on the program's thread only.
+`signal`, `sigaction`, `atexit` and their kin are never bound. A variadic function is not bound;
+the refusal says how to declare the call you need by hand
+(`def Alias = name(fixed..., ... Type)`, see `LANGUAGE.md`).
+
 ## 2. Build the compiler
 
 Three components, built in dependency order. The second and third build the
@@ -432,7 +448,7 @@ boxed integers by value and everything else by identity.
 catmint:
 
 ```sh
-./catmintc --run -I lib myprogram.cm
+./catmintc --run myprogram.cm
 ```
 
 `Vector` adds `size`, `push`, `indexOf`, `contains` and `reversed` over a

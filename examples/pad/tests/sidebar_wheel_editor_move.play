@@ -1,0 +1,11 @@
+# The wheel goes to what the pointer is over: with the explorer showing and the pointer
+# in the editor (put there by a move of the mouse), three lines of the text scroll, 60 lines of it,
+# and the explorer stays where it was.
+# files long.txt=x\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx
+# open long.txt
+# frames 6
+# expect top 3
+# expect sidebar 1 1 first 0
+1 key b ctrl
+2 move 600 100
+3 wheel -1

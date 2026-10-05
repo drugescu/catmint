@@ -1,0 +1,12 @@
+# From the first of three matches, shift+F3 has nothing before it and goes round
+# to the last: "two" at the end of "one two one two one two" is columns 21 to 23.
+# (Going forward instead would land on the second, so this tells them apart.)
+# files t.txt=one two one two one two
+# open t.txt
+# frames 10
+# expect selection two
+# expect cursor 1 24
+1 key f ctrl
+2 text two
+3 key esc
+4 key f3 shift

@@ -1,0 +1,13 @@
+# The wheel over the terminal scrolls its scrollback, three lines a notch, and the
+# text underneath does not move.
+# files t.txt=abc
+# open t.txt
+# frames 7
+# expect termtop 21
+# expect top 0
+1 key ` ctrl
+2 text seq 1 30
+3 key enter
+4 wait term 30
+5 move 300 500
+6 wheel 1

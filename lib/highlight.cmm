@@ -1,0 +1,147 @@
+# Syntax colouring for one line of catmint.
+#
+#   using highlight
+#   Bytes kinds = Highlight.kinds("x = 12  # twelve")
+#   Highlight.colour(theme, kinds.get(4))     # the number colour
+#
+# `kinds` gives one value for each byte of the line, and `colour` turns a value
+# into the theme's colour. It reads the way the lexer does: a name is read
+# whole, with a `m::name` qualifier, and is a keyword only if the whole of it is
+# one; a string runs to its matching quote, a backslash keeping the next
+# character inside; a number is digits and an optional fraction; `#` starts a
+# comment to the end of the line. A string that is never closed is a string to
+# the end of the line.
+#
+# One line at a time, with nothing carried from the one before. The lexer lets
+# a string run over a newline, and such a string is coloured here on its first
+# line only; nothing in the language's own libraries or tests writes one.
+
+using keywords
+using theme
+
+class Highlight from Object
+  static def Int plain:
+    return 0
+  end
+
+  static def Int keyword:
+    return 1
+  end
+
+  static def Int string:
+    return 2
+  end
+
+  static def Int number:
+    return 3
+  end
+
+  static def Int comment:
+    return 4
+  end
+
+  static def Int isDigit(Int c):
+    if c >= 48 and c <= 57:
+      return 1
+    end
+    return 0
+  end
+
+  static def Int isWordStart(Int c):
+    if (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or c == 95:
+      return 1
+    end
+    return 0
+  end
+
+  static def Int isWord(Int c):
+    if Highlight.isWordStart(c) == 1 or Highlight.isDigit(c) == 1:
+      return 1
+    end
+    return 0
+  end
+
+  # What the theme colours a kind.
+  static def Int colour(Theme t, Int kind):
+    if kind == 1:
+      return t.keyword
+    elif kind == 2:
+      return t.string
+    elif kind == 3:
+      return t.number
+    elif kind == 4:
+      return t.comment
+    end
+    return t.text
+  end
+
+  # One kind for each byte of the line.
+  static def Bytes kinds(String line):
+    Int n = line.len()
+    Bytes k = new Bytes(n)
+    Int i = 0
+    while i < n:
+      Int c = line.at(i)
+      Int start = i
+      Int kind = 0
+      if c == 35:
+        i = n
+        kind = 4
+      elif c == 34 or c == 39:
+        i = i + 1
+        while i < n and line.at(i) != c:
+          if line.at(i) == 92 and i + 1 < n:
+            i = i + 1
+          end
+          i = i + 1
+        end
+        if i < n:
+          i = i + 1
+        end
+        kind = 2
+      elif Highlight.isWordStart(c) == 1:
+        while i < n and Highlight.isWord(line.at(i)) == 1:
+          i = i + 1
+          # A qualifier, m::name, is part of the same name.
+          if i + 2 < n and line.at(i) == 58 and line.at(i + 1) == 58 and Highlight.isWordStart(line.at(i + 2)) == 1:
+            i = i + 2
+          end
+        end
+        kind = Keywords.has(line.substr(start, i))
+      elif Highlight.isDigit(c) == 1 or (c == 46 and i + 1 < n and Highlight.isDigit(line.at(i + 1)) == 1):
+        while i < n and Highlight.isDigit(line.at(i)) == 1:
+          i = i + 1
+        end
+        if i + 1 < n and line.at(i) == 46 and Highlight.isDigit(line.at(i + 1)) == 1:
+          i = i + 1
+          while i < n and Highlight.isDigit(line.at(i)) == 1:
+            i = i + 1
+          end
+        end
+        kind = 3
+      else
+        i = i + 1
+      end
+      Int j = start
+      while j < i:
+        k.set(j, kind)
+        j = j + 1
+      end
+    end
+    return k
+  end
+
+  # The kinds as letters, for a test to read: k keyword, s string, n number,
+  # c comment, and a dot for the rest.
+  static def String picture(String line):
+    Bytes k = Highlight.kinds(line)
+    String letters = ".ksnc"
+    String s = ""
+    Int i = 0
+    while i < k.len():
+      s = s + letters.substr(k.get(i), k.get(i) + 1)
+      i = i + 1
+    end
+    return s
+  end
+end

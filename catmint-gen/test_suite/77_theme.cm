@@ -1,0 +1,80 @@
+# The editor's colours, held to the rule it was designed by. Contrast is the
+# WCAG ratio of relative luminances, (lighter + 0.05) / (darker + 0.05):
+#   - body text, 7:1 on the ground, on the highlighted current line, and on a
+#     selection;
+#   - the syntax colours, 7:1 where code is read (ground, current line) and 4.5:1
+#     on a selection, which is momentary;
+#   - dim text (line numbers, comments, hints), and errors, 4.5:1 on the ground,
+#     the current line and the panels;
+#   - the accent, 3:1, as a UI element and not as text.
+# In the dark theme and the light one. The syntax colours must also stay
+# different from one another: a theme that passes by turning everything white
+# has passed the rule and missed the point.
+
+using theme
+
+class Main from IO
+  def check(String name, Theme t):
+    Int bad = 0
+    if Theme.contrast(t.text, t.ground) < 7.0 or Theme.contrast(t.text, t.line) < 7.0 or Theme.contrast(t.text, t.selection) < 7.0:
+      out("${name}: text is too faint\n")
+      bad = bad + 1
+    end
+    List syntax = new List()
+    syntax.append(t.keyword)
+    syntax.append(t.string)
+    syntax.append(t.number)
+    Int i = 0
+    while i < 3:
+      Int c = syntax.get(i)
+      if Theme.contrast(c, t.ground) < 7.0 or Theme.contrast(c, t.line) < 7.0 or Theme.contrast(c, t.selection) < 4.5:
+        out("${name}: syntax colour ${i} is too faint\n")
+        bad = bad + 1
+      end
+      i = i + 1
+    end
+    List quiet = new List()
+    quiet.append(t.dim)
+    quiet.append(t.comment)
+    quiet.append(t.error)
+    i = 0
+    while i < 3:
+      Int c = quiet.get(i)
+      if Theme.contrast(c, t.ground) < 4.5 or Theme.contrast(c, t.line) < 4.5 or Theme.contrast(c, t.panel) < 4.5:
+        out("${name}: quiet colour ${i} is too faint\n")
+        bad = bad + 1
+      end
+      i = i + 1
+    end
+    if Theme.contrast(t.accent, t.ground) < 3.0 or Theme.contrast(t.accent, t.line) < 3.0 or Theme.contrast(t.accent, t.panel) < 3.0:
+      out("${name}: the accent is too faint\n")
+      bad = bad + 1
+    end
+    # Still distinguishable: no two of the three syntax colours closer than 60
+    # apart in the sum of channel differences.
+    Int a = 0
+    while a < 3:
+      Int b = a + 1
+      while b < 3:
+        if Theme.distance(syntax.get(a), syntax.get(b)) < 60:
+          out("${name}: syntax colours ${a} and ${b} are nearly the same\n")
+          bad = bad + 1
+        end
+        b = b + 1
+      end
+      a = a + 1
+    end
+    out("${name}: ${bad} problems\n")
+    return bad
+  end
+
+  def main:
+    # The ratio itself, against answers known independently.
+    out("black on white: ${Theme.contrast(Theme.rgb(0, 0, 0), Theme.rgb(255, 255, 255))}\n")
+    out("a colour on itself: ${Theme.contrast(Theme.rgb(90, 120, 200), Theme.rgb(90, 120, 200))}\n")
+    out("order does not matter: ${Theme.contrast(Theme.rgb(10, 20, 30), Theme.rgb(200, 210, 220)) == Theme.contrast(Theme.rgb(200, 210, 220), Theme.rgb(10, 20, 30))}\n")
+    out("packing: ${Theme.red(Theme.rgb(12, 34, 56))} ${Theme.green(Theme.rgb(12, 34, 56))} ${Theme.blue(Theme.rgb(12, 34, 56))}\n")
+    check("dark", Theme.dark())
+    check("light", Theme.light())
+  end
+end

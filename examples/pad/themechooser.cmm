@@ -1,0 +1,123 @@
+# Which colour theme is in use, how it is chosen, and that it is remembered.
+#
+# The themes are the built-in ones (lib/themes.cmm) and any Base16 scheme files
+# in the themes folder (lib/base16.cmm). Choosing is a list in the palette that
+# shows the highlighted theme as it moves, so a theme is picked by looking at it;
+# dismissing the list puts back what was there. The one chosen is written to the
+# settings file (lib/settings.cmm), and read from it at the start; a name that
+# can no longer be found is the default, not an error.
+
+using theme
+using themes
+using base16
+using settings
+using palette
+
+class ThemeChooser from Object
+  Theme t = null
+  List list = null
+  Theme before = null
+  String configDir = ""
+  String themeDir = ""
+
+  constructor():
+    t = Theme.dark()
+    configDir = Settings.dir()
+    if configDir.len() > 0:
+      themeDir = configDir + "/themes"
+    end
+  end
+
+  # The theme the settings name, if it can still be found: built in, or in the
+  # themes folder.
+  def Void restore:
+    String wanted = Settings.get(configDir, "theme", "")
+    if wanted.len() > 0:
+      Theme found = Themes.named(wanted)
+      if found == null and themeDir.len() > 0:
+        List all = Base16.withFolder(themeDir)
+        Int i = 0
+        while i < all.len():
+          Theme candidate = all.get(i)
+          if candidate.name.equals(wanted):
+            found = candidate
+          end
+          i = i + 1
+        end
+      end
+      if found != null:
+        t = found
+      end
+    end
+  end
+
+  def Void remember:
+    Settings.put(configDir, "theme", t.name)
+  end
+
+  # "Toggle dark and light": the theme's partner.
+  def Void toggle:
+    t = Themes.pairOf(t)
+    remember()
+  end
+
+  # The list of themes: the built-in ones, then any in the themes folder, with
+  # the one in use highlighted.
+  def Void open(Palette pal):
+    before = t
+    if themeDir.len() > 0:
+      list = Base16.withFolder(themeDir)
+    else
+      list = Themes.all()
+    end
+    List names = new List()
+    List kinds = new List()
+    Int i = 0
+    while i < list.len():
+      Theme each = list.get(i)
+      names.append(each.name)
+      if each.isDark == 1:
+        kinds.append("dark")
+      else
+        kinds.append("light")
+      end
+      i = i + 1
+    end
+    pal.open(Palette.themeMode(), "theme", names, kinds)
+    pal.rows = 12
+    pal.refresh()
+    i = 0
+    while i < pal.results.len():
+      Int which = pal.results.get(i)
+      String name = names.get(which)
+      if name.equals(t.name):
+        pal.selected = i
+      end
+      i = i + 1
+    end
+  end
+
+  # While the list is open, the highlighted theme is the one on screen.
+  def Void preview(Palette pal):
+    if pal.mode == Palette.themeMode():
+      Int which = pal.chosen()
+      if which >= 0:
+        Theme shown = list.get(which)
+        t = shown
+      end
+    end
+  end
+
+  # The list was dismissed: put back what was in use.
+  def Void cancel:
+    t = before
+  end
+
+  # Enter on the list: keep what is shown, or put back if nothing matched.
+  def Void accept(Palette pal):
+    if pal.chosen() < 0:
+      t = before
+    end
+    remember()
+  end
+end

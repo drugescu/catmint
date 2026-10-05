@@ -1,0 +1,36 @@
+#!/bin/sh
+# Build the program and run it with its output going to a file, as an editor does.
+# With CATMINT_LINEBUF=1 its first line is in the file while it is still running;
+# without, the file is empty until it ends, and then has both lines. Run by ctest.sh
+# with the source file as $1, from catmint-gen.
+set -e
+src=$1
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+fail() { echo "94_linebuf.check: $1"; exit 1; }
+
+../catmintc "$src" -o "$work/prog" >/dev/null 2>&1 || fail "does not build"
+
+CATMINT_LINEBUF=1 "$work/prog" > "$work/lines.txt" &
+pid=$!
+sleep 0.4
+kill -0 "$pid" 2>/dev/null || fail "ended before it was looked at"
+[ "$(cat "$work/lines.txt")" = "first" ] || fail "with CATMINT_LINEBUF=1 the first line was not there while it ran"
+wait "$pid"
+[ "$(cat "$work/lines.txt")" = "$(printf 'first\nsecond')" ] || fail "with CATMINT_LINEBUF=1 the output is wrong at the end"
+
+"$work/prog" > "$work/block.txt" &
+pid=$!
+sleep 0.4
+kill -0 "$pid" 2>/dev/null || fail "(unbuffered run) ended before it was looked at"
+[ ! -s "$work/block.txt" ] || fail "without it the first line was already there: output is not block buffered"
+wait "$pid"
+[ "$(cat "$work/block.txt")" = "$(printf 'first\nsecond')" ] || fail "without it the output is wrong at the end"
+
+# Only the value 1 asks, not a value that starts with it.
+CATMINT_LINEBUF=10 "$work/prog" > "$work/ten.txt" &
+pid=$!
+sleep 0.4
+[ ! -s "$work/ten.txt" ] || fail "a value other than 1 asked for line buffering"
+wait "$pid"

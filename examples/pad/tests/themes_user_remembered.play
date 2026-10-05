@@ -1,0 +1,8 @@
+# And a theme from the folder that was chosen last time is found again at the
+# start, from the folder.
+# config-files settings=theme=Moonlit\n
+# config-files themes/moonlit.yaml=system: "base16"\nname: "Moonlit"\nvariant: "dark"\npalette:\n  base00: "#102030"\n  base01: "#182838"\n  base02: "#304050"\n  base03: "#506070"\n  base04: "#8090a0"\n  base05: "#c0d0e0"\n  base06: "#d0e0f0"\n  base07: "#ffffff"\n  base08: "#e06070"\n  base09: "#e0a060"\n  base0A: "#e0e060"\n  base0B: "#60e080"\n  base0C: "#60e0e0"\n  base0D: "#6080e0"\n  base0E: "#c060e0"\n  base0F: "#a06040"\n
+# frames 3
+# expect theme Moonlit
+# pixels 400 200 500 300 16 32 48 10000
+1 key down

@@ -1,0 +1,11 @@
+# Ctrl W closes the tab being edited and goes to the one before it.
+# files a.txt=A
+# files b.txt=B
+# open a.txt
+# frames 6
+# expect tabs 1 0
+# expect file a.txt
+1 key o ctrl
+2 text b.t
+3 key enter
+4 key w ctrl

@@ -110,6 +110,9 @@ fuzz/failures/
 .fuzz.log
 .portability.log
 .bindgen.log
+.game.log
+.pad.log
+.callbacks.log
 
 # Compiled programs and the intermediates that make them. Four of these were
 # committed by accident early on -- two arm64 binaries among them -- and had
@@ -124,3 +127,4 @@ fuzz/failures/
 # examples/rps-rts: the SDL shim's static lib is caught by *.a above; the
 # linked executable has no extension, so it needs its own line.
 examples/rps-rts/rps
+examples/pad/pad

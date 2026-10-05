@@ -1,0 +1,8 @@
+# A font in the settings that cannot be found is the default, not an error.
+# font default
+# config-files settings=font=/no/such/font.ttf\n
+# files t.txt=abc
+# open t.txt
+# frames 2
+# expect font JetBrainsMono-Regular | 
+1 key a

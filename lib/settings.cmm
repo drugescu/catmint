@@ -1,0 +1,120 @@
+# A few settings that survive a restart: `key=value` lines in a file of their own.
+#
+#   using settings
+#   String dir = Settings.dir()                    # where they live, or "" for nowhere
+#   String theme = Settings.get(dir, "theme", "Catmint Dark")
+#   Settings.put(dir, "theme", "Nord")
+#
+# The folder is $PAD_CONFIG if that is set (which is also how a test keeps off a
+# real one), else $HOME/.config/catmint-pad, else nowhere -- and with nowhere
+# nothing is read and nothing written, which is not an error. Reading a missing
+# file or key gives the fallback. Writing goes through Files.save, so a crash
+# cannot leave half a file; it keeps the file's other lines, comments and lines
+# it does not understand included, and changes a key where it stands.
+#
+# A value is one line (a newline in it becomes a space). A key is a plain word:
+# empty, or with `=` or a newline in it, is refused, and nothing is written.
+
+using files
+
+extern class SettingsC
+  def String getenv(String name)
+end
+
+class Settings
+  static def String env(String name):
+    String value = null
+    unsafe:
+      value = SettingsC.getenv(name)
+    end
+    if value == null:
+      return ""
+    end
+    return value
+  end
+
+  static def String dir:
+    String given = Settings.env("PAD_CONFIG")
+    if given.len() > 0:
+      return given
+    end
+    String home = Settings.env("HOME")
+    if home.len() > 0:
+      return home + "/.config/catmint-pad"
+    end
+    return ""
+  end
+
+  static def String get(String dir, String key, String fallback):
+    if dir.len() == 0:
+      return fallback
+    end
+    String text = Files.read(dir + "/settings", 65536)
+    if text == null:
+      return fallback
+    end
+    List lines = text.split("\n")
+    Int i = 0
+    while i < lines.len():
+      String line = lines.get(i)
+      Int eq = line.indexOf("=")
+      if eq > 0 and line.substr(0, eq).equals(key):
+        return line.substr(eq + 1, line.len()).trim()
+      end
+      i = i + 1
+    end
+    return fallback
+  end
+
+  # 1 if it is written; 0 if there is nowhere to write, or the key is refused.
+  static def Int put(String dir, String key, String value):
+    if dir.len() == 0 or key.len() == 0 or key.indexOf("=") >= 0 or key.indexOf("\n") >= 0 or key.indexOf("\r") >= 0:
+      return 0
+    end
+    String clean = value.replace("\r", " ").replace("\n", " ")
+    List args = new List()
+    args.append("mkdir")
+    args.append("-p")
+    args.append(dir)
+    Files.quietly(args)
+    String text = Files.read(dir + "/settings", 65536)
+    if text == null:
+      text = ""
+    end
+    String line = key + "=" + clean
+    List lines = text.split("\n")
+    Int found = 0 - 1
+    Int i = 0
+    while i < lines.len() and found < 0:
+      String have = lines.get(i)
+      Int eq = have.indexOf("=")
+      if eq > 0 and have.substr(0, eq).equals(key):
+        found = i
+      end
+      i = i + 1
+    end
+    String result = ""
+    if found >= 0:
+      i = 0
+      while i < lines.len():
+        if i > 0:
+          result = result + "\n"
+        end
+        if i == found:
+          result = result + line
+        else
+          String keep = lines.get(i)
+          result = result + keep
+        end
+        i = i + 1
+      end
+    else
+      result = text
+      if result.len() > 0 and result.at(result.len() - 1) != 10:
+        result = result + "\n"
+      end
+      result = result + line + "\n"
+    end
+    return Files.save(dir + "/settings", result)
+  end
+end

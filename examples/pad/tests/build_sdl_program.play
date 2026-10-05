@@ -1,0 +1,11 @@
+# A program that uses SDL builds from the editor with nothing but the command pad gives the
+# compiler: no -L for Homebrew's library folder. (It used to fail with every SDL symbol
+# undefined, and the game, examples/rps-rts, would not build from the editor.)
+# files sdl_user.cm=using sdl\nclass Main from IO\n  def main:\n    out("hi")\n  end\nend\n
+# open sdl_user.cm
+# args --catmintc @ROOT@/catmintc
+# frames 3
+# expect message built sdl_user
+# expect runner 0
+1 key f7
+2 wait idle

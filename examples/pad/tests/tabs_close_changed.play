@@ -1,0 +1,13 @@
+# Closing a tab with changes that are not saved says so and waits; the same
+# thing again discards them.
+# files a.txt=A
+# files b.txt=B
+# open a.txt
+# frames 8
+# expect tabs 2 1
+# expect message unsaved changes
+1 key o ctrl
+2 text b.t
+3 key enter
+4 text x
+5 key w ctrl

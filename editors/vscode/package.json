@@ -1,0 +1,27 @@
+{
+  "name": "catmint",
+  "displayName": "Catmint",
+  "description": "Syntax highlighting for the Catmint language (.cm and .cmm)",
+  "version": "0.1.0",
+  "publisher": "catmint",
+  "license": "MIT",
+  "engines": { "vscode": "^1.60.0" },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "catmint",
+        "aliases": ["Catmint", "catmint"],
+        "extensions": [".cm", ".cmm"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "catmint",
+        "scopeName": "source.catmint",
+        "path": "./syntaxes/catmint.tmLanguage.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+32 32
+different: 1
+not all zero: 1
+300
+0
+every value seen: 1
+bits balanced: 1
+int64s differ: 1
+Entropy.bytes needs a count of zero or more

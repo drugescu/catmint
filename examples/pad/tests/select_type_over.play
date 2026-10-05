@@ -1,0 +1,12 @@
+# Five shift+Rights take "hello"; typing replaces it.
+# files t.txt=hello world
+# open t.txt
+# frames 10
+# expect text J world
+# expect cursor 1 2
+1 key right shift
+2 key right shift
+3 key right shift
+4 key right shift
+5 key right shift
+6 text J

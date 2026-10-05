@@ -1,0 +1,61 @@
+# The files opened in this session, latest first, and the list the "open file"
+# palette starts with: those, then every file below the folder pad was started in
+# (six levels, five thousand files, nothing hidden), none twice. With nothing
+# typed the palette shows them in that order, so the file you had a moment ago is
+# at the top; typing narrows by fuzzy match.
+
+using files
+
+class Recents from Object
+  List paths = null
+
+  constructor():
+    paths = new List()
+  end
+
+  def Void remember(String p):
+    List kept = new List()
+    kept.append(p)
+    Int i = 0
+    while i < paths.len():
+      String r = paths.get(i)
+      if r != p:
+        kept.append(r)
+      end
+      i = i + 1
+    end
+    paths = kept
+  end
+
+  def Int has(String name):
+    Int i = 0
+    while i < paths.len():
+      String r = paths.get(i)
+      if r.equals(name):
+        return 1
+      end
+      i = i + 1
+    end
+    return 0
+  end
+
+  # What the palette lists: the recent files, then the rest.
+  def List candidates:
+    List found = Files.list(".", 6, 5000)
+    List names = new List()
+    Int i = 0
+    while i < paths.len():
+      names.append(paths.get(i))
+      i = i + 1
+    end
+    i = 0
+    while i < found.len():
+      String name = found.get(i)
+      if has(name) == 0:
+        names.append(name)
+      end
+      i = i + 1
+    end
+    return names
+  end
+end

@@ -1,0 +1,9 @@
+# A program that exits with a code says which in the panel and on the status line.
+# files code.cm=class Main from IO\n  def main:\n    out("before\\n")\n    exit(3)\n  end\nend\n
+# open code.cm
+# args --catmintc @ROOT@/catmintc
+# frames 4
+# expect message code exited with code 3
+# expect panelall before|[exited with code 3]
+1 key f5
+2 wait idle

@@ -1,0 +1,36 @@
+# C calls the callback from a thread of its own. The program must refuse to
+# run catmint code there -- the reference counts are not atomic -- and say so,
+# rather than race. The abort is the expected result.
+
+link "cb"
+
+extern def OnceCallback(Ptr userdata) Void
+
+extern class CbLib
+  def Void cb_from_thread(OnceCallback fn, Ptr userdata)
+end
+
+class Counter
+  Int n
+end
+
+class Handlers
+  static def Void once(Ptr userdata):
+    unsafe:
+      Counter counter = Handles.get(userdata)
+      counter.n = counter.n + 1
+    end
+  end
+end
+
+class Main from IO
+  def main:
+    Counter counter = new Counter()
+    Ptr handle = Handles.make(counter)
+    out("calling from a C thread\n")
+    unsafe:
+      CbLib.cb_from_thread(Handlers.once, handle)
+    end
+    out("not reached\n")
+  end
+end

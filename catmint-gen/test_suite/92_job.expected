@@ -1,0 +1,68 @@
+fresh: running 0, code -1, poll gives 0
+echo: code 0
+  [hello world a;echo injected $HOME *]
+exit 3: code 3
+  no lines: yes
+both streams: code 0
+  [one]
+  [two]
+  []
+  [three]
+no such program: code 127
+  said something: yes
+no such path: code 127
+  [/no/such/program: not found]
+not a program: code 126
+  said something: yes
+folder /: code 0
+  [/]
+this folder: code 0
+  same as ours: yes
+no such folder: code 1
+  program ran: no
+  said something: yes
+input is empty: code 0
+  no lines: yes
+no newline at the end: code 0
+  [no newline]
+NUL in the output: code 0
+  [a?b]
+100000 lines: code 0
+  100000 lines, in order: yes
+a long line: code 0
+  1 line of 10000, all x: yes
+sleeping: first poll gave 0 lines, running 1, quick yes
+sleeping: code 0
+  [late]
+stopped: code 143, quick yes
+asked once: still running 1
+asked twice: code 137, quick yes
+children: parent code 143, child gone yes
+limit: code 143, read the limit yes, not much more yes, all y yes
+  last line: [output limit reached - stopped]
+limit, ignoring TERM: code 137, ended yes
+files: while running yes, folder private yes, file after no, folder after no
+120 jobs: started 120, ended well 120
+two at once: a a1,a2, b b1,b2
+family: 10,11,14,12; alone 1 (77); empty table 1 (4)
+again 1: code 0, total 90001, 2 lines
+again 2 begins: code -1, total 0
+again 2: code 0, total 90001, 2 lines
+again 3 (over its limit): code 143
+again 4 (not): code 0, hi
+again 5 (stopped): code 143
+again 6 (stopped once more): code 143
+empty list: 0, running 0
+start while running: 0
+start after it ended: 1
+  [again]
+carriage returns: code 0
+  [a]
+  [b]
+flood: first poll gave 131072 lines, running 1, asked after stop 0, in all 400000
+default limit: read it all yes, stopped at yes, code 143
+cut at the limit: pieces hold 100000 characters, none over 81920 yes, notice last yes
+reaped elsewhere: running 0, code -1
+TMPDIR empty: yes, six random characters yes
+TMPDIR with a slash: yes
+TMPDIR nowhere: start 0, running 0

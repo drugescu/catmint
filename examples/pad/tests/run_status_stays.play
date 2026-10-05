@@ -1,0 +1,11 @@
+# What a key press clears is the message; the status line goes on saying a program is
+# running for as long as it is.
+# files loop.cm=class Main from IO\n  def main:\n    while 1 == 1:\n      sleep(50)\n    end\n  end\nend\n
+# open loop.cm
+# args --catmintc @ROOT@/catmintc
+# frames 6
+# expect message 
+# expect status [running loop - Shift F5 stops it]
+1 key f5
+2 wait running
+3 key a

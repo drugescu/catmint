@@ -121,6 +121,11 @@ bool SemanticAnalysis::visit(Class *c) {
     return true;
   }
 
+  if (c->isCallbackType()) {
+    checkCallbackType(c);
+    return true;
+  }
+
   checkImplementedInterfaces(c);
 
   if (typeTable.isBuiltinClass(c)) {// visiting builtin classes is a lot simpler than user classes, because we
@@ -279,6 +284,11 @@ bool SemanticAnalysis::visit(Feature *f) { return ASTVisitor::visit(f); }
 
 bool SemanticAnalysis::visit(Attribute *a) {
   refuseCBoundaryType(a->getType(), a);
+  // An extern class has no fields, so an attribute in one is a parameter of a
+  // C function, the one place a callback type may appear.
+  refuseCallbackType(a->getType(), a,
+                     currentClass && currentClass->isExtern() &&
+                         !currentClass->isCStruct());
   auto attrType = typeTable.getType(a->getType(), a);
   // Record the type on the node: a Symbol that resolves to this attribute (or
   // to this method parameter) asks the type table for the definition's type.
@@ -356,6 +366,7 @@ bool SemanticAnalysis::visit(Method *m) {
   }
 
   refuseCBoundaryType(m->getReturnType(), m);
+  refuseCallbackType(m->getReturnType(), m, false);
   auto returnType = typeTable.getType(m->getReturnType(), m);
   auto body = m->getBody();
   if (currentClass && currentClass->isExtern()) {
@@ -705,8 +716,43 @@ bool SemanticAnalysis::visit(Dispatch *d) {
               "the call or 'unsafe def' on the method doing it",
           d);
     }
-    if (!checkDispatchArgs(d, method, staticClass->isExtern())) {
+    // String.fromC is the other way out through a Ptr: it reads memory C owns
+    // and promises that the pointer is valid, so it is marked the same way.
+    const bool fromC = staticClass->getName() == strings::String &&
+                       d->getName() == "fromC";
+    if (fromC && unsafeDepth == 0) {
+      throw SemanticException(
+          "'String.fromC' turns a Ptr into text, which promises the pointer "
+          "is valid; it needs 'unsafe:' around the call or 'unsafe def' on "
+          "the method doing it",
+          d);
+    }
+    // Handles.get turns a Ptr into an object, so it is marked the same way.
+    // It checks its argument, and a number that is not a live handle finds
+    // nothing; the marking is for the audit (`grep -rn unsafe`), not for the
+    // memory it touches.
+    if (staticClass->getName() == strings::Handles && d->getName() == "get" &&
+        unsafeDepth == 0) {
+      throw SemanticException(
+          "'Handles.get' turns a Ptr into an object; it needs 'unsafe:' around "
+          "the call or 'unsafe def' on the method doing it",
+          d);
+    }
+    if (!checkDispatchArgs(d, method, staticClass->isExtern() || fromC)) {
       return false;
+    }
+    if (fromC) {
+      // A Ptr, a null, or a Bytes buffer (whose own length bounds the read).
+      // The other arrays and a struct are accepted by a Ptr parameter in an
+      // extern call; here they would be text read out of numbers.
+      auto first = *d->begin();
+      const std::string given = typeTable.getType(first)->getName();
+      if (given != strings::Ptr && given != strings::Null &&
+          given != strings::Bytes) {
+        throw SemanticException("'String.fromC' reads text from a Ptr or a "
+                                "Bytes, not from a " + given,
+                                d);
+      }
     }
     typeTable.setType(d, typeTable.getType(method->getReturnType()));
     return true;
@@ -730,11 +776,17 @@ bool SemanticAnalysis::visit(Dispatch *d) {
   if (obj) {
     std::cout << "  Object exists in dispatch and visiting.\n";
     auto field = dynamic_cast<FieldAccess *>(obj);
+    // The array this access names, so that visiting it knows it is being
+    // indexed and not used whole. Saved and put back rather than cleared: an
+    // access inside another (`items.cells[0].tags[1]`, where indexing `cells`
+    // is part of reaching `tags`) used to clear the outer one's, and the outer
+    // was then refused as an array used whole.
+    FieldAccess *const enclosing = cArrayContext;
     if (field && (d->getName() == "get" || d->getName() == "set")) {
       cArrayContext = field;
     }
     const bool visited = visit(obj);
-    cArrayContext = nullptr;
+    cArrayContext = enclosing;
     if (!visited) {
       return false;
     }
@@ -1042,7 +1094,7 @@ void SemanticAnalysis::checkExternSignature(Class *c, Method *m) {
            type == strings::Ptr || type == strings::Void ||
            type == strings::String || type == strings::Bytes ||
            type == strings::Ints || type == strings::Floats ||
-           cStructClass(type) != nullptr;
+           cStructClass(type) != nullptr || callbackClass(type) != nullptr;
   };
 
   if (m->getBody()) {
@@ -1054,7 +1106,19 @@ void SemanticAnalysis::checkExternSignature(Class *c, Method *m) {
     throw SemanticException("'" + c->getName() + "." + m->getName() +
                                 "' returns '" + m->getReturnType() +
                                 "', which cannot cross to C; use a number, a "
-                                "Ptr, a String or an array",
+                                "Ptr or a String",
+                            m);
+  }
+  // C hands back a pointer, and a pointer is not a catmint array: it has no
+  // run-time type information, count or length in front of it, so treating one
+  // as a Bytes would read whatever was there. A String is copied out of it
+  // (bounded, see String.fromC); a Ptr stays a Ptr.
+  const std::string ret = m->getReturnType();
+  if (ret == strings::Bytes || ret == strings::Ints || ret == strings::Floats) {
+    throw SemanticException("'" + c->getName() + "." + m->getName() +
+                                "' returns '" + ret + "', but C returns a "
+                                "pointer, not a catmint array; return a Ptr "
+                                "and read it through unsafe",
                             m);
   }
   for (auto param : *m) {
@@ -1067,6 +1131,182 @@ void SemanticAnalysis::checkExternSignature(Class *c, Method *m) {
           m);
     }
   }
+
+  // The variable part of a variadic C function. What C reads there is decided
+  // by the callee (a format string, a count), not by any prototype, so each
+  // declaration states the types it passes, and they are limited to what has
+  // one machine representation under C's default argument promotions: an
+  // integer (small ones are widened to int), a double, a pointer. A float is
+  // promoted to double by C, so it is declared as one rather than converted
+  // behind the programmer's back; a String or an array would be a pointer
+  // whose meaning only the callee knows, so it goes through an explicit Ptr.
+  if (m->isVariadic()) {
+    int index = 0;
+    for (auto param : *m) {
+      if (index++ < m->getFixedParams()) {
+        continue;
+      }
+      const std::string t = param->getType();
+      const bool fine = TypeTable::integerWidth(t) ||
+                        (TypeTable::floatWidth(t) && t != "Float32") ||
+                        t == strings::Ptr;
+      if (!fine) {
+        throw SemanticException(
+            "'" + c->getName() + "." + m->getName() + "' passes '" + t + " " +
+                param->getName() +
+                "' as a variable argument; C passes those as an int, a "
+                "double or a pointer, so declare it Int, Int64, Float or Ptr" +
+                (t == "Float32" ? " (a float is promoted to a double)" : ""),
+            m);
+      }
+    }
+  }
+}
+
+Class *SemanticAnalysis::callbackClass(const std::string &typeName) {
+  try {
+    auto type = typeTable.getType(typeName);
+    auto c = type ? type->getClass() : nullptr;
+    return (c && c->isCallbackType()) ? c : nullptr;
+  } catch (const SemanticException &) {
+    return nullptr;
+  }
+}
+
+/// The signature as the programmer reads it: (Ptr left, Ptr right) Int.
+static std::string signatureText(Method *m) {
+  std::string text = "(";
+  bool first = true;
+  for (auto param : *m) {
+    text += (first ? "" : ", ") + param->getType() + " " + param->getName();
+    first = false;
+  }
+  const std::string ret = m->getReturnType();
+  return text + ") " + (ret == "auto" ? std::string(strings::Void) : ret);
+}
+
+void SemanticAnalysis::checkCallbackType(Class *c) {
+  Method *call = nullptr;
+  for (auto f : *c) {
+    call = dynamic_cast<Method *>(f);
+  }
+  if (!call) {
+    throw SemanticException("the callback type '" + c->getName() +
+                                "' has no signature",
+                            c);
+  }
+  // What C passes to a callback and takes back has to have one machine
+  // representation: a number, a pointer, or the address of an extern struct,
+  // which the callback sees as a view. A String or an array would be C's
+  // `char *` taken for a catmint object; another callback type would be a
+  // function pointer handed to a function.
+  auto crosses = [&](const std::string &type) {
+    return TypeTable::integerWidth(type) || TypeTable::floatWidth(type) ||
+           type == strings::Ptr || cStructClass(type) != nullptr;
+  };
+  for (auto param : *call) {
+    if (!crosses(param->getType())) {
+      throw SemanticException(
+          "the callback type '" + c->getName() + "' takes '" +
+              param->getType() + " " + param->getName() +
+              "'; C can pass a callback a number, a Ptr or an extern struct",
+          c);
+    }
+  }
+  const std::string ret = call->getReturnType();
+  if (ret != strings::Void && !TypeTable::integerWidth(ret) &&
+      !TypeTable::floatWidth(ret) && ret != strings::Ptr) {
+    throw SemanticException("the callback type '" + c->getName() +
+                                "' returns '" + ret +
+                                "'; a callback can return Void, a number or a Ptr",
+                            c);
+  }
+}
+
+void SemanticAnalysis::refuseCallbackType(const std::string &type,
+                                          TreeNode *where,
+                                          bool inExternSignature) {
+  if (inExternSignature) {
+    return;
+  }
+  if (auto c = callbackClass(type)) {
+    throw SemanticException(
+        "'" + c->getName() +
+            "' is a callback type: it can only be the type of a parameter of "
+            "an extern function, where a static method is passed for it",
+        where);
+  }
+}
+
+void SemanticAnalysis::checkCallbackArgument(Expression *arg, Class *callback,
+                                             TreeNode *where) {
+  const std::string how =
+      "'" + callback->getName() +
+      "' is a callback type: pass a static method by naming it, as "
+      "Order.ascending";
+  auto field = dynamic_cast<FieldAccess *>(arg);
+  auto receiver = field ? dynamic_cast<Symbol *>(field->getObject()) : nullptr;
+  if (!receiver || symbolTable.contains(receiver->getName())) {
+    throw SemanticException(how, where);
+  }
+  Class *owner = nullptr;
+  try {
+    auto type = typeTable.getType(receiver->getName());
+    owner = type ? type->getClass() : nullptr;
+  } catch (const SemanticException &) {
+    owner = nullptr;
+  }
+  if (!owner) {
+    throw SemanticException(how + "; there is no class '" +
+                                receiver->getName() + "'",
+                            where);
+  }
+  auto method = typeTable.getMethod(owner, field->getField());
+  if (!method) {
+    throw SemanticException("'" + owner->getName() + "' has no method '" +
+                                field->getField() + "'",
+                            where);
+  }
+  if (!method->isStatic() || typeTable.isBuiltinClass(owner) ||
+      owner->isExtern()) {
+    throw SemanticException(
+        "'" + owner->getName() + "." + method->getName() +
+            "' cannot be a callback: C has no object to call it on, so it must "
+            "be a static method written in catmint",
+        where);
+  }
+  Method *call = nullptr;
+  for (auto f : *callback) {
+    call = dynamic_cast<Method *>(f);
+  }
+  // Exactly the same types, not merely convertible ones: C passes bits and
+  // the method receives them, and a conversion between would be one nobody
+  // wrote.
+  bool same = call && std::distance(method->begin(), method->end()) ==
+                          std::distance(call->begin(), call->end());
+  if (same) {
+    auto a = method->begin();
+    auto b = call->begin();
+    for (; a != method->end(); ++a, ++b) {
+      if ((*a)->getType() != (*b)->getType()) {
+        same = false;
+      }
+    }
+    auto norm = [](const std::string &t) {
+      return t == "auto" ? std::string(strings::Void) : t;
+    };
+    if (norm(method->getReturnType()) != norm(call->getReturnType())) {
+      same = false;
+    }
+  }
+  if (!same) {
+    throw SemanticException(
+        "'" + owner->getName() + "." + method->getName() + "' is " +
+            signatureText(method) + ", but " + callback->getName() + " is " +
+            (call ? signatureText(call) : std::string("(?)")),
+        where);
+  }
+  typeTable.setType(arg, typeTable.getType(callback->getName()));
 }
 
 Class *SemanticAnalysis::cStructClass(const std::string &typeName) {
@@ -1237,6 +1477,17 @@ bool SemanticAnalysis::visit(NewObject *n) {
 
   if (!type->getClass()) {
     throw WrongTypeException(type, n);
+  }
+
+  // A callback type names a function, and there is no function to make; a
+  // static method is passed where one is wanted. (The generator used to be
+  // the one to find out, with an LLVM verifier error.)
+  if (type->getClass()->isCallbackType()) {
+    throw SemanticException("'" + type->getName() +
+                                "' is a callback type: it has no instances; "
+                                "pass a static method where a parameter has "
+                                "that type",
+                            n);
   }
 
   // An opaque extern struct is known only by pointer: nobody here knows how
@@ -1737,6 +1988,7 @@ bool SemanticAnalysis::visit(ReturnExpression *r) {
 
 bool SemanticAnalysis::visit(LocalDefinition *local) {
   refuseCBoundaryType(local->getType(), local);
+  refuseCallbackType(local->getType(), local, false);
   // The initialiser is analysed before the name is bound. `x = expr` parses as
   // a definition with the type "auto", so binding first would make `a = a + 1`
   // resolve the right-hand `a` to the new, still-untyped definition instead of
@@ -1744,6 +1996,28 @@ bool SemanticAnalysis::visit(LocalDefinition *local) {
   if (local->getInit()) {
     if (!visit(local->getInit())) {
       return false;
+    }
+  }
+
+  // `x = expr` is an assignment when x is already visible: to that variable,
+  // which keeps the type it was declared with. Binding a new x here, of the
+  // right-hand side's type, made `a = o` (an Object into a variable declared
+  // A) leave the checker believing a was an Object, so the next `a.n` was
+  // refused. The generator has always treated it as an assignment and coerces
+  // to the variable's own type; this makes the checker agree. (Whether the
+  // value fits is the generator's to say, as it is for a declaration.)
+  if (local->getType() == "auto" && local->getInit() &&
+      !local->getName().empty()) {
+    bool allVisible = true;
+    for (const auto &name : local->getName()) {
+      if (!symbolTable.contains(name)) {
+        allVisible = false;
+      }
+    }
+    if (allVisible) {
+      auto existing = symbolTable.lookup(local->getName().front(), local);
+      typeTable.setType(local, typeTable.getType(existing));
+      return true;
     }
   }
 

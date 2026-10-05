@@ -1,0 +1,11 @@
+# F5 while the program is still running does not start another: it says how to stop it,
+# and the first goes on.
+# files loop.cm=class Main from IO\n  def main:\n    while 1 == 1:\n      sleep(50)\n    end\n  end\nend\n
+# open loop.cm
+# args --catmintc @ROOT@/catmintc
+# frames 6
+# expect message already running - Shift F5 stops it
+# expect runner 2
+1 key f5
+2 wait running
+3 key f5

@@ -1,0 +1,11 @@
+# Ctrl B again takes it away, and the editor has the window to itself; that is what
+# is remembered, not that it was shown once.
+# files a.txt=A
+# open a.txt
+# frames 4
+# expect sidebar 0 
+# pixels 223 0 224 618 137 147 160 none
+# config-file settings=sidebar=0\n
+# pixels 700 0 960 22 37 42 51 5720
+1 key b ctrl
+2 key b ctrl

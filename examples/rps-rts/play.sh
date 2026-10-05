@@ -53,7 +53,7 @@ ABSENT
   # half-open rectangle, counted in the frame the run saved.
   while IFS= read -r spec; do
     [ -z "$spec" ] && continue
-    got=$(python3 "$HERE/pixels.py" "$shot" $spec)
+    got=$(python3 "$HERE/../../tools/pixels.py" "$shot" $spec)
     want=${spec##* }
     [ "$got" = "$want" ] || problems="$problems${problems:+; }pixels $spec: counted $got"
   done <<PIXELS

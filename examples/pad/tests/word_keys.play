@@ -1,0 +1,8 @@
+# Ctrl+Right goes to the end of a word, Ctrl+Left to the start of one.
+# files t.txt=alpha beta gamma
+# open t.txt
+# frames 6
+# expect cursor 1 7
+1 key right ctrl
+2 key right ctrl
+3 key left ctrl

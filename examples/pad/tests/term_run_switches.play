@@ -1,0 +1,11 @@
+# Building shows the compiler's output in the panel instead of the terminal, whichever
+# has the keyboard; Ctrl ` brings the terminal back.
+# files t.cm=x
+# exec catmintc=#!/bin/sh\necho compiled\n
+# open t.cm
+# frames 6
+# expect term 0 0 1
+# expect panelall compiled
+1 key ` ctrl
+2 key f7
+3 wait idle

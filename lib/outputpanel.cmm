@@ -1,0 +1,153 @@
+# The panel at the bottom: what the compiler said or what a program printed, a line
+# to a row, and whether it is showing. A line that names a place can be clicked
+# (lib/buildlog.cmm says which).
+#
+# What the compiler says is the first lines that matter, so a build keeps the first
+# two hundred and shows from the top. A program's output is the last lines that
+# matter, so a run keeps the last two thousand and follows the end of it, until the
+# wheel takes the panel up; scrolled back to the end it follows again.
+
+class OutputPanel from Object
+  List lines = null
+  Int open
+  # The first line shown.
+  Int top
+  # How many lines show.
+  Int rows = 8
+  # 1 while it is a program's output: the newest lines are kept and shown.
+  Int tail
+  Int following
+
+  constructor():
+    lines = new List()
+  end
+
+  # Start afresh: for a program's output (1) or the compiler's (0).
+  def Void begin(Int program):
+    lines = new List()
+    top = 0
+    tail = program
+    following = program
+  end
+
+  def Void clear:
+    begin(0)
+  end
+
+  # The most that top can be: the panel full, ending on the last line.
+  def Int most:
+    Int m = lines.len() - rows
+    if m < 0:
+      m = 0
+    end
+    return m
+  end
+
+  # A line as the panel shows it. A program's output is written for a terminal: colour
+  # and cursor sequences (ESC [ ... and ESC ] ... BEL, or ESC and one more character) are
+  # dropped; a carriage return takes back what came before it; other control characters
+  # are dropped; and a tab is spread to the next multiple of 8 columns, since the font
+  # has no tab.
+  static def String clean(String line):
+    Int n = line.len()
+    String result = ""
+    Int col = 0
+    Int run = 0
+    Int i = 0
+    while i < n:
+      Int c = line.at(i)
+      if c >= 32 and c != 127:
+        i = i + 1
+      else
+        String piece = line.substr(run, i)
+        result = result + piece
+        col = col + piece.len()
+        i = i + 1
+        if c == 27 and i < n:
+          Int next = line.at(i)
+          i = i + 1
+          if next == 91:
+            while i < n and (line.at(i) < 64 or line.at(i) > 126):
+              i = i + 1
+            end
+            i = i + 1
+          elif next == 93:
+            while i < n and line.at(i) != 7:
+              i = i + 1
+            end
+          end
+        elif c == 9:
+          Int spaces = 8 - (col % 8)
+          result = result + "        ".substr(0, spaces)
+          col = col + spaces
+        elif c == 13:
+          result = ""
+          col = 0
+        end
+        run = i
+      end
+    end
+    if run < n:
+      result = result + line.substr(run, n)
+    end
+    return result
+  end
+
+  def Void add(String text):
+    String line = OutputPanel.clean(text)
+    if tail == 0:
+      if lines.len() < 200:
+        lines.append(line)
+      end
+    else
+      lines.append(line)
+      if lines.len() > 2000:
+        List kept = new List()
+        Int i = 1000
+        while i < lines.len():
+          kept.append(lines.get(i))
+          i = i + 1
+        end
+        lines = kept
+        top = top - 1000
+        if top < 0:
+          top = 0
+        end
+      end
+      if following == 1:
+        top = most()
+      end
+    end
+  end
+
+  # The wheel: three lines a notch, up for a positive number, within the lines there are.
+  def Void scrollBy(Int notches):
+    top = top - notches * 3
+    if top > most():
+      top = most()
+    end
+    if top < 0:
+      top = 0
+    end
+    following = 0
+    if tail == 1 and top == most():
+      following = 1
+    end
+  end
+
+  def Int size:
+    return lines.len()
+  end
+
+  def String lineAt(Int i):
+    return lines.get(i)
+  end
+
+  def Void show:
+    open = 1
+  end
+
+  def Void hide:
+    open = 0
+  end
+end

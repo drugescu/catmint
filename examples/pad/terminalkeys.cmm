@@ -1,0 +1,79 @@
+# The keys of the terminal panel, when it has the keyboard: the line's editing keys, Enter
+# to run it, Up and Down through the history, and the control keys a shell is used to --
+# C to interrupt, D to end the input, L to clear, A and E for the ends of the line, U to
+# empty it, V to paste. Everything else with Ctrl is a command of the editor's
+# (lib/commands.cmm), and only the ones in `global` may be run from here: the others
+# edit the text, which is not what is being typed in.
+
+using sdl
+using terminal
+
+class TerminalKeys from Object
+  # Do what the key says to the terminal. 0 if it is none of these; 1 if it was done; 2
+  # if it is the key that gives the keyboard back to the text.
+  static def Int apply(Terminal t, Int key, Int shift, Int shortcut, String clipboard):
+    if shortcut == 1:
+      if key == 99:
+        t.interrupt()
+      elif key == 100:
+        if t.line.buf.text().len() == 0:
+          t.endInput()
+        end
+      elif key == 108:
+        t.clear()
+      elif key == 118:
+        t.typeText(clipboard)
+      elif key == 97:
+        t.line.home(0)
+      elif key == 101:
+        t.line.endOfLine(0)
+      elif key == 117:
+        t.putLine("")
+      elif key == SDL2C.SDLK_LEFT():
+        t.line.wordLeft(shift)
+      elif key == SDL2C.SDLK_RIGHT():
+        t.line.wordRight(shift)
+      else
+        return 0
+      end
+      return 1
+    end
+    if key == SDL2C.SDLK_ESCAPE():
+      return 2
+    elif key == SDL2C.SDLK_RETURN():
+      t.enter()
+    elif key == SDL2C.SDLK_BACKSPACE():
+      t.line.backspace()
+    elif key == SDL2C.SDLK_DELETE():
+      t.line.deleteForward()
+    elif key == SDL2C.SDLK_LEFT():
+      t.line.left(shift)
+    elif key == SDL2C.SDLK_RIGHT():
+      t.line.right(shift)
+    elif key == SDL2C.SDLK_HOME():
+      t.line.home(shift)
+    elif key == SDL2C.SDLK_END():
+      t.line.endOfLine(shift)
+    elif key == SDL2C.SDLK_UP():
+      t.previous()
+    elif key == SDL2C.SDLK_DOWN():
+      t.next()
+    elif key == SDL2C.SDLK_PAGEUP():
+      t.screen.scrollBy(2)
+    elif key == SDL2C.SDLK_PAGEDOWN():
+      t.screen.scrollBy(0 - 2)
+    else
+      return 0
+    end
+    return 1
+  end
+
+  # 1 if the command may be run with the keyboard in the terminal.
+  static def Int global(String id):
+    String ids = " save open new close sidebar refresh nexttab prevtab run build stop theme themes bigger smaller commands quit terminal "
+    if ids.indexOf(" " + id + " ") >= 0:
+      return 1
+    end
+    return 0
+  end
+end

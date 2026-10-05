@@ -40,8 +40,14 @@ jobs:
           # the runtime, and the sanitizer run -- and clang-16 because the
           # shipped runtime is built by the oldest LLVM catmint supports, so
           # build-runtime.sh --check can reproduce it.
+          #
+          # libsdl2-ttf-dev is the editor's TrueType text.
+          # libsdl2-dev is for the SDL library and the game, whose tests run
+          # here on SDL's dummy video and audio drivers (no screen, no sound
+          # card) as part of test.sh. Without it that section would only say
+          # "skipped", which is not a pass.
           sudo apt-get install -y "llvm-$LLVM_VERSION-dev" "clang-$LLVM_VERSION" \
-                                  "lld-$LLVM_VERSION" clang-16 llvm-16
+                                  "lld-$LLVM_VERSION" clang-16 llvm-16 libsdl2-dev libsdl2-ttf-dev
           echo "/usr/lib/llvm-$LLVM_VERSION/bin" >> "$GITHUB_PATH"
 
       - name: Versions
@@ -64,23 +70,6 @@ jobs:
       # against C, and 300 mutants through the front end.
       - name: Test
         run: ./test.sh --no-build --thorough
-
-      # The game is the one program here that drives a real C library, and
-      # its three suites are what say a change to it, or under it, changed
-      # nothing: the simulation bit for bit against an independent port, the
-      # input tests, and every game being exactly its recorded commands.
-      # SDL's dummy video driver and software renderer run it with no
-      # display; the suites' --shot is what makes each run end.
-      - name: The RTS game
-        env:
-          SDL_VIDEODRIVER: dummy
-          SDL_RENDER_DRIVER: software
-        run: |
-          sudo apt-get install -y libsdl2-dev
-          examples/rps-rts/build.sh
-          examples/rps-rts/check.sh
-          examples/rps-rts/play.sh
-          examples/rps-rts/replay.sh
 
       # The shipped runtime-linux.bc has to be what runtime.c builds to.
       - name: Runtime reproduces
@@ -121,7 +110,7 @@ jobs:
 
       - name: Install LLVM and bison
         run: |
-          brew install llvm@22 llvm@16 lld bison flex
+          brew install llvm@22 llvm@16 lld bison flex sdl2 sdl2_ttf
           echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
 

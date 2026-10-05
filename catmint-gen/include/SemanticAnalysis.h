@@ -161,6 +161,19 @@ private:
   /// Everything `extern struct` promises: fields of C-representable types,
   /// no methods, no initialisers.
   void checkCStruct(Class *c);
+
+  /// A callback type (`extern def Compare(Ptr a, Ptr b) Int`): the class
+  /// holding its signature, or null.
+  Class *callbackClass(const std::string &typeName);
+  void checkCallbackType(Class *c);
+  /// The argument to a callback parameter: a static method, named as
+  /// `Order.ascending`, whose signature is exactly the callback type's.
+  void checkCallbackArgument(Expression *arg, Class *callback, TreeNode *where);
+  /// A callback type is for the parameters of extern functions and nothing
+  /// else: it names a function the compiler writes for C, not a value a
+  /// program can hold.
+  void refuseCallbackType(const std::string &type, TreeNode *where,
+                          bool inExternSignature);
   /// `s.pad[i]` and `s.pad[i] = v`: the dispatch a subscript on an array
   /// field of an extern struct parses to. Handled here when \p d is one.
   bool visitCArrayAccess(Dispatch *d, bool &handled);

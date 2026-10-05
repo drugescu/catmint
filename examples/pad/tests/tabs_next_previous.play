@@ -1,0 +1,19 @@
+# Ctrl+Tab goes to the next tab and round from the last to the first; with shift it
+# goes the other way. Three tabs, on the third: next is the first, next the
+# second, previous the first.
+# files a.txt=A
+# files b.txt=B
+# files c.txt=C
+# open a.txt
+# frames 14
+# expect tabs 3 0
+# expect file a.txt
+1 key o ctrl
+2 text b.t
+3 key enter
+4 key o ctrl
+5 text c.t
+6 key enter
+7 key tab ctrl
+8 key tab ctrl
+9 key tab ctrl shift

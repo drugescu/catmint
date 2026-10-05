@@ -1,0 +1,83 @@
+# IO.allocated(): the objects something still holds.
+#
+# An object made in a method stays on that method's temporary pool until the
+# method returns, so letting go of it -- `things = null` -- did not lower the
+# count in the same method, and neither did the strings out() had just built.
+# Measuring a leak meant moving the work into a method of its own and reading
+# the count before printing anything.
+#
+# Now the count leaves out what only a pool is holding, and whatever only
+# those hold in turn: the objects that closing the pools would free. What is
+# left is what a variable, a field or a container holds. A cycle is such an
+# object, held by its own members, and is the leak that counting cannot free:
+# it must keep being counted.
+
+class Counter
+  Int n
+end
+
+class Holder
+  Counter inner
+end
+
+class Node
+  Node next
+end
+
+class Main from IO
+  def make:
+    return new Counter()
+  end
+
+  def main:
+    Int baseline = allocated()
+
+    Counter c = new Counter()
+    out("one, held by a variable: ${allocated() - baseline}\n")
+    c = null
+    out("let go: ${allocated() - baseline}\n")
+
+    List things = new List()
+    Int i = 0
+    while i < 1000:
+      things.append(new Counter())
+      i = i + 1
+    end
+    out("a list of a thousand: ${allocated() - baseline}\n")
+    things = null
+    out("let go: ${allocated() - baseline}\n")
+
+    Holder h = new Holder()
+    h.inner = new Counter()
+    out("a holder and what it holds: ${allocated() - baseline}\n")
+    h = null
+    out("let go: ${allocated() - baseline}\n")
+
+    # Held twice: still counted until the second holder lets go.
+    Counter shared = new Counter()
+    Holder one = new Holder()
+    Holder two = new Holder()
+    one.inner = shared
+    two.inner = shared
+    shared = null
+    one = null
+    out("still held by the second holder: ${allocated() - baseline}\n")
+    two = null
+    out("both gone: ${allocated() - baseline}\n")
+
+    # An object handed up from a method is the caller's.
+    Counter made = make()
+    out("made by a method and kept: ${allocated() - baseline}\n")
+    made = null
+    out("let go: ${allocated() - baseline}\n")
+
+    # A cycle is never freed by counting, and the count says so.
+    Node a = new Node()
+    Node b = new Node()
+    a.next = b
+    b.next = a
+    a = null
+    b = null
+    out("a cycle is still alive: ${allocated() - baseline}\n")
+  end
+end

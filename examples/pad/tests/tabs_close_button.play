@@ -1,0 +1,12 @@
+# The x at the end of a tab closes it: in the second tab, which starts at x = 88,
+# it is after 2 + 5 + 2 cells, x = 160 to 168. With one file left the strip goes.
+# files a.txt=A
+# files b.txt=B
+# open a.txt
+# frames 6
+# expect tabs 1 0
+# expect file a.txt
+1 key o ctrl
+2 text b.t
+3 key enter
+4 click 164 10

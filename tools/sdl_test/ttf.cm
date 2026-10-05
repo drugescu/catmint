@@ -1,0 +1,35 @@
+# TrueType text, drawn headless: the face's cell is the font's advance and line height, the
+# atlas has ink for letters and none for the space, every glyph stays inside its cell, and
+# text drawn on screen has ink in the cells of its characters and nowhere else. The frame is
+# saved to the path in the first argument; check_ttf.py reads it. Arguments: bmp, font file.
+
+using sdl
+using ttf
+
+class Main from IO
+  def main:
+    String file = arg(2)
+    out("monospaced ${TrueType.monospaced(file)}\n")
+    out("missing file monospaced ${TrueType.monospaced("/no/such/font.ttf")}\n")
+    Sdl sdl = new Sdl()
+    Window win = new Window(sdl, "ttf", 300, 120)
+    Renderer view = new Renderer(win)
+    view.clear(0, 0, 0)
+    TrueType small = new TrueType(view, file, 12)
+    TrueType big = new TrueType(view, file, 24)
+    out("small cell ${small.cellW} x ${small.cellH}\n")
+    out("big cell ${big.cellW} x ${big.cellH}\n")
+    out("bigger is bigger ${big.cellW > small.cellW and big.cellH > small.cellH}\n")
+    Int w = big.draw("Hi g", 10, 10, 255, 255, 255)
+    out("width ${w} is 4 cells ${w == 4 * big.cellW}\n")
+    view.present()
+    view.saveBMP(arg(1))
+    out("cell ${big.cellW} ${big.cellH}\n")
+    try:
+      TrueType none = new TrueType(view, "/no/such/font.ttf", 12)
+      out("opened a font that is not there\n")
+    catch e:
+      out("missing: ${e}\n")
+    end
+  end
+end

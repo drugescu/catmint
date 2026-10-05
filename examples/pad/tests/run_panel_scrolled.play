@@ -1,0 +1,10 @@
+# Scrolled up it stays scrolled up: after one notch up from the end the top is 10.
+# files many.cm=class Main from IO\n  def main:\n    Int i = 1\n    while i <= 20:\n      out("line ${i}\\n")\n      i = i + 1\n    end\n  end\nend\n
+# open many.cm
+# args --catmintc @ROOT@/catmintc
+# frames 6
+# expect paneltop 10
+1 key f5
+2 wait idle
+3 move 300 500
+4 wheel 1

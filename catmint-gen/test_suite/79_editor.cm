@@ -1,0 +1,340 @@
+# The editor's cursor and selection, held to what an editor is expected to do.
+# Each line is "what happened: the text", with `|` the cursor, a selection in
+# [brackets] with the cursor at the end the `|` is beside, and a newline shown
+# as `/`. The expected text was written by hand from how editors behave, not
+# taken from this code. Then a long run of random operations checks the two
+# things that must always hold: the cursor and the other end of the selection
+# sit on a character and never inside one, and undoing every step gives back
+# the text that was loaded, redoing them all the text that was left.
+
+using editor
+
+class Main from IO
+  Editor e = null
+  Int seed = 12345
+
+  def show(String label):
+    out("${label}: ${e.picture()}\n")
+  end
+
+  def start(String text):
+    e = new Editor()
+    e.load(text)
+  end
+
+  def look(String label, String needle, Int forward):
+    Int found = e.find(needle, forward)
+    out("${label} ${found}: ${e.picture()}\n")
+  end
+
+  def roll(Int n):
+    seed = (seed * 1103515245 + 12345) & 2147483647
+    return ((seed >> 8) % n)
+  end
+
+  def moves:
+    start("one two\nthree\n\nfour five")
+    show("start")
+    e.right(0)
+    e.right(0)
+    e.right(0)
+    show("right x3")
+    e.down(0)
+    show("down")
+    e.down(0)
+    show("down onto the empty line")
+    e.down(0)
+    show("down remembers the column")
+    e.down(0)
+    show("down from the last line")
+    e.up(0)
+    show("up")
+    e.up(0)
+    show("up clamps to the line")
+
+    start("    if x:\n")
+    e.home(0)
+    show("home goes to the code")
+    e.home(0)
+    show("home again goes to the start")
+    e.endOfLine(0)
+    show("end")
+    e.home(0)
+    show("home from the end")
+
+    start("alpha beta gamma")
+    e.wordRight(0)
+    show("word right")
+    e.wordRight(1)
+    show("word right, extending")
+    e.wordLeft(1)
+    show("word left, extending")
+    e.right(0)
+    show("right collapses to the end")
+    e.selectAll()
+    show("select all")
+    e.left(0)
+    show("left collapses to the start")
+    e.selectWord(7)
+    show("select a word")
+    e.selectWord(5)
+    show("select a separator")
+    start("alpha beta")
+    e.docEnd(0)
+    e.wordLeft(1)
+    show("select backwards")
+  end
+
+  def editing:
+    start("hello world")
+    e.placeAt(0, 6, 0)
+    e.placeAt(0, 11, 1)
+    show("drag over a word")
+    e.typeText("there")
+    show("typed over it")
+    e.undo()
+    show("undone")
+    e.redo()
+    show("redone")
+
+    start("")
+    e.typeText("a")
+    e.typeText("b")
+    e.typeText("c")
+    show("typed three")
+    e.undo()
+    show("one undo")
+    e.redo()
+    show("redo")
+    start("")
+    e.typeText("x")
+    e.left(0)
+    e.right(0)
+    e.typeText("y")
+    e.undo()
+    show("moving breaks the run")
+
+    start("añb")
+    e.placeAt(0, 2, 0)
+    out("column ${e.col()} after two characters\n")
+    e.placeAt(0, 3, 0)
+    show("three characters in")
+    e.backspace()
+    e.backspace()
+    show("two backspaces")
+    e.deleteForward()
+    show("delete at the end")
+    e.left(0)
+    e.deleteForward()
+    show("delete")
+    e.backspace()
+    show("backspace at the start")
+
+    start("def f:\n  x = 1")
+    e.endOfLine(0)
+    e.newline()
+    show("newline after a colon")
+    e.newline()
+    show("newline keeps the indent")
+    e.docEnd(0)
+    e.newline()
+    show("newline at the end")
+    start("    ab")
+    e.placeAt(0, 2, 0)
+    e.newline()
+    show("newline inside the indent")
+
+    start("")
+    e.paste("a\r\nb\rc" + String.chr(0) + "d")
+    show("pasted")
+
+    start("x")
+    e.tab()
+    show("tab")
+    e.untab()
+    show("untab")
+    e.untab()
+    show("untab again")
+    start(" x")
+    e.right(0)
+    e.untab()
+    show("untab one space")
+    start("    x")
+    e.placeAt(0, 1, 0)
+    e.untab()
+    show("untab with the cursor inside the indent")
+    start("    x")
+    e.placeAt(0, 3, 0)
+    e.untab()
+    show("untab with the cursor further on")
+  end
+
+  def searching:
+    start("one two one two")
+    look("find", "two", 1)
+    look("find next", "two", 1)
+    look("find wraps", "two", 1)
+    look("find previous wraps", "two", 0)
+    look("find previous", "two", 0)
+    look("find nothing", "zzz", 1)
+
+    start("a-b-c")
+    out("replaced ${e.replaceAll("-", "--")}\n")
+    show("replace all")
+    e.undo()
+    show("replace all is one undo")
+    start("x y x")
+    e.find("x", 1)
+    e.replaceNext("x", "z")
+    show("replace next")
+
+    start("one two\nthree\n\nfour five")
+    e.goToLine(3)
+    show("go to 3")
+    e.goToLine(99)
+    show("go to 99")
+    out("line ${e.line()} col ${e.col()}\n")
+    e.goToLine(0)
+    show("go to 0")
+    e.placeAt(99, 2, 0)
+    show("click below the text")
+    e.placeAt(0 - 3, 99, 0)
+    show("click above and past the end")
+
+    String many = ""
+    Int i = 0
+    while i < 100:
+      many = many + "L${i}\n"
+      i = i + 1
+    end
+    start(many)
+    e.goToLine(50)
+    e.reveal(10)
+    out("top ${e.top}\n")
+    e.goToLine(45)
+    e.reveal(10)
+    out("top ${e.top}\n")
+    e.goToLine(1)
+    e.reveal(10)
+    out("top ${e.top}\n")
+    e.scrollBy(5)
+    out("top ${e.top}\n")
+    e.scrollBy(0 - 99)
+    out("top ${e.top}\n")
+    e.scrollBy(1000)
+    out("top ${e.top}\n")
+  end
+
+  def onCharacter:
+    Int p = e.cursor
+    Int q = e.anchor
+    Int n = e.buf.length()
+    if p < 0 or q < 0 or p > n or q > n:
+      return 0
+    end
+    if p < n and (e.buf.byteAt(p) & 192) == 128:
+      return 0
+    end
+    if q < n and (e.buf.byteAt(q) & 192) == 128:
+      return 0
+    end
+    return 1
+  end
+
+  def random(Int steps):
+    String original = "alpha beta\ngamma delta\n"
+    start(original)
+    List words = new List()
+    words.append("a")
+    words.append("b")
+    words.append(" ")
+    words.append("é")
+    words.append(":")
+    words.append("\n")
+    words.append("xy")
+    words.append("ñ")
+    Int bad = 0
+    Int changes = 0
+    Int step = 0
+    while step < steps:
+      Int op = roll(32)
+      Int ext = roll(2)
+      Int before = e.buf.revision
+      if op < 8:
+        e.typeText(words.get(roll(8)))
+      elif op == 8:
+        e.newline()
+      elif op == 9:
+        e.backspace()
+      elif op == 10:
+        e.deleteForward()
+      elif op == 11:
+        e.left(ext)
+      elif op == 12:
+        e.right(ext)
+      elif op == 13:
+        e.up(ext)
+      elif op == 14:
+        e.down(ext)
+      elif op == 15:
+        e.home(ext)
+      elif op == 16:
+        e.endOfLine(ext)
+      elif op == 17:
+        e.wordLeft(ext)
+      elif op == 18:
+        e.wordRight(ext)
+      elif op == 19:
+        e.tab()
+      elif op == 20:
+        e.untab()
+      elif op == 21 or op == 22:
+        e.undo()
+      elif op == 23:
+        e.redo()
+      elif op == 24:
+        e.selectAll()
+      elif op == 25:
+        e.find("a", roll(2))
+      elif op == 26:
+        e.paste("p\r\nq")
+      elif op == 27 or op == 28:
+        e.placeAt(roll(30), roll(12), ext)
+      elif op == 29:
+        e.replaceAll("ab", "ba")
+      elif op == 30:
+        e.selectWord(roll(e.buf.length() + 1))
+      else
+        e.docEnd(ext)
+      end
+      if e.buf.revision != before:
+        changes = changes + 1
+      end
+      if onCharacter() == 0:
+        bad = bad + 1
+      end
+      step = step + 1
+    end
+    out("${steps} operations, cursor off a character ${bad} times\n")
+    out("most of them changed the text: ${changes > steps / 3}\n")
+    String last = e.buf.text()
+    Int undone = 0
+    while e.undo() == 1:
+      undone = undone + 1
+    end
+    out("undone to the start: ${e.buf.text().equals(original)}\n")
+    Int redone = 0
+    while e.redo() == 1:
+      redone = redone + 1
+    end
+    out("redone to the end: ${e.buf.text().equals(last)}\n")
+    out("as many steps back as forward: ${undone == redone}\n")
+  end
+
+  def main:
+    moves()
+    editing()
+    searching()
+    random(3000)
+  end
+end

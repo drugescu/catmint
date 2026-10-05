@@ -1,0 +1,118 @@
+# The colour themes. Thirteen of them: the two the editor was designed with, and
+# eleven published by other people (Dracula, Nord, Solarized, Gruvbox, Tokyo
+# Night, One Dark, Catppuccin, Monokai), with the colours they gave them, not
+# bent to this editor's own contrast rule -- Solarized would not be Solarized.
+#
+# So what is held is different from test 77, which holds the two Catmint themes
+# to 7:1:
+#   - every one of a theme's twelve colours, as hex, is what the table in
+#     tools/make_themes.py says (this is what catches a mistyped digit, which
+#     moves no contrast figure by a tenth);
+#   - the contrast of each theme's colours on its ground is the figure the
+#     author's palette gives, worked out in tools/make_themes.py by a WCAG
+#     calculation that shares no code with lib/theme.cmm; the two must agree on
+#     every one of the thirteen, to a tenth;
+#   - whatever the author chose, text is readable (4:1 on the ground, 3:1 on the
+#     current line and a selection), the accent and errors can be seen (3:1) and
+#     keywords, strings and numbers are not lost (2.5:1);
+#   - the three syntax colours differ from each other and from the text; the
+#     current line and the selection are not the ground;
+#   - names are unique and found by name, and the theme "toggle dark and light"
+#     goes to exists and is the other kind.
+
+using themes
+
+class Main from IO
+  def tenths(Float x):
+    Float scaled = x * 10.0 + 0.5
+    Int n = scaled
+    return "${n / 10}.${(n % 10)}"
+  end
+
+  def ratio(Int a, Int b):
+    return tenths(Theme.contrast(a, b))
+  end
+
+  # 1 if two themes have the same twelve colours.
+  def Int same(Theme a, Theme b):
+    if a.ground == b.ground and a.line == b.line and a.panel == b.panel and a.selection == b.selection and a.text == b.text and a.dim == b.dim and a.comment == b.comment and a.accent == b.accent and a.keyword == b.keyword and a.string == b.string and a.number == b.number and a.error == b.error and a.isDark == b.isDark and a.pair.equals(b.pair):
+      return 1
+    end
+    return 0
+  end
+
+  def main:
+    List all = Themes.all()
+    out("${all.len()} themes\n")
+    Int readable = 1
+    Int distinct = 1
+    Int pairs = 1
+    Int i = 0
+    while i < all.len():
+      Theme t = all.get(i)
+      out("${t.name}: text ${ratio(t.text, t.ground)} dim ${ratio(t.dim, t.ground)} keyword ${ratio(t.keyword, t.ground)} string ${ratio(t.string, t.ground)} number ${ratio(t.number, t.ground)} accent ${ratio(t.accent, t.ground)} error ${ratio(t.error, t.ground)}\n")
+      out("  ${Theme.hexOf(t.ground)} ${Theme.hexOf(t.line)} ${Theme.hexOf(t.panel)} ${Theme.hexOf(t.selection)} ${Theme.hexOf(t.text)} ${Theme.hexOf(t.dim)} ${Theme.hexOf(t.comment)} ${Theme.hexOf(t.accent)} ${Theme.hexOf(t.keyword)} ${Theme.hexOf(t.string)} ${Theme.hexOf(t.number)} ${Theme.hexOf(t.error)}\n")
+      if Theme.contrast(t.text, t.ground) < 4.0 or Theme.contrast(t.text, t.line) < 3.0 or Theme.contrast(t.text, t.selection) < 3.0:
+        readable = 0
+        out("  ${t.name}: text is too faint\n")
+      end
+      if Theme.contrast(t.keyword, t.ground) < 2.5 or Theme.contrast(t.string, t.ground) < 2.5 or Theme.contrast(t.number, t.ground) < 2.5:
+        readable = 0
+        out("  ${t.name}: a syntax colour is lost\n")
+      end
+      if Theme.contrast(t.accent, t.ground) < 3.0 or Theme.contrast(t.error, t.ground) < 3.0:
+        readable = 0
+        out("  ${t.name}: the accent or the error cannot be seen\n")
+      end
+      if t.keyword == t.string or t.keyword == t.number or t.string == t.number or t.keyword == t.text or t.string == t.text or t.number == t.text:
+        distinct = 0
+        out("  ${t.name}: two syntax colours are the same\n")
+      end
+      if t.line == t.ground or t.selection == t.ground or t.selection == t.line or t.panel == t.ground:
+        distinct = 0
+        out("  ${t.name}: a background is the same as another\n")
+      end
+      Theme other = Themes.pairOf(t)
+      if other.isDark == t.isDark:
+        pairs = 0
+        out("  ${t.name}: toggles to a theme of the same kind\n")
+      end
+      i = i + 1
+    end
+    out("readable: ${readable}\n")
+    out("syntax colours and backgrounds tell apart: ${distinct}\n")
+    out("toggling goes to the other kind: ${pairs}\n")
+
+    Int unique = 1
+    Int found = 1
+    List names = Themes.names()
+    Int a = 0
+    while a < names.len():
+      String name = names.get(a)
+      Theme looked = Themes.named(name)
+      if looked == null or looked.name.equals(name) == 0:
+        found = 0
+      end
+      Int b = a + 1
+      while b < names.len():
+        String later = names.get(b)
+        if later.equals(name):
+          unique = 0
+        end
+        b = b + 1
+      end
+      a = a + 1
+    end
+    out("names are unique: ${unique}\n")
+    out("each is found by its name: ${found}\n")
+    Theme designedDark = Theme.dark()
+    Theme designedLight = Theme.light()
+    out("the list's Catmint pair is the designed one: ${same(Themes.named("Catmint Dark"), designedDark) == 1 and same(Themes.named("Catmint Light"), designedLight) == 1}\n")
+    out("a name that is not one finds nothing: ${Themes.named("Nothing At All") == null}\n")
+    Theme first = all.get(0)
+    out("the first is the default: ${first.name}\n")
+    out("Catmint Dark toggles to ${Themes.pairOf(Themes.named("Catmint Dark")).name}\n")
+    out("Dracula toggles to ${Themes.pairOf(Themes.named("Dracula")).name}\n")
+    out("Gruvbox Light toggles to ${Themes.pairOf(Themes.named("Gruvbox Light")).name}\n")
+  end
+end

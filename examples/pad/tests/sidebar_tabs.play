@@ -1,0 +1,17 @@
+# With the explorer showing the strip of tabs begins at its edge, x = 224: the second
+# tab, which is the one in front, starts 88 pixels along, at x = 312, with its accent
+# underline there. A click on the first tab, at x = 224 + 20, switches to it.
+# files a.txt=A
+# files b.txt=B
+# open a.txt
+# frames 8
+# expect tabs 2 0
+# expect file a.txt
+# pixels 312 21 400 22 232 176 74 none
+# pixels 224 21 312 22 232 176 74 88
+# pixels 223 0 224 618 137 147 160 618
+1 key b ctrl
+2 key o ctrl
+3 text b.t
+4 key enter
+5 click 244 10

@@ -1,0 +1,12 @@
+# While the list is open the highlighted theme is shown, so a choice is made by
+# looking. With "dracula" typed, the ground outside the list is Dracula's,
+# #282a36 = (40, 42, 54); nothing has been chosen, so nothing is kept.
+# frames 8
+# expect palette 7 dracula
+# config-files settings=theme=Catmint Dark\n
+# config-file settings=theme=Catmint Dark\n
+# pixels 100 300 200 400 40 42 54 10000
+1 key p ctrl
+2 text color
+3 key enter
+4 text dracula

@@ -1,0 +1,16 @@
+# Up recalls the commands entered, newest first, and Down goes the other way and then
+# gives back what was being typed.
+# files t.txt=abc
+# open t.txt
+# frames 12
+# expect termline [ec]
+1 key ` ctrl
+2 text echo one
+3 key enter
+4 text echo two
+5 key enter
+6 text ec
+7 key up
+8 key up
+9 key down
+10 key down

@@ -1,0 +1,8 @@
+# A click in the text gives it the keyboard; a click on the terminal takes it back.
+# files t.txt=abc
+# open t.txt
+# frames 5
+# expect term 1 1 1 0
+1 key ` ctrl
+2 click 300 100
+3 click 300 500
