@@ -1296,11 +1296,29 @@ and [Nord's low-contrast palette](https://best-of-web.builder.io/library/nordthe
 
 ## Phase 7 — the game, grown up: randomness, input, textures, sound, paths, and the network — as designed
 
-Not started. The game so far was built to find what the language lacked, and
-did. Phase 7 is the reverse: it asks what a game needs and finds out whether
+Commands are done; the rest is not started. The game so far was built to find what the
+language lacked, and did. Phase 7 is the reverse: it asks what a game needs and finds out whether
 the language and its libraries now supply it. The order is the order each step
 needs the one before: a bigger map needs a camera, which needs input; paths
 need obstacles to path around; the network needs a game worth sharing.
+
+### Commands — **done**
+
+Everything a player does to the battle is a `Command`, stamped with the step it takes
+effect on and applied before that step moves anything. Units are named by id and a point is
+in 1/1024ths of a tile, so a command is integers and crosses a file -- or, in E below, a wire
+-- exactly. The interactive loop takes fixed 1/60 s steps from an accumulator, rather than one
+step as long as the frame was. The opponent spawns through the same `apply`; `--delay N` holds
+commands back as a network will; `--record` and `--replay` write and play them, and `--state`
+prints the whole battle.
+
+Proved by: `check.sh` and all 17 play tests, unchanged; the output of 15 of those tests byte
+for byte what the build before produced, and of the other two, the move orders, within 7e-5 of
+a tile, which is the rounding of the point; and `replay.sh`, new, which records every play test
+and a busy minute of a real game, plays each back with no other input, and requires the whole
+state and the recording itself to come out the same, with and without a delay. Clean under ASan
+and LSan, recording and replaying. This is the `Command` the network's protocol carries
+(E below), and the replays are how the game is tested without a person.
 
 ### The constraint that is dropped, and the one it exposes
 

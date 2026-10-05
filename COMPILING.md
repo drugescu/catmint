@@ -81,8 +81,8 @@ Missing either gives an error pointing at `LLVMExports.cmake` that never
 mentions a package, so it is worth knowing what it means.
 
 ```sh
-sudo apt-get install flex bison cmake llvm-18-dev clang-18 \
-                     zlib1g-dev libzstd-dev
+sudo apt-get install build-essential flex bison cmake \
+                     llvm-18-dev clang-18 lld-18 zlib1g-dev libzstd-dev
 export PATH=/usr/lib/llvm-18/bin:$PATH
 make -C catmint-ast -f GNUmakefile build LLVM_CONFIG=/usr/bin/llvm-config-18
 make -C catmint-lex  LLVM_CONFIG=/usr/bin/llvm-config-18

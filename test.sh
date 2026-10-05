@@ -180,9 +180,10 @@ if sdl_out=$("$ROOT/tools/sdl_test/run.sh" 2>&1); then
       else
         if ( cd "$ROOT/examples/rps-rts" &&
              export SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software SDL_AUDIODRIVER=dummy &&
-             ./build.sh && ./check.sh && ./play.sh ) > "$ROOT/.game.log" 2>&1; then
+             ./build.sh && ./check.sh && ./play.sh && ./replay.sh ) > "$ROOT/.game.log" 2>&1; then
           printf "  %s\n" "$(grep 'simulation matches' "$ROOT/.game.log")"
           printf "  %s\n" "$(grep 'play tests passed' "$ROOT/.game.log")"
+          printf "  %s\n" "$(grep 'replays matched' "$ROOT/.game.log")"
         else
           printf "  ${RED}game failed${NC} - see .game.log\n"
           tail -6 "$ROOT/.game.log" | sed 's/^/  /'
