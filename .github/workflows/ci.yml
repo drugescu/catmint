@@ -18,7 +18,9 @@ on:
 jobs:
   linux:
     name: x86-64 Linux
-    runs-on: ubuntu-latest
+    # Ubuntu 26.04 (the new ubuntu-latest) has no LLVM 20 apt repository.
+    # Keep the tested toolchain and the app package's glibc baseline stable.
+    runs-on: ubuntu-24.04
     env:
       LLVM_VERSION: "20"
     steps:
