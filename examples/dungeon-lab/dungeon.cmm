@@ -1,0 +1,285 @@
+# Dungeon Lab v1. Model and printable export; no SDL or window state here.
+# Every accepted room is connected to its predecessor, so the floor is one
+# component. BFS supplies distances, a farthest exit, and inspection routes.
+using random
+
+class Chamber
+  Int x
+  Int y
+  Int w
+  Int h
+
+  constructor(Int left, Int top, Int wide, Int high):
+    x = left
+    y = top
+    w = wide
+    h = high
+  end
+
+  def Int cx:
+    return x + w / 2
+  end
+
+  def Int cy:
+    return y + h / 2
+  end
+
+  def Int touches(Chamber b):
+    if x <= b.x + b.w and x + w >= b.x and y <= b.y + b.h and y + h >= b.y:
+      return 1
+    end
+    return 0
+  end
+end
+
+class Dungeon
+  Int width = 61
+  Int height = 37
+  Int seed
+  Int goal
+  List rooms = null
+  Ints tiles = null
+  Ints distance = null
+  Ints parent = null
+  Ints route = null
+  Int entrance
+  Int stairs
+  Int target
+  Int floorCount
+  Int reached
+  Int routeLength
+
+  constructor(Int value, Int wanted):
+    generate(value, wanted)
+  end
+
+  def Int at(Int x, Int y):
+    if x < 0 or y < 0 or x >= width or y >= height:
+      return 0
+    end
+    return tiles.get(y * width + x)
+  end
+
+  def Void carve(Int x, Int y):
+    if x > 0 and y > 0 and x < width - 1 and y < height - 1:
+      tiles.set(y * width + x, 1)
+    end
+  end
+
+  def Void corridor(Int ax, Int ay, Int bx, Int by, Int horizontal):
+    Int x = ax
+    Int y = ay
+    carve(x, y)
+    while x != bx or y != by:
+      if (horizontal == 1 and x != bx) or y == by:
+        if x < bx:
+          x = x + 1
+        else
+          x = x - 1
+        end
+      else
+        if y < by:
+          y = y + 1
+        else
+          y = y - 1
+        end
+      end
+      carve(x, y)
+    end
+  end
+
+  def Void generate(Int value, Int wanted):
+    seed = value
+    goal = wanted
+    rooms = new List()
+    tiles = new Ints(width * height)
+    route = new Ints(width * height)
+    Random rng = new Random()
+    rng.seed(seed)
+    Int attempt = 0
+    while rooms.len() < goal and attempt < 400:
+      attempt = attempt + 1
+      Int w = rng.between(5, 11)
+      Int h = rng.between(5, 9)
+      Chamber candidate = new Chamber(rng.between(1, width - w - 2), rng.between(1, height - h - 2), w, h)
+      Int fits = 1
+      for item in rooms:
+        Chamber other = item
+        if candidate.touches(other) == 1:
+          fits = 0
+        end
+      end
+      if fits == 1:
+        for yy in h:
+          for xx in w:
+            carve(candidate.x + xx, candidate.y + yy)
+          end
+        end
+        if rooms.len() > 0:
+          Chamber last = rooms.get(rooms.len() - 1)
+          corridor(last.cx(), last.cy(), candidate.cx(), candidate.cy(), rng.below(2))
+        end
+        rooms.append(candidate)
+      end
+    end
+    Chamber first = rooms.get(0)
+    entrance = first.cy() * width + first.cx()
+    analyse()
+    select(stairs - (stairs / width) * width, stairs / width)
+  end
+
+  def Void analyse:
+    Int size = width * height
+    distance = new Ints(size)
+    parent = new Ints(size)
+    distance.fill(0 - 1)
+    parent.fill(0 - 1)
+    Ints queue = new Ints(size)
+    queue.set(0, entrance)
+    distance.set(entrance, 0)
+    Int head = 0
+    Int tail = 1
+    stairs = entrance
+    while head < tail:
+      Int cell = queue.get(head)
+      head = head + 1
+      if distance.get(cell) > distance.get(stairs):
+        stairs = cell
+      end
+      for direction in 4:
+        Int next = cell - 1
+        if direction == 1:
+          next = cell + 1
+        elif direction == 2:
+          next = cell - width
+        elif direction == 3:
+          next = cell + width
+        end
+        # The sealed border prevents row wrapping; guard indices too.
+        if next >= 0 and next < size:
+          if tiles.get(next) == 1 and distance.get(next) < 0:
+            distance.set(next, distance.get(cell) + 1)
+            parent.set(next, cell)
+            queue.set(tail, next)
+            tail = tail + 1
+          end
+        end
+      end
+    end
+    reached = tail
+    floorCount = 0
+    for cell in size:
+      if tiles.get(cell) == 1:
+        floorCount = floorCount + 1
+      end
+    end
+  end
+
+  def Int select(Int x, Int y):
+    if at(x, y) == 0:
+      return 0
+    end
+    target = y * width + x
+    route.fill(0)
+    routeLength = distance.get(target)
+    Int cell = target
+    while cell >= 0:
+      route.set(cell, 1)
+      cell = parent.get(cell)
+    end
+    return 1
+  end
+
+  # Stable, versioned text for command-line use and independent verification.
+  def String dump:
+    String text = "DUNGEON-LAB 1\nseed ${seed}\nsize ${width} ${height}\nrooms ${rooms.len()} ${goal}\n"
+    text = text + "entrance ${entrance}\nexit ${stairs}\ntarget ${target}\ndistance ${routeLength}\nfloors ${floorCount}\nmap\n"
+    for y in height:
+      String row = ""
+      for x in width:
+        if at(x, y) == 1:
+          row = row + "."
+        else
+          row = row + "#"
+        end
+      end
+      text = text + row + "\n"
+    end
+    text = text + "route\n"
+    for y in height:
+      String row = ""
+      for x in width:
+        row = row + route.get(y * width + x)
+      end
+      text = text + row + "\n"
+    end
+    return text
+  end
+
+  # SVG uses only geometry and numeric metadata: portable, printable, editable.
+  # Route inspection never changes a player's exported map.
+  def String svg:
+    Int tile = 20
+    Int wide = width * tile + 40
+    Int high = height * tile + 100
+    String text = "<svg xmlns='http://www.w3.org/2000/svg' width='${wide}' height='${high}' viewBox='0 0 ${wide} ${high}'>\n"
+    text = text + "<title>Catmint Dungeon Lab - seed ${seed}</title>\n<desc>Generator v1; ${width} by ${height}; requested ${goal} rooms; generated ${rooms.len()} rooms. One square is five feet. E is the entrance; X is the exit.</desc>\n"
+    text = text + "<rect width='100%' height='100%' fill='white'/>\n<g font-family='monospace' fill='#17202b'><text x='20' y='26' font-size='18'>DUNGEON ${seed}</text><text x='20' y='48' font-size='12'>Catmint Dungeon Lab / v1 / ${rooms.len()} rooms / 1 square = 5 ft</text></g>\n<g transform='translate(20 64)'>\n"
+    # Run-length rectangles keep empty rock compact, instead of one element/tile.
+    for y in height:
+      Int x = 0
+      while x < width:
+        Int kind = at(x, y)
+        Int start = x
+        while x < width and at(x, y) == kind:
+          x = x + 1
+        end
+        if kind == 0:
+          text = text + "<rect x='${start * tile}' y='${y * tile}' width='${(x - start) * tile}' height='20' fill='#dce1e5'/>\n"
+        end
+      end
+    end
+    text = text + "<g stroke='#c8cdd2' stroke-width='0.4'>\n"
+    for y in height:
+      for x in width:
+        if at(x, y) == 1:
+          text = text + "<rect x='${x * tile}' y='${y * tile}' width='20' height='20' fill='none'/>\n"
+        end
+      end
+    end
+    text = text + "</g><g stroke='#34404b' stroke-width='1.5'>\n"
+    for y in height:
+      for x in width:
+        if at(x, y) == 1:
+          Int px = x * tile
+          Int py = y * tile
+          if at(x, y - 1) == 0:
+            text = text + "<path d='M ${px} ${py} h 20'/>\n"
+          end
+          if at(x, y + 1) == 0:
+            text = text + "<path d='M ${px} ${py + tile} h 20'/>\n"
+          end
+          if at(x - 1, y) == 0:
+            text = text + "<path d='M ${px} ${py} v 20'/>\n"
+          end
+          if at(x + 1, y) == 0:
+            text = text + "<path d='M ${px + tile} ${py} v 20'/>\n"
+          end
+        end
+      end
+    end
+    text = text + "</g><g font-family='monospace' font-size='11' text-anchor='middle' fill='#59616a'>\n"
+    Int number = 1
+    for item in rooms:
+      Chamber room = item
+      if room.cy() * width + room.cx() != entrance:
+        text = text + "<text x='${room.cx() * tile + 10}' y='${room.cy() * tile + 14}'>${number}</text>\n"
+      end
+      number = number + 1
+    end
+    Int ex = entrance - (entrance / width) * width
+    Int sx = stairs - (stairs / width) * width
+    text = text + "</g><g font-family='monospace' font-size='14' text-anchor='middle' fill='#17202b'><text x='${ex * tile + 10}' y='${(entrance / width) * tile + 15}'>E</text><text x='${sx * tile + 10}' y='${(stairs / width) * tile + 15}'>X</text></g></g></svg>\n"
+    return text
+  end
+end

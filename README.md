@@ -105,6 +105,11 @@ export PATH="$(brew --prefix llvm)/bin:$(brew --prefix bison)/bin:$PATH"
 
 ## Built with Catmint
 
+**[Dungeon Lab](examples/dungeon-lab)** is a finished native layout tool: generate
+a dungeon from a seed, inspect shortest paths, and export a printable SVG for a
+tabletop game. Linux and macOS packages are uploaded by CI, with no compiler
+needed to run them. [Controls, screenshots and setup](examples/dungeon-lab/README.md).
+
 <p align="center">
   <img src="assets/rps-rts.png" alt="An isometric rock-paper-scissors RTS written in Catmint" width="720">
 </p>

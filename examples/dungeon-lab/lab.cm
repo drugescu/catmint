@@ -1,0 +1,239 @@
+# A complete native tool: generate, inspect, reproduce, export.
+using session
+using font
+
+class LabView
+  LabSession state = null
+  Renderer view = null
+  Font font = null
+
+  constructor(LabSession session, Renderer renderer):
+    state = session
+    view = renderer
+    font = new Font(view)
+  end
+
+  def Void label(String text, Int x, Int y, Int scale, Int colour):
+    font.draw(text, x, y, scale, (colour >> 16) & 255, (colour >> 8) & 255, colour & 255)
+  end
+
+  def Void box(Int x, Int y, Int w, Int h, Int colour):
+    view.setColor((colour >> 16) & 255, (colour >> 8) & 255, colour & 255)
+    view.fillRect(x, y, w, h)
+  end
+
+  def Void button(String text, Int y, Int active):
+    Int colour = 2633018
+    if active == 1:
+      colour = 1983828
+    end
+    box(920, y, 256, 38, colour)
+    label(text, 934, y + 11, 1, 14279913)
+  end
+
+  def Void draw:
+    Dungeon map = state.map
+    view.clear(15, 20, 29)
+    box(0, 0, 1200, 96, 1252131)
+    label("CATMINT / DUNGEON LAB", 24, 22, 2, 15198951)
+    label("A small world. Yours to explore.", 24, 64, 1, 8755109)
+    label("GENERATOR V1", 1080, 28, 1, 7336905)
+    label("61 x 37  /  ONE SQUARE = 5 FT", 24, 116, 1, 8755109)
+    label("E  ENTRANCE     X  EXIT", 620, 116, 1, 8755109)
+    box(22, 148, 858, 522, 3095640)
+    for y in map.height:
+      for x in map.width:
+        Int cell = y * map.width + x
+        Int colour = 1712677
+        if map.at(x, y) == 1:
+          colour = 13224645
+          if ((x + y) % 2) == 0:
+            colour = 13882575
+          end
+          if state.path == 1 and map.route.get(cell) == 1:
+            colour = 4624804
+          end
+        end
+        box(24 + x * 14, 150 + y * 14, 14, 14, colour)
+        if state.grid == 1 and map.at(x, y) == 1:
+          view.setColor(128, 139, 146)
+          view.line(24 + x * 14, 150 + y * 14, 37 + x * 14, 150 + y * 14)
+          view.line(24 + x * 14, 150 + y * 14, 24 + x * 14, 163 + y * 14)
+        end
+      end
+    end
+    Int n = 1
+    for item in map.rooms:
+      Chamber room = item
+      if room.cy() * map.width + room.cx() != map.entrance:
+        label("${n}", 25 + room.cx() * 14, 149 + room.cy() * 14, 1, 3686475)
+      end
+      n = n + 1
+    end
+    Int ey = map.entrance / map.width
+    Int ex = map.entrance - ey * map.width
+    Int sy = map.stairs / map.width
+    Int sx = map.stairs - sy * map.width
+    box(25 + ex * 14, 151 + ey * 14, 12, 12, 2507389)
+    label("E", 27 + ex * 14, 149 + ey * 14, 1, 16777215)
+    box(25 + sx * 14, 151 + sy * 14, 12, 12, 12947495)
+    label("X", 27 + sx * 14, 149 + sy * 14, 1, 16777215)
+    Int ty = map.target / map.width
+    Int tx = map.target - ty * map.width
+    if state.path == 1:
+      view.setColor(240, 203, 112)
+      view.line(24 + tx * 14, 150 + ty * 14, 37 + tx * 14, 150 + ty * 14)
+      view.line(24 + tx * 14, 163 + ty * 14, 37 + tx * 14, 163 + ty * 14)
+      view.line(24 + tx * 14, 150 + ty * 14, 24 + tx * 14, 163 + ty * 14)
+      view.line(37 + tx * 14, 150 + ty * 14, 37 + tx * 14, 163 + ty * 14)
+    end
+    box(904, 110, 288, 574, 1252131)
+    label("YOUR DUNGEON", 920, 126, 1, 7336905)
+    label("SEED ${map.seed}", 920, 160, 1, 15198951)
+    label("${map.rooms.len()} / ${map.goal} ROOMS", 920, 192, 1, 14279913)
+    label("${map.floorCount} FLOOR TILES", 920, 218, 1, 8755109)
+    label("ROUTE: ${map.routeLength} STEPS", 920, 244, 1, 8755109)
+    label("ALL FLOORS CONNECTED", 920, 274, 1, 7336905)
+    button("N   NEXT SEED", 310, 0)
+    button("S   ENTER SEED", 356, state.editing)
+    button("-   FEWER     +   MORE", 402, 0)
+    button("R   SHOW / HIDE ROUTE", 448, state.path)
+    button("G   SHOW / HIDE GRID", 494, state.grid)
+    box(920, 540, 256, 46, 2853010)
+    label("E   EXPORT PRINTABLE SVG", 934, 555, 1, 16250348)
+    label("P  PREVIOUS SEED", 920, 612, 1, 8755109)
+    label("ESC / Q  CLOSE", 920, 638, 1, 8755109)
+    label("${state.message}", 24, 692, 1, 14279913)
+    label("Seed + room count reproduce the map. Export opens in a browser or vector editor.", 24, 728, 1, 8755109)
+    if state.editing == 1:
+      box(232, 256, 684, 168, 3095640)
+      box(234, 258, 680, 164, 1252131)
+      label("GO TO SEED", 258, 278, 2, 15198951)
+      box(258, 324, 630, 36, 1712677)
+      label("${state.seedText}_", 270, 334, 1, 7336905)
+      label("1..2147483647    ENTER APPLY    ESC CANCEL", 258, 382, 1, 8755109)
+    end
+  end
+end
+
+class Main from IO
+  def Void help:
+    out("Catmint Dungeon Lab\nUsage: dungeon-lab [--seed N] [--rooms 6..20]\n")
+    out("  --export FILE.svg   Export without opening a window\n  --dump              Print versioned map and route data; no window\n")
+    out("  --headless          Run without a window\n  --play FILE         Apply scripted keys/text/clicks\n  --shot FILE.bmp     Draw one frame, save it, and exit\n")
+    out("Keys: N/P next/previous seed, S enter seed, -/+ rooms, R route, G grid, E export, Q/Esc quit.\n")
+  end
+
+  def main:
+    try:
+      Int seed = 42
+      Int rooms = 12
+      Int headless = 0
+      Int dump = 0
+      String output = ""
+      String shot = ""
+      String play = ""
+      Int i = 1
+      while i < args():
+        String flag = arg(i)
+        if flag == "--help" or flag == "-h":
+          help()
+          return 0
+        elif flag == "--headless":
+          headless = 1
+        elif flag == "--dump":
+          dump = 1
+          headless = 1
+        elif flag == "--seed" or flag == "--rooms" or flag == "--export" or flag == "--shot" or flag == "--play":
+          i = i + 1
+          if i >= args():
+            throw "${flag} needs a value; see --help"
+          end
+          String value = arg(i)
+          if value.len() == 0:
+            throw "${flag} needs a non-empty value"
+          end
+          if flag == "--seed":
+            seed = LabSession.number(value, 1, 2147483647)
+            if seed < 0:
+              throw "seed must be an integer in 1..2147483647"
+            end
+          elif flag == "--rooms":
+            rooms = LabSession.number(value, 6, 20)
+            if rooms < 0:
+              throw "room count must be an integer in 6..20"
+            end
+          elif flag == "--export":
+            output = value
+            headless = 1
+          elif flag == "--shot":
+            shot = value
+          else
+            play = value
+          end
+        else
+          throw "unknown option: ${flag}; see --help"
+        end
+        i = i + 1
+      end
+      if headless == 1 and shot.len() > 0:
+        throw "--shot needs rendering; do not combine with --headless, --dump or --export"
+      end
+      LabSession state = new LabSession(seed, rooms)
+      state.exportPath = output
+      if play.len() > 0:
+        state.play(play)
+      end
+      if output.len() > 0:
+        if state.save() == 0:
+          throw "could not save ${output}"
+        end
+        err("${state.message}\n")
+      end
+      if state.exportFailed == 1:
+        throw "scripted export failed"
+      end
+      if dump == 1:
+        out(state.map.dump())
+        out("view ${state.grid} ${state.path} ${state.editing}\n")
+      end
+      if headless == 1 or state.quitting == 1:
+        return 0
+      end
+      Sdl sdl = new Sdl()
+      Window window = new Window(sdl, "Catmint Dungeon Lab", 1200, 760)
+      Renderer renderer = new Renderer(window)
+      LabView screen = new LabView(state, renderer)
+      sdl.startText()
+      screen.draw()
+      if shot.len() > 0:
+        if renderer.saveBMP(shot) == 0:
+          throw "could not save screenshot: ${shot}"
+        end
+        return 0
+      end
+      renderer.present()
+      while state.quitting == 0:
+        if sdl.wait(250) == 1:
+          if sdl.isQuit() == 1:
+            state.quitting = 1
+          elif sdl.isKeyDown() == 1:
+            state.key(sdl.key())
+          elif sdl.isText() == 1:
+            state.text(sdl.text())
+          elif sdl.isMouseDown() == 1 and sdl.mouseButton() == 1:
+            state.click(sdl.mouseX(), sdl.mouseY())
+          end
+          if state.quitting == 0:
+            screen.draw()
+            renderer.present()
+          end
+        end
+      end
+    catch e:
+      err("dungeon-lab: ${e}\n")
+      exit(1)
+    end
+    return 0
+  end
+end
