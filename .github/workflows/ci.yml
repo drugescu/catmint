@@ -18,7 +18,9 @@ on:
 jobs:
   linux:
     name: x86-64 Linux
-    runs-on: ubuntu-latest
+    # Ubuntu 26.04 (the new ubuntu-latest) has no LLVM 20 apt repository.
+    # Keep the tested toolchain and the app package's glibc baseline stable.
+    runs-on: ubuntu-24.04
     env:
       LLVM_VERSION: "20"
     steps:
@@ -94,6 +96,20 @@ jobs:
       - name: AddressSanitizer and LeakSanitizer
         run: ./sanitize.sh
 
+      - name: Dungeon Lab sanitizer and package
+        run: |
+          ./examples/dungeon-lab/build.sh --asan
+          python3 ./examples/dungeon-lab/check.py --seeds 4
+          ./examples/dungeon-lab/build.sh
+          ./examples/dungeon-lab/package.sh "$RUNNER_TEMP/dungeon-lab"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: catmint-dungeon-lab-${{ runner.os }}-${{ runner.arch }}
+          path: ${{ runner.temp }}/dungeon-lab/
+          if-no-files-found: error
+          retention-days: 14
+
       # Not a gate: the numbers vary far too much on a shared runner to fail a
       # build over. It is here so a catastrophic regression is visible in the
       # log, which is how the -O0 runtime and the stray Int64 store were both
@@ -129,3 +145,17 @@ jobs:
       # arm job stayed green through a Linux failure. It never ran this code.
       - name: AddressSanitizer
         run: ./sanitize.sh
+
+      - name: Dungeon Lab sanitizer and package
+        run: |
+          ./examples/dungeon-lab/build.sh --asan
+          python3 ./examples/dungeon-lab/check.py --seeds 4
+          ./examples/dungeon-lab/build.sh
+          ./examples/dungeon-lab/package.sh "$RUNNER_TEMP/dungeon-lab"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: catmint-dungeon-lab-${{ runner.os }}-${{ runner.arch }}
+          path: ${{ runner.temp }}/dungeon-lab/
+          if-no-files-found: error
+          retention-days: 14

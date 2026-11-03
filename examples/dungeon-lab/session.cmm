@@ -1,0 +1,198 @@
+# Application actions shared by SDL input and headless scripts.
+using dungeon
+using files
+
+class LabSession from IO
+  Dungeon map = null
+  Int grid = 1
+  Int path = 0
+  Int quitting
+  Int editing
+  String seedText = ""
+  String message = "Click a floor to inspect a route."
+  String exportPath = ""
+  Int exportFailed
+
+  constructor(Int seed, Int rooms):
+    map = new Dungeon(seed, rooms)
+  end
+
+  static def Int number(String text, Int low, Int high):
+    if text.len() == 0 or text.len() > 10:
+      return 0 - 1
+    end
+    Int64 value = 0
+    for i in text.len():
+      Int c = text.at(i)
+      if c < 48 or c > 57:
+        return 0 - 1
+      end
+      value = value * 10 + c - 48
+      if value > high:
+        return 0 - 1
+      end
+    end
+    if value < low:
+      return 0 - 1
+    end
+    return value
+  end
+
+  def Void rebuild(Int seed, Int rooms):
+    map = new Dungeon(seed, rooms)
+    message = "Generated ${map.rooms.len()} connected rooms."
+  end
+
+  def Int save:
+    String file = exportPath
+    if file.len() == 0:
+      file = "dungeon-${map.seed}-${map.goal}.svg"
+    end
+    if Files.save(file, map.svg()) == 0:
+      message = "Export failed. Check the destination."
+      exportFailed = 1
+      return 0
+    end
+    exportFailed = 0
+    message = "Saved ${Files.baseName(file)}"
+    return 1
+  end
+
+  def Void text(String input):
+    if editing == 1:
+      for i in input.len():
+        Int c = input.at(i)
+        if c >= 48 and c <= 57 and seedText.len() < 10:
+          seedText = seedText + String.chr(c)
+        end
+      end
+    end
+  end
+
+  def Int key(Int code):
+    if editing == 1:
+      if code == 27:
+        editing = 0
+        message = "Seed entry cancelled."
+      elif code == 8 and seedText.len() > 0:
+        seedText = seedText.substr(0, seedText.len() - 1)
+      elif code == 13:
+        Int value = LabSession.number(seedText, 1, 2147483647)
+        if value < 0:
+          message = "Use a seed from 1 to 2147483647."
+        else
+          rebuild(value, map.goal)
+          editing = 0
+        end
+      end
+      return 0
+    end
+    if code == 113 or code == 27:
+      quitting = 1
+    elif code == 110:
+      Int next = map.seed + 1
+      if map.seed == 2147483647:
+        next = 1
+      end
+      rebuild(next, map.goal)
+    elif code == 112:
+      Int previous = map.seed - 1
+      if previous == 0:
+        previous = 2147483647
+      end
+      rebuild(previous, map.goal)
+    elif code == 115:
+      seedText = ""
+      editing = 1
+      message = "Type a seed; Enter applies, Esc cancels."
+    elif code == 45 and map.goal > 6:
+      rebuild(map.seed, map.goal - 1)
+    elif (code == 61 or code == 43) and map.goal < 20:
+      rebuild(map.seed, map.goal + 1)
+    elif code == 114:
+      path = 1 - path
+    elif code == 103:
+      grid = 1 - grid
+    elif code == 101:
+      save()
+    end
+    return 0
+  end
+
+  def Int click(Int x, Int y):
+    if editing == 1:
+      return 0
+    end
+    if x >= 24 and x < 878 and y >= 150 and y < 668:
+      if map.select((x - 24) / 14, (y - 150) / 14) == 1:
+        path = 1
+        message = "Shortest route: ${map.routeLength} steps."
+      else
+        message = "Choose a floor tile."
+      end
+    elif x >= 920 and x < 1176:
+      if y >= 310 and y < 348:
+        key(110)
+      elif y >= 356 and y < 394:
+        key(115)
+      elif y >= 402 and y < 440:
+        if x < 1048:
+          key(45)
+        else
+          key(61)
+        end
+      elif y >= 448 and y < 486:
+        key(114)
+      elif y >= 494 and y < 532:
+        key(103)
+      elif y >= 540 and y < 586:
+        key(101)
+      end
+    end
+    return 0
+  end
+
+  # Lines: key CODE, text DIGITS, click X Y. No shell, clocks, or SDL events.
+  # Key/click handlers are exactly those called by the interactive window.
+  def Void play(String file):
+    String content = Files.read(file, 65536)
+    if content == null:
+      throw "cannot read input script: ${file}"
+    end
+    List lines = content.split("\n")
+    for item in lines:
+      String line = item
+      line = line.trim()
+      if line.len() == 0 or line.at(0) == 35:
+        continue
+      end
+      List words = line.split(" ")
+      String command = words.get(0)
+      if command == "key" and words.len() == 2:
+        String value = words.get(1)
+        Int code = LabSession.number(value, 0, 2147483647)
+        if code < 0:
+          throw "bad script key: ${line}"
+        end
+        key(code)
+      elif command == "text" and words.len() == 2:
+        String input = words.get(1)
+        text(input)
+      elif command == "click" and words.len() == 3:
+        String xs = words.get(1)
+        String ys = words.get(2)
+        Int x = LabSession.number(xs, 0, 1199)
+        Int y = LabSession.number(ys, 0, 759)
+        if x < 0 or y < 0:
+          throw "bad script click: ${line}"
+        end
+        click(x, y)
+      else
+        throw "unknown input script line: ${line}"
+      end
+      if quitting == 1:
+        break
+      end
+    end
+  end
+end

@@ -199,6 +199,13 @@ if sdl_out=$("$ROOT/tools/sdl_test/run.sh" 2>&1); then
           tail -6 "$ROOT/.pad.log" | sed 's/^/  /'
           failed=1
         fi
+        if "$ROOT/examples/dungeon-lab/check.sh" > "$ROOT/.dungeon.log" 2>&1; then
+          printf "  %s\n" "$(tail -1 "$ROOT/.dungeon.log")"
+        else
+          printf "  ${RED}Dungeon Lab failed${NC} - see .dungeon.log\n"
+          tail -8 "$ROOT/.dungeon.log" | sed 's/^/  /'
+          failed=1
+        fi
       fi
       ;;
   esac
